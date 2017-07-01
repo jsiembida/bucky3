@@ -23,12 +23,6 @@ import bucky.statsd
 TIMEOUT = 3
 
 
-def test_make_name():
-    assert bucky.statsd.make_name(["these", "are", "some", "parts"]) == "these.are.some.parts."
-    assert bucky.statsd.make_name(["these", "are", None, "parts"]) == "these.are.parts."
-    assert bucky.statsd.make_name(["these", "are", None, ""]) == "these.are."
-
-
 @t.set_cfg("statsd_flush_time", 0.5)
 @t.set_cfg("statsd_port", 8126)
 @t.udp_srv(bucky.statsd.StatsDServer)

@@ -39,14 +39,6 @@ def write_json_file(gauges_filename, gauges):
         json.dump(gauges, f)
 
 
-def make_name(parts):
-    name = ""
-    for part in parts:
-        if part:
-            name = name + part + "."
-    return name
-
-
 class StatsDServer(udpserver.UDPServer):
     def __init__(self, queue, cfg):
         super(StatsDServer, self).__init__(cfg.statsd_ip, cfg.statsd_port)
@@ -59,7 +51,6 @@ class StatsDServer(udpserver.UDPServer):
         self.counters = {}
         self.sets = {}
         self.flush_time = cfg.statsd_flush_time
-        self.global_prefix = cfg.statsd_global_prefix
         self.prefix_counter = cfg.statsd_prefix_counter
         self.prefix_timer = cfg.statsd_prefix_timer
         self.prefix_gauge = cfg.statsd_prefix_gauge
@@ -72,20 +63,14 @@ class StatsDServer(udpserver.UDPServer):
             (re.compile("[^a-zA-Z_\-0-9\.]"), "")
         )
 
-        self.enqueue = self.enqueue_with_dotted_names
+        self.name_counter = self.prefix_counter
+        self.name_timer = self.prefix_timer
+        self.name_gauge = self.prefix_gauge
+        self.name_set = self.prefix_set
         if cfg.statsd_metadata_namespace:
-            self.name_global = self.global_prefix
-            self.name_counter = self.global_prefix + self.prefix_counter
-            self.name_timer = self.global_prefix + self.prefix_timer
-            self.name_gauge = self.global_prefix + self.prefix_gauge
-            self.name_set = self.global_prefix + self.prefix_set
             self.enqueue = self.enqueue_with_metadata_names
         else:
-            self.name_global = make_name([self.global_prefix])
-            self.name_counter = make_name([self.global_prefix, self.prefix_counter])
-            self.name_timer = make_name([self.global_prefix, self.prefix_timer])
-            self.name_gauge = make_name([self.global_prefix, self.prefix_gauge])
-            self.name_set = make_name([self.global_prefix, self.prefix_set])
+            self.enqueue = self.enqueue_with_dotted_names
 
         self.statsd_persistent_gauges = cfg.statsd_persistent_gauges
         self.gauges_filename = os.path.join(self.cfg.directory, self.cfg.statsd_gauges_savefile)
@@ -181,7 +166,7 @@ class StatsDServer(udpserver.UDPServer):
     def enqueue_with_dotted_names(self, bucket, name, value, stime, metadata=None):
         # No hostnames on statsd
         if name:
-            bucket += name
+            bucket = bucket + '.' + name
         metadata = self.coalesce_metadata(metadata)
         if metadata:
             metadata_tuple = tuple((k, metadata[k]) for k in sorted(metadata.keys()))
