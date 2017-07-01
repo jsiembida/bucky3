@@ -97,7 +97,6 @@ class StatsDServer(udpserver.UDPServer):
         self.delete_timers = cfg.statsd_delete_timers
         self.delete_sets = cfg.statsd_delete_sets
         self.onlychanged_gauges = cfg.statsd_onlychanged_gauges
-        self.ignore_datadog_extensions = cfg.statsd_ignore_datadog_extensions
 
         self.enable_timer_mean = cfg.statsd_timer_mean
         self.enable_timer_upper = cfg.statsd_timer_upper
@@ -359,9 +358,9 @@ class StatsDServer(udpserver.UDPServer):
         return bits[0], tuple((k, metadata[k]) for k in sorted(metadata.keys()))
 
     def handle_line(self, line):
-        if self.ignore_datadog_extensions:
-            if line.startswith('sc|') or line.startswith('_e{'):
-                return
+        # DataDog special packets for service check and events, ignore them
+        if line.startswith('sc|') or line.startswith('_e{'):
+            return
         line, metadata = self.handle_metadata(line)
         bits = line.split(":")
         key = self.handle_key(bits.pop(0), metadata)

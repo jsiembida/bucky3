@@ -33,8 +33,6 @@ statsd_delete_sets = True
 # value every flush-interval which would makes this setting irrelevant, so this option doesn't exist.
 # send gauge value to graphite only if there was a change
 statsd_onlychanged_gauges = True
-# Disable this only if you want "bad line" be reported for lines with DataDog extensions
-statsd_ignore_datadog_extensions = True
 # Use metadata name=NAME instead of the original naming scheme
 statsd_metadata_namespace = False
 statsd_percentile_thresholds = [90]  # percentile thresholds for statsd timers
