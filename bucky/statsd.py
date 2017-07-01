@@ -128,10 +128,10 @@ class StatsDServer(udpserver.UDPServer):
                 rem_keys = set(self.sets.keys()) - self.keys_seen
                 for k in rem_keys:
                     del self.sets[k]
-            num_stats = self.enqueue_timers(stime)
-            num_stats += self.enqueue_counters(stime)
-            num_stats += self.enqueue_gauges(stime)
-            num_stats += self.enqueue_sets(stime)
+            self.enqueue_timers(stime)
+            self.enqueue_counters(stime)
+            self.enqueue_gauges(stime)
+            self.enqueue_sets(stime)
             self.keys_seen = set()
 
     def run(self):
@@ -178,7 +178,6 @@ class StatsDServer(udpserver.UDPServer):
                 self.queue.put((None, bucket, value, stime))
 
     def enqueue_timers(self, stime):
-        ret = 0
         for k, v in self.timers.items():
             timer_name, timer_metadata = k
             timer_stats = {}
@@ -266,30 +265,20 @@ class StatsDServer(udpserver.UDPServer):
                 self.enqueue(self.name_timer, timer_name, timer_stats, stime, timer_metadata)
 
             self.timers[k] = []
-            ret += 1
-
-        return ret
 
     def enqueue_sets(self, stime):
-        ret = 0
         for k, v in self.sets.items():
             set_name, set_metadata = k
             self.enqueue(self.name_set, set_name, {"count": len(v)}, stime, set_metadata)
-            ret += 1
             self.sets[k] = set()
-        return ret
 
     def enqueue_gauges(self, stime):
-        ret = 0
         for k, v in self.gauges.items():
             gauge_name, gauge_metadata = k
             if k in self.keys_seen:
                 self.enqueue(self.name_gauge, gauge_name, v, stime, gauge_metadata)
-                ret += 1
-        return ret
 
     def enqueue_counters(self, stime):
-        ret = 0
         for k, v in self.counters.items():
             counter_name, counter_metadata = k
             stats = {
@@ -298,8 +287,6 @@ class StatsDServer(udpserver.UDPServer):
             }
             self.enqueue(self.name_counter, counter_name, stats, stime, counter_metadata)
             self.counters[k] = 0
-            ret += 1
-        return ret
 
     def handle(self, data, addr):
         # Adding a bit of extra sauce so clients can
