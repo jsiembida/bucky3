@@ -14,22 +14,14 @@
 #
 # Copyright 2011 Cloudant, Inc.
 
-import six
+
 import sys
 import time
 import socket
 import struct
 import logging
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
+import pickle
 import bucky.client as client
-
-
-if six.PY3:
-    xrange = range
 
 
 log = logging.getLogger(__name__)
@@ -118,7 +110,7 @@ class CarbonClient(client.Client):
             return
         reconnect_delay = self.reconnect_delay
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        for i in xrange(self.max_reconnects):
+        for i in range(self.max_reconnects):
             try:
                 self.sock.connect((self.ip, self.port))
                 self.connected = True
@@ -157,7 +149,7 @@ class PlaintextClient(CarbonClient):
     def send(self, host, name, value, mtime, metadata=None):
         stat = statname(host, name)
         mesg = "%s %s %s\n" % (stat, value, mtime)
-        for i in xrange(self.max_reconnects):
+        for i in range(self.max_reconnects):
             try:
                 self.send_message(mesg)
                 return
@@ -186,7 +178,7 @@ class PickleClient(CarbonClient):
         payload = pickle.dumps(self.buffer, protocol=-1)
         header = struct.pack("!L", len(payload))
         self.buffer = []
-        for i in xrange(self.max_reconnects):
+        for i in range(self.max_reconnects):
             try:
                 self.send_message(header + payload)
                 return

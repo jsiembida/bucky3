@@ -1,20 +1,10 @@
 
-import six
+
 import time
 import logging
 import threading
-
-try:
-    import http.server as _http
-except ImportError:
-    import BaseHTTPServer as _http
-
+import http.server
 import bucky.client as client
-
-
-if six.PY3:
-    xrange = range
-    long = int
 
 
 log = logging.getLogger(__name__)
@@ -42,8 +32,8 @@ class PrometheusClient(client.Client):
                 response = ''.join(self.get_or_render_line(k) for k in self.buffer.keys())
                 req.wfile.write(response.encode())
 
-        handler = type('PrometheusHandler', (_http.BaseHTTPRequestHandler, object), {'do_GET': do_GET})
-        server = _http.HTTPServer(('0.0.0.0', self.port), handler)
+        handler = type('PrometheusHandler', (http.server.BaseHTTPRequestHandler, object), {'do_GET': do_GET})
+        server = http.server.HTTPServer(('0.0.0.0', self.port), handler)
         threading.Thread(target=lambda: server.serve_forever()).start()
         super(PrometheusClient, self).run()
 
@@ -58,7 +48,7 @@ class PrometheusClient(client.Client):
             metadata_str = ','.join(str(k) + '="' + str(v) + '"' for k, v in metadata)
             # Lines MUST end with \n (not \r\n), the last line MUST also end with \n
             # Otherwise, Prometheus will reject the whole scrape!
-            line = name + '{' + metadata_str + '} ' + str(value) + ' ' + str(long(timestamp) * 1000) + '\n'
+            line = name + '{' + metadata_str + '} ' + str(value) + ' ' + str(int(timestamp) * 1000) + '\n'
             self.buffer[k] = timestamp, value, line
         return line
 

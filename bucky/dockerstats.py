@@ -1,16 +1,10 @@
 
+
 import time
 import docker
 import logging
 import bucky.collector as collector
-
-import six
 import requests.exceptions
-
-
-if six.PY3:
-    xrange = range
-    long = int
 
 
 log = logging.getLogger(__name__)
@@ -28,14 +22,14 @@ class DockerStatsCollector(collector.StatsCollector):
 
     def read_df_stats(self, now, labels, total_size, rw_size):
         docker_df_stats = {
-            'total_bytes': long(total_size),
-            'used_bytes': long(rw_size)
+            'total_bytes': int(total_size),
+            'used_bytes': int(rw_size)
         }
         self.add_stat("docker_filesystem", docker_df_stats, now, **labels)
 
     def read_cpu_stats(self, now, labels, stats):
         for k, v in enumerate(stats[u'percpu_usage']):
-            self.add_stat("docker_cpu", {'usage': long(v)}, now, name=k, **labels)
+            self.add_stat("docker_cpu", {'usage': int(v)}, now, name=k, **labels)
 
     def read_interface_stats(self, now, labels, stats):
         for k in stats.keys():
@@ -44,11 +38,11 @@ class DockerStatsCollector(collector.StatsCollector):
                 u'rx_bytes', u'rx_packets', u'rx_errors', u'rx_dropped',
                 u'tx_bytes', u'tx_packets', u'tx_errors', u'tx_dropped'
             )
-            docker_interface_stats = {k: long(v[k]) for k in keys}
+            docker_interface_stats = {k: int(v[k]) for k in keys}
             self.add_stat("docker_interface", docker_interface_stats, now, name=k, **labels)
 
     def read_memory_stats(self, now, labels, stats):
-        self.add_stat("docker_memory", {'used_bytes': long(stats[u'usage'])}, now, **labels)
+        self.add_stat("docker_memory", {'used_bytes': int(stats[u'usage'])}, now, **labels)
 
     def collect(self):
         now = int(time.time())
@@ -58,7 +52,7 @@ class DockerStatsCollector(collector.StatsCollector):
                 if 'docker_id' not in labels:
                     labels['docker_id'] = container[u'Id'][:12]
                 stats = self.docker_client.api.stats(container[u'Id'], decode=True, stream=False)
-                self.read_df_stats(now, labels, long(container[u'SizeRootFs']), long(container.get(u'SizeRw', 0)))
+                self.read_df_stats(now, labels, int(container[u'SizeRootFs']), int(container.get(u'SizeRw', 0)))
                 self.read_cpu_stats(now, labels, stats[u'cpu_stats'][u'cpu_usage'])
                 self.read_memory_stats(now, labels, stats[u'memory_stats'])
                 self.read_interface_stats(now, labels, stats[u'networks'])

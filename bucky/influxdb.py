@@ -14,17 +14,12 @@
 #
 # Copyright 2011 Cloudant, Inc.
 
-import six
+
 import time
 import socket
 import logging
 
 import bucky.client as client
-
-
-if six.PY3:
-    xrange = range
-    long = int
 
 
 log = logging.getLogger(__name__)
@@ -96,7 +91,7 @@ class InfluxDBClient(client.Client):
         for k in values.keys():
             v = values[k]
             t = type(v)
-            if t is long or t is int:
+            if t is int:
                 value_buf.append(str(k) + '=' + str(v) + 'i')
             elif t is float or t is bool:
                 value_buf.append(str(k) + '=' + str(v))

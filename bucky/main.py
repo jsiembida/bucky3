@@ -17,17 +17,11 @@
 import multiprocessing
 
 import os
-import six
 import sys
 import signal
 import logging
 import optparse as op
-
-try:
-    import queue
-except ImportError:
-    import Queue as queue
-
+import queue
 import bucky
 import bucky.cfg as cfg
 import bucky.carbon as carbon
@@ -286,11 +280,8 @@ def load_config(cfgfile, full_trace=False):
     cfg_mapping = vars(cfg)
     try:
         if cfgfile is not None:
-            if six.PY3:
-                with open(cfgfile, 'rb') as file:
-                    exec(compile(file.read(), cfgfile, 'exec'), cfg_mapping)
-            else:
-                execfile(cfgfile, cfg_mapping)  # noqa
+            with open(cfgfile, 'rb') as file:
+                exec(compile(file.read(), cfgfile, 'exec'), cfg_mapping)
     except Exception as e:
         log.error("Failed to read config file: %s", cfgfile)
         if full_trace:

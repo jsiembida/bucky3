@@ -12,12 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-import six
+
 import sys
 import socket
 import logging
 import multiprocessing
-
 import bucky.cfg as cfg
 
 
@@ -91,13 +90,8 @@ class UDPServer(multiprocessing.Process):
     def close(self):
         self.send('EXIT')
 
-    if six.PY3:
-        def send(self, data):
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            if not isinstance(data, bytes):
-                data = data.encode()
-            sock.sendto(data, 0, (self.ip, self.port))
-    else:
-        def send(self, data):
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.sendto(data, 0, (self.ip, self.port))
+    def send(self, data):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        if not isinstance(data, bytes):
+            data = data.encode()
+        sock.sendto(data, 0, (self.ip, self.port))

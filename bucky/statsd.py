@@ -16,47 +16,26 @@
 
 import os
 import re
-import six
 import math
 import time
 import json
 import logging
 import threading
+from io import open
 import bucky.udpserver as udpserver
+
 
 log = logging.getLogger(__name__)
 
-try:
-    from io import open
-except ImportError:
-    # Python <2.6
-    _open = open
 
-    def open(*args, **kwargs):
-        """
-        Wrapper around open which does not support 'encoding' keyword in
-        older versions of Python
-        """
-        kwargs.pop("encoding")
-        return _open(*args, **kwargs)
+def read_json_file(gauges_filename):
+    with open(gauges_filename, mode='r', encoding='utf-8') as f:
+        return json.load(f)
 
 
-if six.PY3:
-    def read_json_file(gauges_filename):
-        with open(gauges_filename, mode='r', encoding='utf-8') as f:
-            return json.load(f)
-
-    def write_json_file(gauges_filename, gauges):
-        with open(gauges_filename, mode='w', encoding='utf-8') as f:
-            json.dump(gauges, f)
-else:
-    def read_json_file(gauges_filename):
-        with open(gauges_filename, mode='rb') as f:
-            return json.load(f)
-
-    def write_json_file(gauges_filename, gauges):
-        with open(gauges_filename, mode='wb') as f:
-            json.dump(gauges, f)
+def write_json_file(gauges_filename, gauges):
+    with open(gauges_filename, mode='w', encoding='utf-8') as f:
+        json.dump(gauges, f)
 
 
 def make_name(parts):
@@ -238,8 +217,7 @@ class StatsDServer(udpserver.UDPServer):
 
     def enqueue_timers(self, stime):
         ret = 0
-        iteritems = self.timers.items() if six.PY3 else self.timers.iteritems()
-        for k, v in iteritems:
+        for k, v in self.timers.items():
             timer_name, timer_metadata = k
             timer_stats = {}
 
@@ -332,8 +310,7 @@ class StatsDServer(udpserver.UDPServer):
 
     def enqueue_sets(self, stime):
         ret = 0
-        iteritems = self.sets.items() if six.PY3 else self.sets.iteritems()
-        for k, v in iteritems:
+        for k, v in self.sets.items():
             set_name, set_metadata = k
             self.enqueue(self.name_set, set_name, {"count": len(v)}, stime, set_metadata)
             ret += 1
@@ -342,8 +319,7 @@ class StatsDServer(udpserver.UDPServer):
 
     def enqueue_gauges(self, stime):
         ret = 0
-        iteritems = self.gauges.items() if six.PY3 else self.gauges.iteritems()
-        for k, v in iteritems:
+        for k, v in self.gauges.items():
             gauge_name, gauge_metadata = k
             # only send a value if there was an update if `delete_idlestats` is `True`
             if not self.onlychanged_gauges or k in self.keys_seen:
@@ -353,8 +329,7 @@ class StatsDServer(udpserver.UDPServer):
 
     def enqueue_counters(self, stime):
         ret = 0
-        iteritems = self.counters.items() if six.PY3 else self.counters.iteritems()
-        for k, v in iteritems:
+        for k, v in self.counters.items():
             counter_name, counter_metadata = k
             if self.legacy_namespace:
                 self.enqueue(self.name_legacy_rate, counter_name, v / self.flush_time, stime, counter_metadata)
@@ -373,8 +348,7 @@ class StatsDServer(udpserver.UDPServer):
         # Adding a bit of extra sauce so clients can
         # send multiple samples in a single UDP
         # packet.
-        if six.PY3:
-            data = data.decode()
+        data = data.decode()
         for line in data.splitlines():
             self.line = line
             if not line.strip():

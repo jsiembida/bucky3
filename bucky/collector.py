@@ -4,13 +4,6 @@ import time
 import multiprocessing
 
 
-try:
-    from setproctitle import setproctitle
-except ImportError:
-    def setproctitle(title):
-        pass
-
-
 class StatsCollector(multiprocessing.Process):
     def __init__(self, queue):
         super(StatsCollector, self).__init__()
@@ -20,7 +13,6 @@ class StatsCollector(multiprocessing.Process):
         pass
 
     def run(self):
-        setproctitle("bucky: %s" % self.__class__.__name__)
         interval = self.interval
         while True:
             start_timestamp = time.time()

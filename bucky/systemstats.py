@@ -4,13 +4,6 @@ import time
 import logging
 import bucky.collector as collector
 
-import six
-
-
-if six.PY3:
-    xrange = range
-    long = int
-
 
 log = logging.getLogger(__name__)
 
@@ -62,16 +55,16 @@ class SystemStatsCollector(collector.StatsCollector):
                 name = tokens[0]
                 if not name.startswith('cpu'):
                     if name == 'ctxt':
-                        processes_stats['switches'] = long(tokens[1])
+                        processes_stats['switches'] = int(tokens[1])
                     elif name == 'processes':
-                        processes_stats['forks'] = long(tokens[1])
+                        processes_stats['forks'] = int(tokens[1])
                     elif name == 'procs_running':
-                        processes_stats['running'] = long(tokens[1])
+                        processes_stats['running'] = int(tokens[1])
                 else:
                     cpu_suffix = name[3:]
                     if not cpu_suffix:
                         continue
-                    cpu_stats = {k: long(v) for k, v in zip(self.CPU_FIELDS, tokens[1:])}
+                    cpu_stats = {k: int(v) for k, v in zip(self.CPU_FIELDS, tokens[1:])}
                     self.add_stat("system_cpu", cpu_stats, now, name=cpu_suffix)
             if processes_stats:
                 self.add_stat("system_processes", processes_stats, now)
@@ -90,15 +83,15 @@ class SystemStatsCollector(collector.StatsCollector):
                     continue
                 try:
                     stats = os.statvfs(mount_path)
-                    total_inodes = long(stats.f_files)
+                    total_inodes = int(stats.f_files)
                     # Skip special filesystems
                     if not total_inodes:
                         continue
                     block_size = stats.f_bsize
                     df_stats = {
-                        'free_bytes': long(stats.f_bavail) * block_size,
-                        'total_bytes': long(stats.f_blocks) * block_size,
-                        'free_inodes': long(stats.f_favail),
+                        'free_bytes': int(stats.f_bavail) * block_size,
+                        'total_bytes': int(stats.f_blocks) * block_size,
+                        'free_inodes': int(stats.f_favail),
                         'total_inodes': total_inodes
                     }
                     self.add_stat("system_filesystem", df_stats, now, device=mount_target, name=mount_path, type=mount_filesystem)
@@ -118,14 +111,14 @@ class SystemStatsCollector(collector.StatsCollector):
                 if not self.check_lists(interface_name, self.interface_blacklist, self.interface_whitelist):
                     continue
                 interface_stats = {
-                    'rx_bytes': long(tokens[1]),
-                    'rx_packets': long(tokens[2]),
-                    'rx_errors': long(tokens[3]),
-                    'rx_dropped': long(tokens[4]),
-                    'tx_bytes': long(tokens[9]),
-                    'tx_packets': long(tokens[10]),
-                    'tx_errors': long(tokens[11]),
-                    'tx_dropped': long(tokens[12])
+                    'rx_bytes': int(tokens[1]),
+                    'rx_packets': int(tokens[2]),
+                    'rx_errors': int(tokens[3]),
+                    'rx_dropped': int(tokens[4]),
+                    'tx_bytes': int(tokens[9]),
+                    'tx_packets': int(tokens[10]),
+                    'tx_errors': int(tokens[11]),
+                    'tx_dropped': int(tokens[12])
                 }
                 self.add_stat("system_interface", interface_stats, now, name=interface_name)
 
@@ -156,11 +149,11 @@ class SystemStatsCollector(collector.StatsCollector):
                     continue
                 name = name[:-1].lower()
                 if name == "memtotal":
-                    memory_stats['total_bytes'] = long(tokens[1]) * 1024
+                    memory_stats['total_bytes'] = int(tokens[1]) * 1024
                 elif name == "memfree":
-                    memory_stats['free_bytes'] = long(tokens[1]) * 1024
+                    memory_stats['free_bytes'] = int(tokens[1]) * 1024
                 elif name == "memavailable":
-                    memory_stats['available_bytes'] = long(tokens[1]) * 1024
+                    memory_stats['available_bytes'] = int(tokens[1]) * 1024
             if memory_stats:
                 self.add_stat("system_memory", memory_stats, now)
 
@@ -175,20 +168,20 @@ class SystemStatsCollector(collector.StatsCollector):
                 if not self.check_lists(disk_name, self.disk_blacklist, self.disk_whitelist):
                     continue
                 disk_stats = {
-                    'read_ops': long(tokens[3]),
-                    'read_merged': long(tokens[4]),
-                    'read_sectors': long(tokens[5]),
-                    'read_bytes': long(tokens[5]) * 512,
-                    'read_time': long(tokens[6]),
+                    'read_ops': int(tokens[3]),
+                    'read_merged': int(tokens[4]),
+                    'read_sectors': int(tokens[5]),
+                    'read_bytes': int(tokens[5]) * 512,
+                    'read_time': int(tokens[6]),
 
-                    'write_ops': long(tokens[7]),
-                    'write_merged': long(tokens[8]),
-                    'write_sectors': long(tokens[9]),
-                    'write_bytes': long(tokens[9]) * 512,
-                    'write_time': long(tokens[10]),
+                    'write_ops': int(tokens[7]),
+                    'write_merged': int(tokens[8]),
+                    'write_sectors': int(tokens[9]),
+                    'write_bytes': int(tokens[9]) * 512,
+                    'write_time': int(tokens[10]),
 
-                    'in_progress': long(tokens[11]),
-                    'io_time': long(tokens[12]),
-                    'weighted_time': long(tokens[13])
+                    'in_progress': int(tokens[11]),
+                    'io_time': int(tokens[12]),
+                    'weighted_time': int(tokens[13])
                 }
                 self.add_stat("system_disk", disk_stats, now, name=disk_name)
