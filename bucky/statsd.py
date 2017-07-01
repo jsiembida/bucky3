@@ -98,7 +98,6 @@ class StatsDServer(udpserver.UDPServer):
         self.delete_sets = cfg.statsd_delete_sets
         self.onlychanged_gauges = cfg.statsd_onlychanged_gauges
         self.ignore_datadog_extensions = cfg.statsd_ignore_datadog_extensions
-        self.ignore_internal_stats = cfg.statsd_ignore_internal_stats
 
         self.enable_timer_mean = cfg.statsd_timer_mean
         self.enable_timer_upper = cfg.statsd_timer_upper
@@ -160,8 +159,6 @@ class StatsDServer(udpserver.UDPServer):
             num_stats += self.enqueue_counters(stime)
             num_stats += self.enqueue_gauges(stime)
             num_stats += self.enqueue_sets(stime)
-            if not self.ignore_internal_stats:
-                self.enqueue(self.name_global, None, {"numStats": num_stats}, stime)
             self.keys_seen = set()
 
     def run(self):
