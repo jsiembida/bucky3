@@ -29,16 +29,6 @@ import bucky.udpserver as udpserver
 log = logging.getLogger(__name__)
 
 
-def read_json_file(gauges_filename):
-    with open(gauges_filename, mode='r', encoding='utf-8') as f:
-        return json.load(f)
-
-
-def write_json_file(gauges_filename, gauges):
-    with open(gauges_filename, mode='w', encoding='utf-8') as f:
-        json.dump(gauges, f)
-
-
 class StatsDServer(udpserver.UDPServer):
     def __init__(self, queue, cfg):
         super(StatsDServer, self).__init__(cfg.statsd_ip, cfg.statsd_port)
@@ -103,14 +93,13 @@ class StatsDServer(udpserver.UDPServer):
             return
         log.info("StatsD: Loading saved gauges %s", self.gauges_filename)
         try:
-            gauges = read_json_file(self.gauges_filename)
+            with open(self.gauges_filename, mode='r', encoding='utf-8') as f:
+                for gauge_name, gauge_metadata, gauge_value in json.load(f):
+                    k = (gauge_name, tuple(gauge_metadata) if gauge_metadata else None)
+                    self.gauges[k] = gauge_value
+                    self.keys_seen.add(k)
         except IOError:
             log.exception("StatsD: IOError")
-        else:
-            for gauge_name, gauge_metadata, gauge_value in gauges:
-                k = (gauge_name, tuple(gauge_metadata) if gauge_metadata else None)
-                self.gauges[k] = gauge_value
-                self.keys_seen.add(k)
 
     def save_gauges(self):
         if not self.statsd_persistent_gauges:
@@ -120,7 +109,8 @@ class StatsDServer(udpserver.UDPServer):
             for k in self.gauges.keys():
                 gauge_name, gauge_metadata = k
                 gauges.append((gauge_name, gauge_metadata, self.gauges[k]))
-            write_json_file(self.gauges_filename, gauges)
+            with open(self.gauges_filename, mode='w', encoding='utf-8') as f:
+                json.dump(gauges, f)
         except IOError:
             log.exception("StatsD: IOError")
 
