@@ -104,11 +104,6 @@ def options():
             help="Enable collection of docker containers stats"
         ),
         op.make_option(
-            "--full-trace", dest="full_trace",
-            default=cfg.full_trace, action="store_true",
-            help="Display full error if config file fails to load"
-        ),
-        op.make_option(
             "--log-level", dest="log_level",
             metavar="NAME", default="INFO",
             help="Logging output verbosity [%default]"
@@ -141,7 +136,7 @@ def main():
             parser.error("Too many arguments.")
     else:
         cfgfile = None
-    load_config(cfgfile, full_trace=opts.full_trace)
+    load_config(cfgfile)
 
     if cfg.debug:
         cfg.log_level = logging.DEBUG
@@ -276,7 +271,7 @@ class Bucky(object):
             raise BuckyError(err)
 
 
-def load_config(cfgfile, full_trace=False):
+def load_config(cfgfile):
     cfg_mapping = vars(cfg)
     try:
         if cfgfile is not None:
@@ -284,10 +279,7 @@ def load_config(cfgfile, full_trace=False):
                 exec(compile(file.read(), cfgfile, 'exec'), cfg_mapping)
     except Exception as e:
         log.error("Failed to read config file: %s", cfgfile)
-        if full_trace:
-            log.exception("Reason: %s", e)
-        else:
-            log.error("Reason: %s", e)
+        log.exception("Reason: %s", e)
         sys.exit(1)
     for name in dir(cfg):
         if name.startswith("_"):

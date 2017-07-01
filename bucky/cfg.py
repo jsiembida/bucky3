@@ -3,7 +3,6 @@ debug = False
 log_level = "INFO"
 directory = "/var/lib/bucky"
 process_join_timeout = 2
-full_trace = False
 
 
 metadata = []
