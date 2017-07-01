@@ -34,7 +34,6 @@ import bucky
 import bucky.cfg as cfg
 import bucky.carbon as carbon
 import bucky.collectd as collectd
-import bucky.metricsd as metricsd
 import bucky.statsd as statsd
 import bucky.systemstats as systemstats
 import bucky.dockerstats as dockerstats
@@ -64,21 +63,6 @@ def options():
             action="store_true",
             help="Put server into dry-run debug mode where output"
                  "goes to stdout instead of carbon. [False]. [%default]"
-        ),
-        op.make_option(
-            "--metricsd-ip", dest="metricsd_ip", metavar="IP",
-            default=cfg.metricsd_ip,
-            help="IP address to bind for the MetricsD UDP socket [%default]"
-        ),
-        op.make_option(
-            "--metricsd-port", dest="metricsd_port", metavar="INT",
-            type="int", default=cfg.metricsd_port,
-            help="Port to bind for the MetricsD UDP socket [%default]"
-        ),
-        op.make_option(
-            "--disable-metricsd", dest="metricsd_enabled",
-            default=cfg.metricsd_enabled, action="store_false",
-            help="Disable the MetricsD UDP server"
         ),
         op.make_option(
             "--collectd-ip", dest="collectd_ip", metavar="IP",
@@ -290,8 +274,6 @@ class Bucky(object):
         self.sampleq = multiprocessing.Queue()
 
         stypes = []
-        if cfg.metricsd_enabled:
-            stypes.append(metricsd.MetricsDServer)
         if cfg.collectd_enabled:
             stypes.append(collectd.getCollectDServer)
         if cfg.statsd_enabled:
