@@ -92,6 +92,3 @@ system_stats_disk_whitelist = None
 docker_stats_enabled = False
 docker_stats_interval = 10
 docker_stats_version = '1.22'
-
-processor = None
-processor_drop_on_error = False

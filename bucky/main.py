@@ -36,7 +36,6 @@ import bucky.systemstats as systemstats
 import bucky.dockerstats as dockerstats
 import bucky.influxdb as influxdb
 import bucky.prometheus as prometheus
-import bucky.processor as processor
 
 
 log = logging.getLogger(__name__)
@@ -210,14 +209,6 @@ class Bucky(object):
         for stype in stypes:
             self.servers.append(stype(self.sampleq, cfg))
 
-        if cfg.processor is not None:
-            self.psampleq = multiprocessing.Queue()
-            self.proc = processor.CustomProcessor(self.sampleq, self.psampleq,
-                                                  cfg)
-        else:
-            self.proc = None
-            self.psampleq = self.sampleq
-
         requested_clients = []
         if cfg.graphite_enabled:
             if cfg.graphite_pickle_enabled:
@@ -239,12 +230,10 @@ class Bucky(object):
     def run(self):
         def sigterm_handler(signum, frame):
             log.info("Received SIGTERM")
-            self.psampleq.put(None)
+            self.sampleq.put(None)
 
         for server in self.servers:
             server.start()
-        if self.proc is not None:
-            self.proc.start()
         for client, pipe in self.clients:
             client.start()
 
@@ -252,7 +241,7 @@ class Bucky(object):
 
         while True:
             try:
-                sample = self.psampleq.get(True, 1)
+                sample = self.sampleq.get(True, 1)
                 if not sample:
                     break
                 for instance, pipe in self.clients:
@@ -270,8 +259,6 @@ class Bucky(object):
             for srv in self.servers:
                 if not srv.is_alive():
                     self.shutdown("Server thread died. Exiting.")
-            if self.proc is not None and not self.proc.is_alive():
-                self.shutdown("Processor thread died. Exiting.")
         self.shutdown()
 
     def shutdown(self, err=''):
@@ -280,10 +267,6 @@ class Bucky(object):
             log.info("Stopping server %s", server)
             server.close()
             server.join(cfg.process_join_timeout)
-        if self.proc is not None:
-            log.info("Stopping processor %s", self.proc)
-            self.sampleq.put(None)
-            self.proc.join(cfg.process_join_timeout)
         for client, pipe in self.clients:
             log.info("Stopping client %s", client)
             pipe.send(None)
