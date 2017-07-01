@@ -59,7 +59,6 @@ class StatsDServer(udpserver.UDPServer):
         self.counters = {}
         self.sets = {}
         self.flush_time = cfg.statsd_flush_time
-        self.legacy_namespace = cfg.statsd_legacy_namespace
         self.global_prefix = cfg.statsd_global_prefix
         self.prefix_counter = cfg.statsd_prefix_counter
         self.prefix_timer = cfg.statsd_prefix_timer
@@ -81,13 +80,6 @@ class StatsDServer(udpserver.UDPServer):
             self.name_gauge = self.global_prefix + self.prefix_gauge
             self.name_set = self.global_prefix + self.prefix_set
             self.enqueue = self.enqueue_with_metadata_names
-        elif self.legacy_namespace:
-            self.name_global = 'stats.'
-            self.name_legacy_rate = 'stats.'
-            self.name_legacy_count = 'stats_counts.'
-            self.name_timer = 'stats.timers.'
-            self.name_gauge = 'stats.gauges.'
-            self.name_set = 'stats.sets.'
         else:
             self.name_global = make_name([self.global_prefix])
             self.name_counter = make_name([self.global_prefix, self.prefix_counter])
@@ -332,15 +324,11 @@ class StatsDServer(udpserver.UDPServer):
         ret = 0
         for k, v in self.counters.items():
             counter_name, counter_metadata = k
-            if self.legacy_namespace:
-                self.enqueue(self.name_legacy_rate, counter_name, v / self.flush_time, stime, counter_metadata)
-                self.enqueue(self.name_legacy_count, counter_name, v, stime, counter_metadata)
-            else:
-                stats = {
-                    'rate': v / self.flush_time,
-                    'count': v
-                }
-                self.enqueue(self.name_counter, counter_name, stats, stime, counter_metadata)
+            stats = {
+                'rate': v / self.flush_time,
+                'count': v
+            }
+            self.enqueue(self.name_counter, counter_name, stats, stime, counter_metadata)
             self.counters[k] = 0
             ret += 1
         return ret

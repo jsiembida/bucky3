@@ -14,9 +14,9 @@
 #
 # Copyright 2011 Cloudant, Inc.
 
+
 import t
 import os
-
 import bucky.statsd
 
 
@@ -34,8 +34,7 @@ def test_make_name():
 @t.udp_srv(bucky.statsd.StatsDServer)
 def test_simple_counter(q, s):
     s.send("gorm:1|c")
-    t.same_stat(None, "stats.gorm", 2, q.get(timeout=TIMEOUT))
-    t.same_stat(None, "stats_counts.gorm", 1, q.get(timeout=TIMEOUT))
+    t.same_stat(None, "stats.counters.gorm", {"rate": 2, "count": 1}, q.get(timeout=TIMEOUT))
     t.same_stat(None, "stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
 
 
@@ -45,8 +44,7 @@ def test_simple_counter(q, s):
 def test_multiple_messages(q, s):
     s.send("gorm:1|c")
     s.send("gorm:1|c")
-    t.same_stat(None, "stats.gorm", 4, q.get(timeout=TIMEOUT))
-    t.same_stat(None, "stats_counts.gorm", 2, q.get(timeout=TIMEOUT))
+    t.same_stat(None, "stats.counters.gorm", {"rate": 4, "count": 2}, q.get(timeout=TIMEOUT))
     t.same_stat(None, "stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
 
 
@@ -55,8 +53,7 @@ def test_multiple_messages(q, s):
 @t.udp_srv(bucky.statsd.StatsDServer)
 def test_larger_count(q, s):
     s.send("gorm:5|c")
-    t.same_stat(None, "stats.gorm", 10, q.get(timeout=TIMEOUT))
-    t.same_stat(None, "stats_counts.gorm", 5, q.get(timeout=TIMEOUT))
+    t.same_stat(None, "stats.counters.gorm", {"rate": 10, "count": 5}, q.get(timeout=TIMEOUT))
     t.same_stat(None, "stats.", {'numStats': 1}, q.get(timeout=TIMEOUT))
 
 
@@ -66,18 +63,14 @@ def test_larger_count(q, s):
 def test_multiple_counters(q, s):
     s.send("gorm:1|c")
     s.send("gurm:1|c")
-    stats = {
-        "stats.gorm": 2,
-        "stats_counts.gorm": 1,
-        "stats.gurm": 2,
-        "stats_counts.gurm": 1
+    expected_stats = {
+        "stats.counters.gorm", {"rate": 2, "count": 1},
+        "stats.counters.gurm", {"rate": 2, "count": 1}
     }
-    for i in range(4):
+    for i in 1, 2:
         stat = q.get(timeout=TIMEOUT)
-        t.isin(stat[1], stats)
-        t.eq(stats[stat[1]], stat[2])
-        t.gt(stat[2], 0)
-        stats.pop(stat[1])
+        assert stat[1] in expected_stats
+        assert stat[2] == expected_stats[stat[1]]
     t.same_stat(None, "stats.", {'numStats': 2}, q.get(timeout=TIMEOUT))
 
 
@@ -202,16 +195,6 @@ def test_timer_multiple_times_even(q, s):
     returned_value = q.get(timeout=TIMEOUT)
     returned_value = returned_value[:2] + (returned_value[2]["median"],) + returned_value[3:]
     t.same_stat(None, "stats.timers.gorm", 250, returned_value)
-
-
-@t.set_cfg("statsd_flush_time", 0.5)
-@t.set_cfg("statsd_port", 8131)
-@t.set_cfg("statsd_legacy_namespace", False)
-@t.udp_srv(bucky.statsd.StatsDServer)
-def test_simple_counter_not_legacy_namespace(q, s):
-    s.send("gorm:1|c")
-    t.same_stat(None, "stats.counters.gorm", {"rate": 2, "count": 1}, q.get(timeout=TIMEOUT))
-    t.same_stat(None, "stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
 
 
 @t.set_cfg("statsd_flush_time", 0.5)

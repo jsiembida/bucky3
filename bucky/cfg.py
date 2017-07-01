@@ -19,7 +19,6 @@ statsd_ip = "127.0.0.1"
 statsd_port = 8125
 statsd_enabled = True
 statsd_flush_time = 10.0
-statsd_legacy_namespace = True
 statsd_global_prefix = "stats"
 statsd_prefix_counter = "counters"
 statsd_prefix_timer = "timers"
@@ -39,7 +38,7 @@ statsd_onlychanged_gauges = True
 # Disable this only if you want "bad line" be reported for lines with DataDog extensions
 statsd_ignore_datadog_extensions = True
 statsd_ignore_internal_stats = False
-# Use metadata name=NAME instead of the original/legacy naming scheme
+# Use metadata name=NAME instead of the original naming scheme
 statsd_metadata_namespace = False
 statsd_percentile_thresholds = [90]  # percentile thresholds for statsd timers
 statsd_timer_mean = True
