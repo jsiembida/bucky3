@@ -14,13 +14,13 @@
 #
 # Copyright 2011 Cloudant, Inc.
 
-import multiprocessing
 
 import os
 import sys
 import signal
 import logging
 import optparse as op
+import multiprocessing
 import queue
 import bucky
 import bucky.cfg as cfg
@@ -301,5 +301,3 @@ if __name__ == '__main__':
         main()
     except KeyboardInterrupt:
         pass
-    except Exception:
-        raise

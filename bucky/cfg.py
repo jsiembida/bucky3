@@ -3,13 +3,17 @@ debug = False
 log_level = "INFO"
 directory = "/var/lib/bucky"
 process_join_timeout = 2
+full_trace = False
+
 
 metadata = []
+
 
 sentry_enabled = False
 sentry_dsn = None
 sentry_log_level = "WARNING"
 sentry_auto_log_stacks = False
+
 
 statsd_ip = "127.0.0.1"
 statsd_port = 8125
@@ -37,9 +41,7 @@ statsd_ignore_datadog_extensions = True
 statsd_ignore_internal_stats = False
 # Use metadata name=NAME instead of the original/legacy naming scheme
 statsd_metadata_namespace = False
-
 statsd_percentile_thresholds = [90]  # percentile thresholds for statsd timers
-
 statsd_timer_mean = True
 statsd_timer_upper = True
 statsd_timer_lower = True
@@ -49,6 +51,7 @@ statsd_timer_sum = True
 statsd_timer_sum_squares = True
 statsd_timer_median = True
 statsd_timer_std = True
+
 
 graphite_enabled = True
 graphite_ip = "127.0.0.1"
@@ -60,17 +63,6 @@ graphite_backoff_max = 60
 graphite_pickle_enabled = False
 graphite_pickle_buffer_size = 500
 
-influxdb_enabled = False
-influxdb_hosts = [
-    "127.0.0.1:8089"
-]
-
-prometheus_enabled = False
-prometheus_port = 9090
-prometheus_timeout = 60
-prometheus_path = 'metrics'
-
-full_trace = False
 
 name_prefix = None
 name_prefix_parts = None
@@ -80,6 +72,19 @@ name_replace_char = '_'
 name_strip_duplicates = True
 name_host_trim = []
 
+
+influxdb_enabled = False
+influxdb_hosts = [
+    "127.0.0.1:8089"
+]
+
+
+prometheus_enabled = False
+prometheus_port = 9090
+prometheus_timeout = 60
+prometheus_path = 'metrics'
+
+
 system_stats_enabled = False
 system_stats_interval = 10
 system_stats_filesystem_blacklist = ['tmpfs', 'aufs', 'rootfs', 'devtmpfs']
@@ -88,6 +93,7 @@ system_stats_interface_blacklist = None
 system_stats_interface_whitelist = None
 system_stats_disk_blacklist = ['loop0', 'loop1', 'loop2', 'loop3', 'loop4', 'loop5', 'loop6', 'loop7']
 system_stats_disk_whitelist = None
+
 
 docker_stats_enabled = False
 docker_stats_interval = 10

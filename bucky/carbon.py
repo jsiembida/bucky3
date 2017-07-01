@@ -21,6 +21,7 @@ import socket
 import struct
 import logging
 import pickle
+import bucky.cfg as cfg
 import bucky.client as client
 
 
