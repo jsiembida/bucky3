@@ -1,5 +1,2 @@
 six
-setproctitle
-pycrypto
-watchdog
 docker

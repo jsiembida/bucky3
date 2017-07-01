@@ -17,12 +17,6 @@
 import multiprocessing
 import logging
 
-try:
-    from setproctitle import setproctitle
-except ImportError:
-    def setproctitle(title):
-        pass
-
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +28,6 @@ class Client(multiprocessing.Process):
         self.pipe = pipe
 
     def run(self):
-        setproctitle("bucky: %s" % self.__class__.__name__)
         while True:
             try:
                 if not self.pipe.poll(1):
