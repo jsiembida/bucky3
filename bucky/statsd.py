@@ -71,7 +71,6 @@ class StatsDServer(udpserver.UDPServer):
         self.delete_counters = cfg.statsd_delete_counters
         self.delete_timers = cfg.statsd_delete_timers
         self.delete_sets = cfg.statsd_delete_sets
-        self.onlychanged_gauges = cfg.statsd_onlychanged_gauges
 
         self.enable_timer_mean = cfg.statsd_timer_mean
         self.enable_timer_upper = cfg.statsd_timer_upper
@@ -284,7 +283,7 @@ class StatsDServer(udpserver.UDPServer):
         ret = 0
         for k, v in self.gauges.items():
             gauge_name, gauge_metadata = k
-            if not self.onlychanged_gauges or k in self.keys_seen:
+            if k in self.keys_seen:
                 self.enqueue(self.name_gauge, gauge_name, v, stime, gauge_metadata)
                 ret += 1
         return ret

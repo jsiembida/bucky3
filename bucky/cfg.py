@@ -29,8 +29,6 @@ statsd_delete_timers = True
 statsd_delete_sets = True
 # `statsd_delete_gauges = True` would make gauges in practice useless, except if you get an absolute(!)
 # value every flush-interval which would makes this setting irrelevant, so this option doesn't exist.
-# send gauge value to graphite only if there was a change
-statsd_onlychanged_gauges = True
 # Use metadata name=NAME instead of the original naming scheme
 statsd_metadata_namespace = False
 statsd_percentile_thresholds = [90]  # percentile thresholds for statsd timers
