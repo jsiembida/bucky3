@@ -14,24 +14,6 @@ sentry_dsn = None
 sentry_log_level = "WARNING"
 sentry_auto_log_stacks = False
 
-metricsd_ip = "127.0.0.1"
-metricsd_port = 23632
-metricsd_enabled = True
-metricsd_default_interval = 10.0
-metricsd_handlers = []
-
-collectd_ip = "127.0.0.1"
-collectd_port = 25826
-collectd_enabled = True
-collectd_types = []
-collectd_converters = []
-collectd_use_entry_points = True
-collectd_counter_eq_derive = False
-collectd_workers = 1
-
-collectd_security_level = 0
-collectd_auth_file = None
-
 statsd_ip = "127.0.0.1"
 statsd_port = 8125
 statsd_enabled = True
@@ -116,10 +98,3 @@ docker_stats_version = '1.22'
 
 processor = None
 processor_drop_on_error = False
-
-
-def ensure_value(attr, value):
-    _vars = globals()
-    if _vars.get(attr, None) is None:
-        _vars[attr] = value
-    return _vars[attr]
