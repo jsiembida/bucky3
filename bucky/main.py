@@ -33,7 +33,6 @@ except ImportError:
 import bucky
 import bucky.cfg as cfg
 import bucky.carbon as carbon
-import bucky.collectd as collectd
 import bucky.statsd as statsd
 import bucky.systemstats as systemstats
 import bucky.dockerstats as dockerstats
@@ -63,26 +62,6 @@ def options():
             action="store_true",
             help="Put server into dry-run debug mode where output"
                  "goes to stdout instead of carbon. [False]. [%default]"
-        ),
-        op.make_option(
-            "--collectd-ip", dest="collectd_ip", metavar="IP",
-            default=cfg.collectd_ip,
-            help="IP address to bind for the CollectD UDP socket [%default]"
-        ),
-        op.make_option(
-            "--collectd-port", dest="collectd_port", metavar="INT",
-            type='int', default=cfg.collectd_port,
-            help="Port to bind for the CollectD UDP socket [%default]"
-        ),
-        op.make_option(
-            "--collectd-types", dest="collectd_types", metavar="FILE",
-            type='string', action='append', default=list(cfg.collectd_types),
-            help="Path to the collectd types.db file, can be specified multiple times"
-        ),
-        op.make_option(
-            "--disable-collectd", dest="collectd_enabled",
-            default=cfg.collectd_enabled, action="store_false",
-            help="Disable the CollectD UDP server"
         ),
         op.make_option(
             "--statsd-ip", dest="statsd_ip", metavar="IP",
@@ -274,8 +253,6 @@ class Bucky(object):
         self.sampleq = multiprocessing.Queue()
 
         stypes = []
-        if cfg.collectd_enabled:
-            stypes.append(collectd.getCollectDServer)
         if cfg.statsd_enabled:
             stypes.append(statsd.StatsDServer)
         if cfg.system_stats_enabled:
