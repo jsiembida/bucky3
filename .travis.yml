@@ -33,7 +33,6 @@ script:
   - nosetests -v --with-coverage tests/test_000_bucky.py
   - nosetests -v --with-coverage tests/test_001_statsd.py
   - nosetests -v --with-coverage tests/test_003_processor.py
-  - nosetests -v --with-coverage tests/test_004_helpers.py
   - PYTHONPATH="." python contrib/statsd_perfomance_test.py
 
 after_success:
