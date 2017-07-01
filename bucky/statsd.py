@@ -93,11 +93,10 @@ class StatsDServer(udpserver.UDPServer):
         self.pct_thresholds = cfg.statsd_percentile_thresholds
 
         self.keys_seen = set()
-        self.delete_idlestats = cfg.statsd_delete_idlestats
-        self.delete_counters = self.delete_idlestats and cfg.statsd_delete_counters
-        self.delete_timers = self.delete_idlestats and cfg.statsd_delete_timers
-        self.delete_sets = self.delete_idlestats and cfg.statsd_delete_sets
-        self.onlychanged_gauges = self.delete_idlestats and cfg.statsd_onlychanged_gauges
+        self.delete_counters = cfg.statsd_delete_counters
+        self.delete_timers = cfg.statsd_delete_timers
+        self.delete_sets = cfg.statsd_delete_sets
+        self.onlychanged_gauges = cfg.statsd_onlychanged_gauges
         self.ignore_datadog_extensions = cfg.statsd_ignore_datadog_extensions
         self.ignore_internal_stats = cfg.statsd_ignore_internal_stats
 
@@ -314,7 +313,6 @@ class StatsDServer(udpserver.UDPServer):
         ret = 0
         for k, v in self.gauges.items():
             gauge_name, gauge_metadata = k
-            # only send a value if there was an update if `delete_idlestats` is `True`
             if not self.onlychanged_gauges or k in self.keys_seen:
                 self.enqueue(self.name_gauge, gauge_name, v, stime, gauge_metadata)
                 ret += 1

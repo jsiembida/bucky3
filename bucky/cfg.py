@@ -26,8 +26,6 @@ statsd_prefix_set = "sets"
 statsd_prefix_gauge = "gauges"
 statsd_persistent_gauges = False
 statsd_gauges_savefile = "gauges.save"
-statsd_delete_idlestats = False
-# the following settings are only relevant if `statsd_delete_idlestats` is `True`
 statsd_delete_counters = True
 statsd_delete_timers = True
 statsd_delete_sets = True
