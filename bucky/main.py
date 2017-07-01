@@ -19,8 +19,6 @@ import multiprocessing
 import os
 import six
 import sys
-import pwd
-import grp
 import signal
 import logging
 import optparse as op
@@ -39,7 +37,6 @@ import bucky.dockerstats as dockerstats
 import bucky.influxdb as influxdb
 import bucky.prometheus as prometheus
 import bucky.processor as processor
-from bucky.errors import BuckyError
 
 
 log = logging.getLogger(__name__)
@@ -191,6 +188,10 @@ def main():
 
     bucky = Bucky(cfg)
     bucky.run()
+
+
+class BuckyError(Exception):
+    pass
 
 
 class Bucky(object):

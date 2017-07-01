@@ -1,9 +1,6 @@
 
 debug = False
 log_level = "INFO"
-nice = None
-uid = None
-gid = None
 directory = "/var/lib/bucky"
 process_join_timeout = 2
 
