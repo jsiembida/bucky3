@@ -34,9 +34,9 @@ class StatsCollector(multiprocessing.Process):
             metadata = self.metadata
         if metadata:
             metadata_tuple = tuple((k, metadata[k]) for k in sorted(metadata.keys()))
-            self.queue.put((None, metric_name, metric_value, timestamp, metadata_tuple))
+            self.queue.put((metric_name, metric_value, timestamp, metadata_tuple))
         else:
-            self.queue.put((None, metric_name, metric_value, timestamp))
+            self.queue.put((metric_name, metric_value, timestamp))
 
     def merge_dicts(self, *dicts):
         ret = {}

@@ -54,15 +54,6 @@ graphite_pickle_enabled = False
 graphite_pickle_buffer_size = 500
 
 
-name_prefix = None
-name_prefix_parts = None
-name_postfix = None
-name_postfix_parts = None
-name_replace_char = '_'
-name_strip_duplicates = True
-name_host_trim = []
-
-
 influxdb_enabled = False
 influxdb_hosts = [
     "127.0.0.1:8089"

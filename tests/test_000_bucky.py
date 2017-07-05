@@ -20,8 +20,7 @@ import threading
 import t
 
 from bucky import cfg
-from bucky.main import Bucky
-from bucky.errors import BuckyError
+from bucky.main import Bucky, BuckyError
 
 
 def test_version_number():

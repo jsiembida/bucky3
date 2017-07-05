@@ -28,8 +28,8 @@ TIMEOUT = 3
 @t.udp_srv(bucky.statsd.StatsDServer)
 def test_simple_counter(q, s):
     s.send("gorm:1|c")
-    t.same_stat(None, "stats.counters.gorm", {"rate": 2, "count": 1}, q.get(timeout=TIMEOUT))
-    t.same_stat(None, "stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.counters.gorm", {"rate": 2, "count": 1}, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
 
 
 @t.set_cfg("statsd_flush_time", 0.5)
@@ -38,8 +38,8 @@ def test_simple_counter(q, s):
 def test_multiple_messages(q, s):
     s.send("gorm:1|c")
     s.send("gorm:1|c")
-    t.same_stat(None, "stats.counters.gorm", {"rate": 4, "count": 2}, q.get(timeout=TIMEOUT))
-    t.same_stat(None, "stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.counters.gorm", {"rate": 4, "count": 2}, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
 
 
 @t.set_cfg("statsd_flush_time", 0.5)
@@ -47,8 +47,8 @@ def test_multiple_messages(q, s):
 @t.udp_srv(bucky.statsd.StatsDServer)
 def test_larger_count(q, s):
     s.send("gorm:5|c")
-    t.same_stat(None, "stats.counters.gorm", {"rate": 10, "count": 5}, q.get(timeout=TIMEOUT))
-    t.same_stat(None, "stats.", {'numStats': 1}, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.counters.gorm", {"rate": 10, "count": 5}, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.", {'numStats': 1}, q.get(timeout=TIMEOUT))
 
 
 @t.set_cfg("statsd_flush_time", 0.5)
@@ -65,7 +65,7 @@ def test_multiple_counters(q, s):
         stat = q.get(timeout=TIMEOUT)
         assert stat[1] in expected_stats
         assert stat[2] == expected_stats[stat[1]]
-    t.same_stat(None, "stats.", {'numStats': 2}, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.", {'numStats': 2}, q.get(timeout=TIMEOUT))
 
 
 @t.set_cfg("statsd_flush_time", 0.5)
@@ -91,8 +91,8 @@ def test_simple_timer(q, s):
         "sum_squares": 13,
         "std": 0.3
     }
-    t.same_stat(None, "stats.timers.gorm", expected_value, q.get(timeout=TIMEOUT))
-    t.same_stat(None, "stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.timers.gorm", expected_value, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
 
 
 @t.set_cfg("statsd_flush_time", 0.5)
@@ -119,8 +119,8 @@ def test_timer_unsorted(q, s):
         "sum_squares": 87,
         "std": 1.920286436967152
     }
-    t.same_stat(None, "stats.timers.gorm", expected_value, q.get(timeout=TIMEOUT))
-    t.same_stat(None, "stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.timers.gorm", expected_value, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
 
 
 @t.set_cfg("statsd_flush_time", 0.1)
@@ -139,8 +139,8 @@ def test_timer_single_time(q, s):
         "sum_squares": 10000,
         "std": 0
     }
-    t.same_stat(None, "stats.timers.gorm", expected_value, q.get(timeout=TIMEOUT))
-    t.same_stat(None, "stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.timers.gorm", expected_value, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
 
 
 @t.set_cfg("statsd_flush_time", 0.1)
@@ -166,8 +166,8 @@ def test_timer_multiple_times(q, s):
         "sum_squares": 140000,
         "std": 81.64965809277261
     }
-    t.same_stat(None, "stats.timers.gorm", expected_value, q.get(timeout=TIMEOUT))
-    t.same_stat(None, "stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.timers.gorm", expected_value, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
 
 
 def queue_skip(q, number_of_elements):
@@ -188,7 +188,7 @@ def test_timer_multiple_times_even(q, s):
     s.send("gorm:100|ms")
     returned_value = q.get(timeout=TIMEOUT)
     returned_value = returned_value[:2] + (returned_value[2]["median"],) + returned_value[3:]
-    t.same_stat(None, "stats.timers.gorm", 250, returned_value)
+    t.same_stat("stats.timers.gorm", 250, returned_value)
 
 
 @t.set_cfg("statsd_flush_time", 0.5)
@@ -196,8 +196,8 @@ def test_timer_multiple_times_even(q, s):
 @t.udp_srv(bucky.statsd.StatsDServer)
 def test_simple_gauge(q, s):
     s.send("gorm:5|g")
-    t.same_stat(None, "stats.gauges.gorm", 5, q.get(timeout=TIMEOUT))
-    t.same_stat(None, "stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.gauges.gorm", 5, q.get(timeout=TIMEOUT))
+    t.same_stat("stats.", {"numStats": 1}, q.get(timeout=TIMEOUT))
 
 
 @t.set_cfg("statsd_flush_time", 0.5)

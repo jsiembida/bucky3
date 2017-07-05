@@ -72,9 +72,9 @@ class PrometheusClient(client.Client):
         self.buffer[metadata_tuple] = mtime, value, None
         self.tick()
 
-    def send(self, host, name, value, mtime, metadata=None):
+    def send(self, name, value, mtime, metadata=None):
         self._send(name, value, mtime, 'value', metadata)
 
-    def send_bulk(self, host, name, value, mtime, metadata=None):
+    def send_bulk(self, name, value, mtime, metadata=None):
         for k in value.keys():
             self._send(name, value[k], mtime, k, metadata)

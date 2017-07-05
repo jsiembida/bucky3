@@ -153,29 +153,27 @@ class StatsDServer(udpserver.UDPServer):
         return dict(metadata)
 
     def enqueue_with_dotted_names(self, bucket, name, value, stime, metadata=None):
-        # No hostnames on statsd
         if name:
             bucket = bucket + '.' + name
         metadata = self.coalesce_metadata(metadata)
         if metadata:
             metadata_tuple = tuple((k, metadata[k]) for k in sorted(metadata.keys()))
-            self.queue.put((None, bucket, value, stime, metadata_tuple))
+            self.queue.put((bucket, value, stime, metadata_tuple))
         else:
-            self.queue.put((None, bucket, value, stime))
+            self.queue.put((bucket, value, stime))
 
     def enqueue_with_metadata_names(self, bucket, name, value, stime, metadata=None):
-        # No hostnames on statsd
         metadata = self.coalesce_metadata(metadata)
         if metadata:
             if name and not ('name' in metadata):
                 metadata['name'] = name
             metadata_tuple = tuple((k, metadata[k]) for k in sorted(metadata.keys()))
-            self.queue.put((None, bucket, value, stime, metadata_tuple))
+            self.queue.put((bucket, value, stime, metadata_tuple))
         else:
             if name:
-                self.queue.put((None, bucket, value, stime, (('name', name),)))
+                self.queue.put((bucket, value, stime, (('name', name),)))
             else:
-                self.queue.put((None, bucket, value, stime))
+                self.queue.put((bucket, value, stime))
 
     def enqueue_timers(self, stime):
         for k, v in self.timers.items():

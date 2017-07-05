@@ -38,21 +38,21 @@ class Client(multiprocessing.Process):
                 continue
             if sample is None:
                 break
-            if type(sample[2]) is dict:
+            if type(sample[1]) is dict:
                 self.send_bulk(*sample)
             else:
                 self.send(*sample)
 
-    def send(self, host, name, value, time, metadata=None):
+    def send(self, name, value, time, metadata=None):
         raise NotImplementedError()
 
-    def send_bulk(self, host, name, value, time, metadata=None):
+    def send_bulk(self, name, value, time, metadata=None):
         for k in value.keys():
             if name.endswith('.'):
                 metric_name = name + k
             else:
                 metric_name = name + '.' + k
-            self.send(host, metric_name, value[k], time, metadata)
+            self.send(metric_name, value[k], time, metadata)
 
     def tick(self):
         pass

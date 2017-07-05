@@ -21,68 +21,10 @@ import socket
 import struct
 import logging
 import pickle
-import bucky.cfg as cfg
 import bucky.client as client
 
 
 log = logging.getLogger(__name__)
-
-
-def _get_host_trim():
-    global __host_trim__
-    if __host_trim__ is not None:
-        return __host_trim__
-    host_trim = cfg.name_host_trim
-    __host_trim__ = []
-    for s in host_trim:
-        s = list(reversed([p.strip() for p in s.split(".")]))
-        __host_trim__.append(s)
-    return __host_trim__
-
-
-def hostname(host):
-    host_trim = _get_host_trim()
-    parts = host.split(".")
-    parts = list(reversed([p.strip() for p in parts]))
-    for s in host_trim:
-        same = True
-        for i, p in enumerate(s):
-            if p != parts[i]:
-                same = False
-                break
-        if same:
-            parts = parts[len(s):]
-            return parts
-    return parts
-
-
-def strip_duplicates(parts):
-    ret = []
-    for p in parts:
-        if len(ret) == 0 or p != ret[-1]:
-            ret.append(p)
-    return ret
-
-
-def statname(host, name):
-    nameparts = name.split('.')
-    parts = []
-    if cfg.name_prefix:
-        parts.append(cfg.name_prefix)
-    if cfg.name_prefix_parts:
-        parts.extend(cfg.name_prefix_parts)
-    if host:
-        parts.extend(hostname(host))
-    parts.extend(nameparts)
-    if cfg.name_postfix_parts:
-        parts.extend(cfg.name_postfix_parts)
-    if cfg.name_postfix:
-        parts.append(cfg.name_postfix)
-    if cfg.name_replace_char is not None:
-        parts = [p.replace(".", cfg.name_replace_char) for p in parts]
-    if cfg.name_strip_duplicates:
-        parts = strip_duplicates(parts)
-    return ".".join(parts)
 
 
 class DebugSocket(object):
@@ -147,9 +89,8 @@ class CarbonClient(client.Client):
 
 
 class PlaintextClient(CarbonClient):
-    def send(self, host, name, value, mtime, metadata=None):
-        stat = statname(host, name)
-        mesg = "%s %s %s\n" % (stat, value, mtime)
+    def send(self, name, value, mtime, metadata=None):
+        mesg = "%s %s %s\n" % (name, value, mtime)
         for i in range(self.max_reconnects):
             try:
                 self.send_message(mesg)
@@ -169,9 +110,8 @@ class PickleClient(CarbonClient):
         self.buffer_size = cfg.graphite_pickle_buffer_size
         self.buffer = []
 
-    def send(self, host, name, value, mtime, metadata=None):
-        stat = statname(host, name)
-        self.buffer.append((stat, (mtime, value)))
+    def send(self, name, value, mtime, metadata=None):
+        self.buffer.append((name, (mtime, value)))
         if len(self.buffer) >= self.buffer_size:
             self.transmit()
 
