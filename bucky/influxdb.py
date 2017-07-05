@@ -1,70 +1,36 @@
 
 
 import time
-import socket
-import logging
-
-import bucky.client as client
+import bucky.common as common
 
 
-log = logging.getLogger(__name__)
-
-
-class InfluxDBClient(client.Client):
-    def __init__(self, cfg, pipe):
-        super(InfluxDBClient, self).__init__(pipe)
-        self.hosts = cfg.influxdb_hosts
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.flush_timestamp = time.time()
-        self.resolved_hosts = None
-        self.resolve_timestamp = 0
+class InfluxDBClient(common.MetricsDstProcess, common.HostResolver, common.UDPConnector):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.flush_timestamp = 0
         self.buffer = []
-
-    def parse_address(self, address, default_port=8089):
-        bits = address.split(":")
-        if len(bits) == 1:
-            host, port = address, default_port
-        elif len(bits) == 2:
-            host, port = bits[0], int(bits[1])
-        else:
-            raise ValueError("Address %s is invalid" % (address,))
-        hostname, aliaslist, ipaddrlist = socket.gethostbyname_ex(host)
-        for ip in ipaddrlist:
-            yield ip, port
-
-    def resolve_hosts(self):
-        now = time.time()
-        if self.resolved_hosts is None or (now - self.resolve_timestamp) > 180:
-            resolved_hosts = []
-            for host in self.hosts:
-                for ip, port in self.parse_address(host):
-                    log.info("Resolved InfluxDB endpoint: %s:%d", ip, port)
-                    resolved_hosts.append((ip, port))
-            self.resolved_hosts = resolved_hosts
-            self.resolve_timestamp = now
-
-    def close(self):
-        try:
-            self.sock.close()
-        except:
-            pass
+        self.socket = None
+        self.default_port = 8086
+        self.resolved_hosts = None
+        self.resolved_hosts_timestamp = 0
 
     def tick(self):
         now = time.time()
         if len(self.buffer) > 10 or ((now - self.flush_timestamp) > 1 and len(self.buffer)):
+            socket = self.get_udp_socket()
             payload = '\n'.join(self.buffer).encode()
-            self.resolve_hosts()
-            for ip, port in self.resolved_hosts:
-                self.sock.sendto(payload, (ip, port))
+            for ip, port in self.resolve_hosts():
+                socket.sendto(payload, (ip, port))
             self.buffer = []
             self.flush_timestamp = now
 
-    def _send(self, name, mtime, values, metadata=None):
+    def process_metrics(self, name, values, timestamp, metadata=None):
         # https://docs.influxdata.com/influxdb/v1.2/write_protocols/line_protocol_tutorial/
         label_buf = [name]
         if metadata:
             # InfluxDB docs recommend sorting tags
-            for k, v in metadata:
+            for k in sorted(metadata.keys()):
+                v = metadata[k]
                 # InfluxDB will drop insert with empty tags
                 if v is None or v == '':
                     continue
@@ -81,12 +47,6 @@ class InfluxDBClient(client.Client):
             elif t is str:
                 value_buf.append(str(k) + '="' + v + '"')
         # So, the lower timestamp precisions don't seem to work with line protocol...
-        line = ' '.join((','.join(label_buf), ','.join(value_buf), str(long(mtime) * 1000000000)))
+        line = ' '.join((','.join(label_buf), ','.join(value_buf), str(int(timestamp) * 1000000000)))
         self.buffer.append(line)
         self.tick()
-
-    def send(self, name, value, mtime, metadata=None):
-        self._send(name, mtime, {'value': value}, metadata)
-
-    def send_bulk(self, name, value, mtime, metadata=None):
-        self._send(name.strip('.'), mtime, value, metadata)

@@ -19,68 +19,52 @@ import sys
 import time
 import socket
 import struct
-import logging
 import pickle
-import bucky.client as client
+
+import cfg
+import bucky.common as common
+from common import log
 
 
-log = logging.getLogger(__name__)
-
-
-class DebugSocket(object):
-    def sendall(self, data):
-        sys.stdout.write(data)
-
-
-class CarbonClient(client.Client):
-    def __init__(self, cfg, pipe):
-        super(CarbonClient, self).__init__(pipe)
-        self.debug = cfg.debug
-        self.ip = cfg.graphite_ip
-        self.port = cfg.graphite_port
-        self.max_reconnects = cfg.graphite_max_reconnects
-        self.reconnect_delay = cfg.graphite_reconnect_delay
-        self.backoff_factor = cfg.graphite_backoff_factor
-        self.backoff_max = cfg.graphite_backoff_max
-        if self.max_reconnects <= 0:
-            self.max_reconnects = sys.maxint
+class CarbonClient(common.MetricsDstProcess):
+    def __init__(self, module_name, config_file, destination_pipes):
+        super().__init__(module_name, config_file, destination_pipes)
+        # self.ip = cfg.graphite_ip
+        # self.port = cfg.graphite_port
+        # self.max_reconnects = cfg.graphite_max_reconnects
+        # self.reconnect_delay = cfg.graphite_reconnect_delay
+        # self.backoff_factor = cfg.graphite_backoff_factor
+        # self.backoff_max = cfg.graphite_backoff_max
+        # if self.max_reconnects <= 0:
+        #     self.max_reconnects = sys.maxint
         self.connected = False
 
     def connect(self):
-        if self.debug:
-            log.debug("Connected the debug socket.")
-            self.sock = DebugSocket()
-            return
-        reconnect_delay = self.reconnect_delay
+        # reconnect_delay = self.reconnect_delay
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        for i in range(self.max_reconnects):
-            try:
-                self.sock.connect((self.ip, self.port))
-                self.connected = True
-                log.info("Connected to Carbon at %s:%s", self.ip, self.port)
-                return
-            except socket.error as e:
-                if i >= self.max_reconnects:
-                    raise
-                log.error("Failed to connect to %s:%s: %s", self.ip, self.port, e)
-                if reconnect_delay > 0:
-                    time.sleep(reconnect_delay)
-                    if self.backoff_factor:
-                        reconnect_delay *= self.backoff_factor
-                        if self.backoff_max:
-                            reconnect_delay = min(reconnect_delay, self.backoff_max)
-        raise socket.error("Failed to connect to %s:%s after %s attempts" % (self.ip, self.port, self.max_reconnects))
+        self.sock.connect((self.ip, self.port))
+        self.connected = True
+        # for i in range(self.max_reconnects):
+        #     try:
+        #         self.sock.connect((self.ip, self.port))
+        #         self.connected = True
+        #         log.info("Connected to Carbon at %s:%s", self.ip, self.port)
+        #         return
+        #     except socket.error as e:
+        #         if i >= self.max_reconnects:
+        #             raise
+        #         log.error("Failed to connect to %s:%s: %s", self.ip, self.port, e)
+        #         if reconnect_delay > 0:
+        #             time.sleep(reconnect_delay)
+        #             if self.backoff_factor:
+        #                 reconnect_delay *= self.backoff_factor
+        #                 if self.backoff_max:
+        #                     reconnect_delay = min(reconnect_delay, self.backoff_max)
+        # raise socket.error("Failed to connect to %s:%s after %s attempts" % (self.ip, self.port, self.max_reconnects))
 
     def reconnect(self):
         self.close()
         self.connect()
-
-    def close(self):
-        try:
-            self.sock.close()
-        except:
-            pass
-        self.connected = False
 
     def send_message(self, mesg):
         if not self.connected:
@@ -89,8 +73,8 @@ class CarbonClient(client.Client):
 
 
 class PlaintextClient(CarbonClient):
-    def send(self, name, value, mtime, metadata=None):
-        mesg = "%s %s %s\n" % (name, value, mtime)
+    def process_metrics(self, name, values, mtime, metadata=None):
+        mesg = "%s %s %s\n" % (name, values, mtime)
         for i in range(self.max_reconnects):
             try:
                 self.send_message(mesg)

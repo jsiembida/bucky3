@@ -1,31 +1,18 @@
 
+
 import os
 import time
-import logging
-import bucky.collector as collector
+import bucky.cfg as cfg
+import bucky.common as common
 
 
-log = logging.getLogger(__name__)
-
-
-class SystemStatsCollector(collector.StatsCollector):
+class SystemStatsCollector(common.MetricsSrcProcess):
     # The order of cpu fields in /proc/stat
     CPU_FIELDS = ('user', 'nice', 'system', 'idle', 'wait', 'interrupt', 'softirq', 'steal')
 
-    def __init__(self, queue, cfg):
-        super(SystemStatsCollector, self).__init__(queue)
-        self.metadata = cfg.metadata if cfg.metadata else {}
-        self.interval = cfg.system_stats_interval
-        self.filesystem_blacklist, self.filesystem_whitelist = self.get_lists(cfg.system_stats_filesystem_blacklist,
-                                                                              cfg.system_stats_filesystem_whitelist)
-        self.interface_blacklist, self.interface_whitelist = self.get_lists(cfg.system_stats_interface_blacklist,
-                                                                            cfg.system_stats_interface_whitelist)
-        self.disk_blacklist, self.disk_whitelist = self.get_lists(cfg.system_stats_disk_blacklist,
-                                                                  cfg.system_stats_disk_whitelist)
-
-    def get_lists(self, cfg_blacklist, cfg_whitelist):
-        blacklist = set(cfg_blacklist) if cfg_blacklist else None
-        whitelist = set(cfg_whitelist) if cfg_whitelist else None
+    def get_lists(self, name):
+        blacklist = getattr(cfg, name + '_blacklist', None)
+        whitelist = getattr(cfg, name + '_whitelist', None)
         return blacklist, whitelist
 
     def check_lists(self, val, blacklist, whitelist):
@@ -35,17 +22,7 @@ class SystemStatsCollector(collector.StatsCollector):
             return val not in blacklist
         return True
 
-    def collect(self):
-        self.read_cpu_stats()
-        self.read_load_stats()
-        self.read_filesystem_stats()
-        self.read_memory_stats()
-        self.read_interface_stats()
-        self.read_disk_stats()
-        return True
-
-    def read_cpu_stats(self):
-        now = int(time.time())
+    def read_cpu_stats(self, timestamp, buf):
         with open('/proc/stat') as f:
             processes_stats = {}
             for l in f.readlines():
@@ -65,12 +42,11 @@ class SystemStatsCollector(collector.StatsCollector):
                     if not cpu_suffix:
                         continue
                     cpu_stats = {k: int(v) for k, v in zip(self.CPU_FIELDS, tokens[1:])}
-                    self.add_stat("system_cpu", cpu_stats, now, name=cpu_suffix)
+                    buf.append(("system_cpu", cpu_stats, timestamp, dict(name=cpu_suffix)))
             if processes_stats:
-                self.add_stat("system_processes", processes_stats, now)
+                buf.append(("system_processes", processes_stats, timestamp))
 
-    def read_filesystem_stats(self):
-        now = int(time.time())
+    def read_filesystem_stats(self, timestamp, buf):
         with open('/proc/mounts') as f:
             for l in f.readlines():
                 tokens = l.strip().split()
@@ -94,12 +70,11 @@ class SystemStatsCollector(collector.StatsCollector):
                         'free_inodes': int(stats.f_favail),
                         'total_inodes': total_inodes
                     }
-                    self.add_stat("system_filesystem", df_stats, now, device=mount_target, name=mount_path, type=mount_filesystem)
+                    buf.append(("system_filesystem", df_stats, timestamp, dict(device=mount_target, name=mount_path, type=mount_filesystem)))
                 except OSError:
                     pass
 
-    def read_interface_stats(self):
-        now = int(time.time())
+    def read_interface_stats(self, timestamp, buf):
         with open('/proc/net/dev') as f:
             for l in f.readlines():
                 tokens = l.strip().split()
@@ -120,10 +95,9 @@ class SystemStatsCollector(collector.StatsCollector):
                     'tx_errors': int(tokens[11]),
                     'tx_dropped': int(tokens[12])
                 }
-                self.add_stat("system_interface", interface_stats, now, name=interface_name)
+                buf.append(("system_interface", interface_stats, timestamp, dict(name=interface_name)))
 
-    def read_load_stats(self):
-        now = int(time.time())
+    def read_load_stats(self, timestamp, buf):
         with open('/proc/loadavg') as f:
             for l in f.readlines():
                 tokens = l.strip().split()
@@ -134,10 +108,9 @@ class SystemStatsCollector(collector.StatsCollector):
                     'last_5m': float(tokens[1]),
                     'last_15m': float(tokens[2])
                 }
-                self.add_stat("system_load", load_stats, now)
+                buf.append(("system_load", load_stats, timestamp))
 
-    def read_memory_stats(self):
-        now = int(time.time())
+    def read_memory_stats(self, timestamp, buf):
         with open('/proc/meminfo') as f:
             memory_stats = {}
             for l in f.readlines():
@@ -155,10 +128,9 @@ class SystemStatsCollector(collector.StatsCollector):
                 elif name == "memavailable":
                     memory_stats['available_bytes'] = int(tokens[1]) * 1024
             if memory_stats:
-                self.add_stat("system_memory", memory_stats, now)
+                buf.append(("system_memory", memory_stats, timestamp))
 
-    def read_disk_stats(self):
-        now = int(time.time())
+    def read_disk_stats(self, timestamp, buf):
         with open('/proc/diskstats') as f:
             for l in f.readlines():
                 tokens = l.strip().split()
@@ -184,4 +156,20 @@ class SystemStatsCollector(collector.StatsCollector):
                     'io_time': int(tokens[12]),
                     'weighted_time': int(tokens[13])
                 }
-                self.add_stat("system_disk", disk_stats, now, name=disk_name)
+                buf.append(("system_disk", disk_stats, timestamp, dict(name=disk_name)))
+
+    def tick(self):
+        # TODO refactor it
+        self.filesystem_blacklist, self.filesystem_whitelist = self.get_lists('filesystem')
+        self.interface_blacklist, self.interface_whitelist = self.get_lists('interface')
+        self.disk_blacklist, self.disk_whitelist = self.get_lists('disk')
+
+        timestamp, buf = int(time.time()), []
+        self.read_cpu_stats(timestamp, buf)
+        self.read_load_stats(timestamp, buf)
+        self.read_memory_stats(timestamp, buf)
+        self.read_interface_stats(timestamp, buf)
+        self.read_filesystem_stats(timestamp, buf)
+        self.read_disk_stats(timestamp, buf)
+        self.send_metrics(buf)
+        return True

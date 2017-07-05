@@ -19,17 +19,11 @@ import os
 import re
 import math
 import time
-import json
-import logging
 import threading
-from io import open
-import bucky.udpserver as udpserver
+import bucky.common as common
 
 
-log = logging.getLogger(__name__)
-
-
-class StatsDServer(udpserver.UDPServer):
+class StatsDServer(common.ManagedProcess, common.UDPConnector):
     def __init__(self, queue, cfg):
         super(StatsDServer, self).__init__(cfg.statsd_ip, cfg.statsd_port)
         self.daemon = True
@@ -82,37 +76,6 @@ class StatsDServer(udpserver.UDPServer):
         self.enable_timer_median = cfg.statsd_timer_median
         self.enable_timer_std = cfg.statsd_timer_std
 
-    def pre_shutdown(self):
-        self.save_gauges()
-
-    def load_gauges(self):
-        if not self.statsd_persistent_gauges:
-            return
-        if not os.path.isfile(self.gauges_filename):
-            return
-        log.info("StatsD: Loading saved gauges %s", self.gauges_filename)
-        try:
-            with open(self.gauges_filename, mode='r', encoding='utf-8') as f:
-                for gauge_name, gauge_metadata, gauge_value in json.load(f):
-                    k = (gauge_name, tuple(gauge_metadata) if gauge_metadata else None)
-                    self.gauges[k] = gauge_value
-                    self.keys_seen.add(k)
-        except IOError:
-            log.exception("StatsD: IOError")
-
-    def save_gauges(self):
-        if not self.statsd_persistent_gauges:
-            return
-        try:
-            gauges = []
-            for k in self.gauges.keys():
-                gauge_name, gauge_metadata = k
-                gauges.append((gauge_name, gauge_metadata, self.gauges[k]))
-            with open(self.gauges_filename, mode='w', encoding='utf-8') as f:
-                json.dump(gauges, f)
-        except IOError:
-            log.exception("StatsD: IOError")
-
     def tick(self):
         stime = int(time.time())
         with self.lock:
@@ -141,7 +104,9 @@ class StatsDServer(udpserver.UDPServer):
                 self.tick()
         self.load_gauges()
         threading.Thread(target=flush_loop).start()
-        super(StatsDServer, self).run()
+        while True:
+            data, addr = self.get_udp_socket().recvfrom(65535)
+            self.handle(data, addr)
 
     def coalesce_metadata(self, metadata):
         if not metadata:
@@ -288,8 +253,7 @@ class StatsDServer(udpserver.UDPServer):
 
     def handle(self, data, addr):
         # Adding a bit of extra sauce so clients can
-        # send multiple samples in a single UDP
-        # packet.
+        # send multiple samples in a single UDP packet.
         data = data.decode()
         for line in data.splitlines():
             self.line = line

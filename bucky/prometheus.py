@@ -1,27 +1,36 @@
 
 
 import time
-import logging
 import threading
 import http.server
-import bucky.client as client
+import bucky.cfg as cfg
+import bucky.common as common
 
 
-log = logging.getLogger(__name__)
-
-
-class PrometheusClient(client.Client):
-    def __init__(self, cfg, pipe):
-        super(PrometheusClient, self).__init__(pipe)
-        self.port = cfg.prometheus_port
-        self.timeout = cfg.prometheus_timeout
-        self.path = cfg.prometheus_path
-        self.flush_timestamp = time.time()
+class PrometheusExporter(common.MetricsDstProcess, common.TCPConnector):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.flush_timestamp = 0
         self.buffer = {}
+        self.http_host = None
+        self.http_port = None
+        self.http_thread = None
+        self.http_server = None
 
     def run(self):
+        super().run()
+
+    def start_http_server(self):
+        if self.http_port != cfg.port or self.http_host != cfg.host:
+            if self.http_server:
+                cfg.log.info("Stopping server running at %s:%d", self.http_host, self.http_port)
+                self.http_server.shutdown()
+                self.http_thread.join()
+                cfg.log.debug("Server at %s:%d stopped", self.http_host, self.http_port)
+            self.http_port = self.http_host = self.http_server = self.http_thread = None
+
         def do_GET(req):
-            if req.path.strip('/') != self.path:
+            if req.path.strip('/') != cfg.path:
                 req.send_response(404)
                 req.send_header("Content-type", "text/plain")
                 req.end_headers()
@@ -32,13 +41,16 @@ class PrometheusClient(client.Client):
                 response = ''.join(self.get_or_render_line(k) for k in self.buffer.keys())
                 req.wfile.write(response.encode())
 
-        handler = type('PrometheusHandler', (http.server.BaseHTTPRequestHandler, object), {'do_GET': do_GET})
-        server = http.server.HTTPServer(('0.0.0.0', self.port), handler)
-        threading.Thread(target=lambda: server.serve_forever()).start()
-        super(PrometheusClient, self).run()
-
-    def close(self):
-        pass
+        if not self.http_server:
+            handler = type('PrometheusHandler', (http.server.BaseHTTPRequestHandler,), {'do_GET': do_GET})
+            cfg.log.debug("Starting server at %s:%d", cfg.host, cfg.port)
+            # TODO make the server use the same logging as logger
+            self.http_server = http.server.HTTPServer((cfg.host, cfg.port), handler)
+            self.http_thread = threading.Thread(target=lambda: self.http_server.serve_forever())
+            self.http_thread.start()
+            cfg.log.info("Started server at %s:%d", cfg.host, cfg.port)
+            self.http_port = cfg.port
+            self.http_host = cfg.host
 
     def get_or_render_line(self, k):
         timestamp, value, line = self.buffer[k]
@@ -54,27 +66,18 @@ class PrometheusClient(client.Client):
 
     def tick(self):
         now = time.time()
-        if (now - self.flush_timestamp) > 10:
-            keys_to_remove = []
-            for k in self.buffer.keys():
-                timestamp, value, line = self.buffer[k]
-                if (now - timestamp) > self.timeout:
-                    keys_to_remove.append(k)
-            for k in keys_to_remove:
+        if (now - self.flush_timestamp) > cfg.interval:
+            old_keys = [k for k, (timestamp, value, line) in self.buffer.items() if (now - timestamp) > cfg.timeout]
+            for k in old_keys:
                 del self.buffer[k]
             self.flush_timestamp = now
+            self.start_http_server()
 
-    def _send(self, name, value, mtime, value_name, metadata=None):
-        metadata_dict = dict(value=value_name)
-        if metadata:
-            metadata_dict.update(metadata)
-        metadata_tuple = (name,) + tuple((k, metadata_dict[k]) for k in sorted(metadata_dict.keys()))
-        self.buffer[metadata_tuple] = mtime, value, None
+    def process_metrics(self, name, values, timestamp, metadata=None):
+        for k, v in values.items():
+            metadata_dict = dict(value=k)
+            if metadata:
+                metadata_dict.update(metadata)
+            metadata_tuple = (name,) + tuple((k, metadata_dict[k]) for k in sorted(metadata_dict.keys()))
+            self.buffer[metadata_tuple] = timestamp, v, None
         self.tick()
-
-    def send(self, name, value, mtime, metadata=None):
-        self._send(name, value, mtime, 'value', metadata)
-
-    def send_bulk(self, name, value, mtime, metadata=None):
-        for k in value.keys():
-            self._send(name, value[k], mtime, k, metadata)

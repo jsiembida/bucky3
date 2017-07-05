@@ -2,60 +2,61 @@
 
 import time
 import docker
-import logging
-import bucky.collector as collector
 import requests.exceptions
+import bucky.cfg as cfg
+import bucky.common as common
 
 
-log = logging.getLogger(__name__)
-
-
-class DockerStatsCollector(collector.StatsCollector):
-    def __init__(self, queue, cfg):
-        super(DockerStatsCollector, self).__init__(queue)
-        self.metadata = cfg.metadata if cfg.metadata else {}
-        self.interval = cfg.docker_stats_interval
-        if cfg.docker_stats_version:
-            self.docker_client = docker.client.from_env(version=cfg.docker_stats_version)
+class DockerStatsCollector(common.MetricsSrcProcess):
+    def __init__(self, *args):
+        super().__init__(*args)
+        api_version = getattr(cfg, 'api_version', None)
+        if api_version:
+            self.docker_client = docker.client.from_env(version=api_version)
         else:
             self.docker_client = docker.client.from_env()
 
-    def read_df_stats(self, now, labels, total_size, rw_size):
+    def read_df_stats(self, timestamp, buf, labels, total_size, rw_size):
         docker_df_stats = {
             'total_bytes': int(total_size),
             'used_bytes': int(rw_size)
         }
-        self.add_stat("docker_filesystem", docker_df_stats, now, **labels)
+        buf.append(("docker_filesystem", docker_df_stats, timestamp, labels))
 
-    def read_cpu_stats(self, now, labels, stats):
-        for k, v in enumerate(stats[u'percpu_usage']):
-            self.add_stat("docker_cpu", {'usage': int(v)}, now, name=k, **labels)
+    def read_cpu_stats(self, timestamp, buf, labels, stats):
+        for k, v in enumerate(stats['percpu_usage']):
+            metadata = labels.copy()
+            metadata.update(name=k)
+            buf.append(("docker_cpu", {'usage': int(v)}, timestamp, metadata))
 
-    def read_interface_stats(self, now, labels, stats):
-        for k in stats.keys():
-            v = stats[k]
-            keys = (
-                u'rx_bytes', u'rx_packets', u'rx_errors', u'rx_dropped',
-                u'tx_bytes', u'tx_packets', u'tx_errors', u'tx_dropped'
-            )
+    def read_interface_stats(self, timestamp, buf, labels, stats):
+        keys = (
+            'rx_bytes', 'rx_packets', 'rx_errors', 'rx_dropped',
+            'tx_bytes', 'tx_packets', 'tx_errors', 'tx_dropped'
+        )
+        for k, v in stats.items():
+            metadata = labels.copy()
+            metadata.update(name=k)
             docker_interface_stats = {k: int(v[k]) for k in keys}
-            self.add_stat("docker_interface", docker_interface_stats, now, name=k, **labels)
+            buf.append(("docker_interface", docker_interface_stats, timestamp, metadata))
 
-    def read_memory_stats(self, now, labels, stats):
-        self.add_stat("docker_memory", {'used_bytes': int(stats[u'usage'])}, now, **labels)
+    def read_memory_stats(self, timestamp, buf, labels, stats):
+        buf.append(("docker_memory", {'used_bytes': int(stats['usage'])}, timestamp, labels))
 
-    def collect(self):
-        now = int(time.time())
+    def tick(self):
+        timestamp, buf = int(time.time()), []
         try:
             for i, container in enumerate(self.docker_client.api.containers(size=True)):
-                labels = container[u'Labels']
+                labels = container['Labels']
                 if 'docker_id' not in labels:
-                    labels['docker_id'] = container[u'Id'][:12]
-                stats = self.docker_client.api.stats(container[u'Id'], decode=True, stream=False)
-                self.read_df_stats(now, labels, int(container[u'SizeRootFs']), int(container.get(u'SizeRw', 0)))
-                self.read_cpu_stats(now, labels, stats[u'cpu_stats'][u'cpu_usage'])
-                self.read_memory_stats(now, labels, stats[u'memory_stats'])
-                self.read_interface_stats(now, labels, stats[u'networks'])
+                    labels['docker_id'] = container['Id'][:12]
+                stats = self.docker_client.api.stats(container['Id'], decode=True, stream=False)
+                self.read_df_stats(timestamp, buf, labels, int(container['SizeRootFs']), int(container.get('SizeRw', 0)))
+                self.read_cpu_stats(timestamp, buf, labels, stats['cpu_stats']['cpu_usage'])
+                self.read_memory_stats(timestamp, buf, labels, stats['memory_stats'])
+                self.read_interface_stats(timestamp, buf, labels, stats['networks'])
+            if buf:
+                self.send_metrics(buf)
             return True
         except requests.exceptions.ConnectionError:
             return False
