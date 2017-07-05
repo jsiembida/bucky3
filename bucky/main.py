@@ -148,11 +148,6 @@ def main():
     lvl = levels.get(cfg.log_level, cfg.log_level)
     handler.setLevel(lvl)
 
-    if cfg.sentry_enabled:
-        from bucky.sentry import sentry_setup
-        sentry_log_level = levels.get(cfg.sentry_log_level, cfg.sentry_log_level)
-        sentry_setup(cfg.sentry_dsn, level=sentry_log_level, auto_log_stacks=cfg.sentry_auto_log_stacks)
-
     if cfg.directory and not os.path.isdir(cfg.directory):
         try:
             os.makedirs(cfg.directory)

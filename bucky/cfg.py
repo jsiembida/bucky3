@@ -8,12 +8,6 @@ process_join_timeout = 2
 metadata = []
 
 
-sentry_enabled = False
-sentry_dsn = None
-sentry_log_level = "WARNING"
-sentry_auto_log_stacks = False
-
-
 statsd_ip = "127.0.0.1"
 statsd_port = 8125
 statsd_enabled = True
