@@ -16,6 +16,7 @@
 import time
 import socket
 import signal
+import random
 import logging
 import multiprocessing
 import bucky.cfg as cfg
@@ -44,7 +45,7 @@ def prepare_module(module_name, config_file, tick_callback, termination_callback
             for k in unused_config_keys:
                 delattr(cfg, k)
 
-        setup_logging() # Only after this step we have logger configured :-|
+        setup_logging()  # Only after this step we have logger configured :-|
         setup_reconfig()
         setup_tick()
 
@@ -52,7 +53,7 @@ def prepare_module(module_name, config_file, tick_callback, termination_callback
         root = logging.getLogger()
         for h in list(root.handlers):
             root.removeHandler(h)
-        root.setLevel(getattr(cfg, 'loglevel', 'INFO'))
+        root.setLevel(getattr(cfg, 'log_level', 'INFO'))
         handler = logging.StreamHandler()
         formatter = logging.Formatter("[%(asctime)-15s][%(levelname)s] %(name)s(%(process)d) - %(message)s")
         handler.setFormatter(formatter)
@@ -68,7 +69,7 @@ def prepare_module(module_name, config_file, tick_callback, termination_callback
             return
         next_tick += interval
         now = time.time()
-        delay = max(next_tick - now, 0.1)
+        delay = max(next_tick - now, 0.3)
         signal.setitimer(signal.ITIMER_REAL, delay)
 
     def setup_tick():
@@ -83,8 +84,7 @@ def prepare_module(module_name, config_file, tick_callback, termination_callback
             signal.setitimer(signal.ITIMER_REAL, 0)
 
     def tick_handler(signal_number, stack_frame):
-        if tick_callback:
-            tick_callback()
+        tick_callback()
         schedule_tick()
 
     def setup_reconfig():
@@ -113,13 +113,30 @@ class MetricsProcess(multiprocessing.Process):
     def __init__(self, module_name, config_file):
         super().__init__(name=module_name, daemon=True)
         self.config_file = config_file
+        self.next_interval = 0
+        self.next_tick = 0
 
     def run(self):
         prepare_module(self.name, self.config_file, self.tick)
         self.work()
 
     def tick(self):
-        pass
+        now = time.time()
+        if now >= self.next_tick:
+            interval = getattr(cfg, 'interval', 0)
+            if self.recoverable_tick():
+                self.next_interval = interval
+                self.next_tick = now + self.next_interval - 1
+            else:
+                interval = max(self.next_interval, interval, 1)
+                self.next_interval = min(interval + interval, 180)
+                self.next_tick = now + self.next_interval
+                cfg.log.info("Tick error, next tick in %f secs", self.next_interval)
+        else:
+            pass
+
+    def recoverable_tick(self):
+        return False
 
 
 class MetricsDstProcess(MetricsProcess):
@@ -168,46 +185,43 @@ class HostResolver:
         else:
             raise ValueError("Address %s is invalid" % (address,))
         hostname, aliaslist, ipaddrlist = socket.gethostbyname_ex(host)
-        for ip in ipaddrlist:
-            yield ip, port
+        return {(ip, port) for ip in ipaddrlist}
 
     def resolve_hosts(self):
         now = time.time()
         if self.resolved_hosts is None or (now - self.resolved_hosts_timestamp) > 180:
-            resolved_hosts = []
+            resolved_hosts = set()
             for host in cfg.hosts:
                 for ip, port in self.parse_address(host, self.default_port):
                     cfg.log.debug("Resolved %s as %s:%d", host, ip, port)
-                    resolved_hosts.append((ip, port))
+                    resolved_hosts.add((ip, port))
+            resolved_hosts = tuple(resolved_hosts)
             self.resolved_hosts = resolved_hosts
             self.resolved_hosts_timestamp = now
         return self.resolved_hosts
 
 
-class UDPConnector:
-    def get_udp_socket(self):
-        if not self.socket:
-            ip = getattr(cfg, 'ip', '127.0.0.1')
-            port = getattr(cfg, 'port', 0)
-            addrinfo = socket.getaddrinfo(ip, port, socket.AF_UNSPEC, socket.SOCK_DGRAM)
-            af, socktype, proto, canonname, addr = addrinfo[0]
-            self.ip, self.port = addr[:2]
-            self.socket = socket.socket(af, socket.SOCK_DGRAM)
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.socket.bind((self.ip, self.port))
-            cfg.log.info("Bound udp socket %s", str(self.socket.getsockname()))
-        return self.socket
+class UDPConnector(HostResolver):
+    def get_udp_socket(self, bind=False):
+        ip = getattr(cfg, 'local_ip', '0.0.0.0')
+        port = getattr(cfg, 'local_port', 0)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        if bind:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((ip, port))
+            cfg.log.info("Bound UDP socket %s", str(sock.getsockname()))
+        return sock
 
 
-class TCPConnector:
-    def get_tcp_socket(self):
-        if not self.socket:
-            ip = getattr(cfg, 'ip', '127.0.0.1')
-            port = getattr(cfg, 'port', 0)
-            addrinfo = socket.getaddrinfo(ip, port, socket.AF_UNSPEC, socket.SOCK_STREAM)
-            af, socktype, proto, canonname, addr = addrinfo[0]
-            self.ip, self.port = addr[:2]
-            self.socket = socket.socket(af, socket.SOCK_STREAM)
-            self.socket.bind((self.ip, self.port))
-            cfg.log.info("Bound tcp socket %s", str(self.socket.getsockname()))
-        return self.socket
+class TCPConnector(HostResolver):
+    def get_tcp_socket(self, bind=False, connect=False):
+        ip = getattr(cfg, 'local_ip', '0.0.0.0')
+        port = getattr(cfg, 'local_port', 0)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if bind:
+            sock.bind((ip, port))
+            cfg.log.info("Bound TCP socket %s", str(sock.getsockname()))
+        if connect:
+            remote_ip, remote_port = random.choice(self.resolve_hosts())
+            sock.connect((remote_ip, remote_port))
+        return sock

@@ -7,7 +7,7 @@ import bucky.cfg as cfg
 import bucky.common as common
 
 
-class PrometheusExporter(common.MetricsDstProcess, common.TCPConnector):
+class PrometheusExporter(common.MetricsDstProcess):
     def __init__(self, *args):
         super().__init__(*args)
         self.flush_timestamp = 0
@@ -72,6 +72,7 @@ class PrometheusExporter(common.MetricsDstProcess, common.TCPConnector):
                 del self.buffer[k]
             self.flush_timestamp = now
             self.start_http_server()
+        return True
 
     def process_metrics(self, name, values, timestamp, metadata=None):
         for k, v in values.items():

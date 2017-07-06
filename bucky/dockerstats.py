@@ -43,7 +43,7 @@ class DockerStatsCollector(common.MetricsSrcProcess):
     def read_memory_stats(self, timestamp, buf, labels, stats):
         buf.append(("docker_memory", {'used_bytes': int(stats['usage'])}, timestamp, labels))
 
-    def tick(self):
+    def recoverable_tick(self):
         timestamp, buf = int(time.time()), []
         try:
             for i, container in enumerate(self.docker_client.api.containers(size=True)):
@@ -58,7 +58,6 @@ class DockerStatsCollector(common.MetricsSrcProcess):
             if buf:
                 self.send_metrics(buf)
             return True
-        except requests.exceptions.ConnectionError:
-            return False
-        except ValueError:
+        except (requests.exceptions.ConnectionError, ValueError):
+            cfg.log.exception("Docker error")
             return False

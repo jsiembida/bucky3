@@ -1,10 +1,11 @@
 
 
 import time
+import bucky.cfg as cfg
 import bucky.common as common
 
 
-class InfluxDBClient(common.MetricsDstProcess, common.HostResolver, common.UDPConnector):
+class InfluxDBClient(common.MetricsDstProcess, common.UDPConnector):
     def __init__(self, *args):
         super().__init__(*args)
         self.flush_timestamp = 0
@@ -14,15 +15,23 @@ class InfluxDBClient(common.MetricsDstProcess, common.HostResolver, common.UDPCo
         self.resolved_hosts = None
         self.resolved_hosts_timestamp = 0
 
-    def tick(self):
+    def recoverable_tick(self):
         now = time.time()
         if len(self.buffer) > 10 or ((now - self.flush_timestamp) > 1 and len(self.buffer)):
-            socket = self.get_udp_socket()
-            payload = '\n'.join(self.buffer).encode()
-            for ip, port in self.resolve_hosts():
-                socket.sendto(payload, (ip, port))
-            self.buffer = []
-            self.flush_timestamp = now
+            try:
+                self.socket = self.socket or self.get_udp_socket()
+                payload = '\n'.join(self.buffer).encode()
+                for ip, port in self.resolve_hosts():
+                    self.socket.sendto(payload, (ip, port))
+                self.buffer = []
+                self.flush_timestamp = now
+            except (PermissionError, ConnectionError):
+                cfg.log.exception("UDP error")
+                if len(self.buffer) > 1000:
+                    self.buffer = self.buffer[-1000:]
+                self.socket = None  # Python will trigger close() when GCing it.
+                return False
+        return True
 
     def process_metrics(self, name, values, timestamp, metadata=None):
         # https://docs.influxdata.com/influxdb/v1.2/write_protocols/line_protocol_tutorial/

@@ -15,102 +15,47 @@
 # Copyright 2011 Cloudant, Inc.
 
 
-import sys
 import time
-import socket
-import struct
-import pickle
-
-import cfg
+import bucky.cfg as cfg
 import bucky.common as common
-from common import log
 
 
-class CarbonClient(common.MetricsDstProcess):
-    def __init__(self, module_name, config_file, destination_pipes):
-        super().__init__(module_name, config_file, destination_pipes)
-        # self.ip = cfg.graphite_ip
-        # self.port = cfg.graphite_port
-        # self.max_reconnects = cfg.graphite_max_reconnects
-        # self.reconnect_delay = cfg.graphite_reconnect_delay
-        # self.backoff_factor = cfg.graphite_backoff_factor
-        # self.backoff_max = cfg.graphite_backoff_max
-        # if self.max_reconnects <= 0:
-        #     self.max_reconnects = sys.maxint
-        self.connected = False
-
-    def connect(self):
-        # reconnect_delay = self.reconnect_delay
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect((self.ip, self.port))
-        self.connected = True
-        # for i in range(self.max_reconnects):
-        #     try:
-        #         self.sock.connect((self.ip, self.port))
-        #         self.connected = True
-        #         log.info("Connected to Carbon at %s:%s", self.ip, self.port)
-        #         return
-        #     except socket.error as e:
-        #         if i >= self.max_reconnects:
-        #             raise
-        #         log.error("Failed to connect to %s:%s: %s", self.ip, self.port, e)
-        #         if reconnect_delay > 0:
-        #             time.sleep(reconnect_delay)
-        #             if self.backoff_factor:
-        #                 reconnect_delay *= self.backoff_factor
-        #                 if self.backoff_max:
-        #                     reconnect_delay = min(reconnect_delay, self.backoff_max)
-        # raise socket.error("Failed to connect to %s:%s after %s attempts" % (self.ip, self.port, self.max_reconnects))
-
-    def reconnect(self):
-        self.close()
-        self.connect()
-
-    def send_message(self, mesg):
-        if not self.connected:
-            self.connect()
-        self.sock.sendall(mesg)
-
-
-class PlaintextClient(CarbonClient):
-    def process_metrics(self, name, values, mtime, metadata=None):
-        mesg = "%s %s %s\n" % (name, values, mtime)
-        for i in range(self.max_reconnects):
-            try:
-                self.send_message(mesg)
-                return
-            except socket.error as err:
-                log.error("Failed to send data to Carbon server: %s", err)
-                try:
-                    self.reconnect()
-                except socket.error as err:
-                    log.error("Failed reconnect to Carbon server: %s", err)
-        log.error("Dropping message %s", mesg)
-
-
-class PickleClient(CarbonClient):
-    def __init__(self, cfg, pipe):
-        super(PickleClient, self).__init__(cfg, pipe)
-        self.buffer_size = cfg.graphite_pickle_buffer_size
+class CarbonClient(common.MetricsDstProcess, common.TCPConnector):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.flush_timestamp = 0
         self.buffer = []
+        self.socket = None
+        self.default_port = 2003
+        self.resolved_hosts = None
+        self.resolved_hosts_timestamp = 0
 
-    def send(self, name, value, mtime, metadata=None):
-        self.buffer.append((name, (mtime, value)))
-        if len(self.buffer) >= self.buffer_size:
-            self.transmit()
-
-    def transmit(self):
-        payload = pickle.dumps(self.buffer, protocol=-1)
-        header = struct.pack("!L", len(payload))
-        self.buffer = []
-        for i in range(self.max_reconnects):
+    def recoverable_tick(self):
+        now = time.time()
+        if len(self.buffer) > 10 or ((now - self.flush_timestamp) > 1 and len(self.buffer)):
             try:
-                self.send_message(header + payload)
-                return
-            except socket.error as err:
-                log.error("Failed to send data to Carbon server: %s", err)
-                try:
-                    self.reconnect()
-                except socket.error as err:
-                    log.error("Failed reconnect to Carbon server: %s", err)
-        log.error("Dropping buffer!")
+                self.socket = self.socket or self.get_tcp_socket(connect=True)
+                payload = '\n'.join(self.buffer).encode()
+                self.socket.sendall(payload)
+                self.buffer = []
+                self.flush_timestamp = now
+            except (PermissionError, ConnectionError):
+                cfg.log.exception("TCP error")
+                if len(self.buffer) > 1000:
+                    self.buffer = self.buffer[-1000:]
+                self.socket = None  # Python will trigger close() when GCing it.
+                return False
+        return True
+
+    def build_name(self, metadata):
+        buf = [metadata[k] for k in cfg.name_mapping if k in metadata]
+        return '.'.join(buf)
+
+    def process_metrics(self, name, values, timestamp, metadata=None):
+        metadata = metadata or {}
+        metadata.update(name=name)
+        for k, v in values.items():
+            metadata.update(value=k)
+            name = self.build_name(metadata)
+            self.buffer.append("%s %s %s" % (name, v, int(timestamp)))
+        self.tick()
