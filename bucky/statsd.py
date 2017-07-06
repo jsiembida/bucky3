@@ -19,45 +19,22 @@ import os
 import re
 import math
 import time
-import threading
+import bucky.cfg as cfg
 import bucky.common as common
 
 
-class StatsDServer(common.ManagedProcess, common.UDPConnector):
-    def __init__(self, queue, cfg):
-        super(StatsDServer, self).__init__(cfg.statsd_ip, cfg.statsd_port)
-        self.daemon = True
-        self.queue = queue
-        self.cfg = cfg
-        self.lock = threading.Lock()
+class StatsDServer(common.MetricsSrcProcess, common.UDPConnector):
+    def __init__(self, *args):
+        super().__init__(*args)
         self.timers = {}
         self.gauges = {}
         self.counters = {}
         self.sets = {}
-        self.flush_time = cfg.statsd_flush_time
-        self.prefix_counter = cfg.statsd_prefix_counter
-        self.prefix_timer = cfg.statsd_prefix_timer
-        self.prefix_gauge = cfg.statsd_prefix_gauge
-        self.prefix_set = cfg.statsd_prefix_set
-        self.metadata_dict = cfg.metadata if cfg.metadata else {}
-        self.metadata_tuple = tuple((k, self.metadata_dict[k]) for k in sorted(self.metadata_dict.keys()))
         self.key_res = (
             (re.compile("\s+"), "_"),
             (re.compile("\/"), "-"),
             (re.compile("[^a-zA-Z_\-0-9\.]"), "")
         )
-
-        self.name_counter = self.prefix_counter
-        self.name_timer = self.prefix_timer
-        self.name_gauge = self.prefix_gauge
-        self.name_set = self.prefix_set
-        if cfg.statsd_metadata_namespace:
-            self.enqueue = self.enqueue_with_metadata_names
-        else:
-            self.enqueue = self.enqueue_with_dotted_names
-
-        self.statsd_persistent_gauges = cfg.statsd_persistent_gauges
-        self.gauges_filename = os.path.join(self.cfg.directory, self.cfg.statsd_gauges_savefile)
 
         self.pct_thresholds = cfg.statsd_percentile_thresholds
 
@@ -77,36 +54,29 @@ class StatsDServer(common.ManagedProcess, common.UDPConnector):
         self.enable_timer_std = cfg.statsd_timer_std
 
     def tick(self):
-        stime = int(time.time())
-        with self.lock:
-            if self.delete_timers:
-                rem_keys = set(self.timers.keys()) - self.keys_seen
-                for k in rem_keys:
-                    del self.timers[k]
-            if self.delete_counters:
-                rem_keys = set(self.counters.keys()) - self.keys_seen
-                for k in rem_keys:
-                    del self.counters[k]
-            if self.delete_sets:
-                rem_keys = set(self.sets.keys()) - self.keys_seen
-                for k in rem_keys:
-                    del self.sets[k]
-            self.enqueue_timers(stime)
-            self.enqueue_counters(stime)
-            self.enqueue_gauges(stime)
-            self.enqueue_sets(stime)
-            self.keys_seen = set()
+        timestamp, buf = int(time.time()), []
+        if cfg.delete_timers:
+            rem_keys = set(self.timers.keys()) - self.keys_seen
+            for k in rem_keys:
+                del self.timers[k]
+        if cfg.delete_counters:
+            rem_keys = set(self.counters.keys()) - self.keys_seen
+            for k in rem_keys:
+                del self.counters[k]
+        if cfg.delete_sets:
+            rem_keys = set(self.sets.keys()) - self.keys_seen
+            for k in rem_keys:
+                del self.sets[k]
+        self.enqueue_timers(timestamp, buf)
+        self.enqueue_counters(timestamp, buf)
+        self.enqueue_gauges(timestamp, buf)
+        self.enqueue_sets(timestamp, buf)
+        self.keys_seen = set()
 
-    def run(self):
-        def flush_loop():
-            while True:
-                time.sleep(self.flush_time)
-                self.tick()
-        self.load_gauges()
-        threading.Thread(target=flush_loop).start()
+    def work(self):
         while True:
-            data, addr = self.get_udp_socket().recvfrom(65535)
-            self.handle(data, addr)
+            data, addr = self.get_udp_socket(bind=True).recvfrom(65535)
+            self.handle_packet(data, addr)
 
     def coalesce_metadata(self, metadata):
         if not metadata:
@@ -117,30 +87,7 @@ class StatsDServer(common.ManagedProcess, common.UDPConnector):
             return tmp
         return dict(metadata)
 
-    def enqueue_with_dotted_names(self, bucket, name, value, stime, metadata=None):
-        if name:
-            bucket = bucket + '.' + name
-        metadata = self.coalesce_metadata(metadata)
-        if metadata:
-            metadata_tuple = tuple((k, metadata[k]) for k in sorted(metadata.keys()))
-            self.queue.put((bucket, value, stime, metadata_tuple))
-        else:
-            self.queue.put((bucket, value, stime))
-
-    def enqueue_with_metadata_names(self, bucket, name, value, stime, metadata=None):
-        metadata = self.coalesce_metadata(metadata)
-        if metadata:
-            if name and not ('name' in metadata):
-                metadata['name'] = name
-            metadata_tuple = tuple((k, metadata[k]) for k in sorted(metadata.keys()))
-            self.queue.put((bucket, value, stime, metadata_tuple))
-        else:
-            if name:
-                self.queue.put((bucket, value, stime, (('name', name),)))
-            else:
-                self.queue.put((bucket, value, stime))
-
-    def enqueue_timers(self, stime):
+    def enqueue_timers(self, timestamp, buf):
         for k, v in self.timers.items():
             timer_name, timer_metadata = k
             timer_stats = {}
@@ -171,102 +118,73 @@ class StatsDServer(common.ManagedProcess, common.UDPConnector):
 
                     t = int(pct_thresh)
                     t_suffix = "_%s" % (t,)
-                    if self.enable_timer_mean:
-                        mean = vsum / float(thresh_idx)
-                        timer_stats["mean" + t_suffix] = mean
-
-                    if self.enable_timer_upper:
-                        vthresh = v[thresh_idx - 1]
-                        timer_stats["upper" + t_suffix] = vthresh
-
-                    if self.enable_timer_count:
-                        timer_stats["count" + t_suffix] = thresh_idx
-
-                    if self.enable_timer_sum:
-                        timer_stats["sum" + t_suffix] = vsum
-
-                    if self.enable_timer_sum_squares:
-                        vsum_squares = cumul_sum_squares_values[thresh_idx - 1]
-                        timer_stats["sum_squares" + t_suffix] = vsum_squares
+                    mean = vsum / float(thresh_idx)
+                    timer_stats["mean" + t_suffix] = mean
+                    vthresh = v[thresh_idx - 1]
+                    timer_stats["upper" + t_suffix] = vthresh
+                    timer_stats["count" + t_suffix] = thresh_idx
+                    timer_stats["sum" + t_suffix] = vsum
+                    vsum_squares = cumul_sum_squares_values[thresh_idx - 1]
+                    timer_stats["sum_squares" + t_suffix] = vsum_squares
 
                 vsum = cumulative_values[count - 1]
                 mean = vsum / float(count)
 
-                if self.enable_timer_mean:
-                    timer_stats["mean"] = mean
-
-                if self.enable_timer_upper:
-                    timer_stats["upper"] = vmax
-
-                if self.enable_timer_lower:
-                    timer_stats["lower"] = vmin
-
-                if self.enable_timer_count:
-                    timer_stats["count"] = count
-
-                if self.enable_timer_count_ps:
-                    timer_stats["count_ps"] = float(count) / self.flush_time
-
-                if self.enable_timer_median:
-                    mid = int(count / 2)
-                    median = (v[mid - 1] + v[mid]) / 2.0 if count % 2 == 0 else v[mid]
-                    timer_stats["median"] = median
-
-                if self.enable_timer_sum:
-                    timer_stats["sum"] = vsum
-
-                if self.enable_timer_sum_squares:
-                    vsum_squares = cumul_sum_squares_values[count - 1]
-                    timer_stats["sum_squares"] = vsum_squares
-
-                if self.enable_timer_std:
-                    sum_of_diffs = sum(((value - mean) ** 2 for value in v))
-                    stddev = math.sqrt(sum_of_diffs / count)
-                    timer_stats["std"] = stddev
+                timer_stats["mean"] = mean
+                timer_stats["upper"] = vmax
+                timer_stats["lower"] = vmin
+                timer_stats["count"] = count
+                timer_stats["count_ps"] = float(count) / self.flush_time
+                mid = int(count / 2)
+                median = (v[mid - 1] + v[mid]) / 2.0 if count % 2 == 0 else v[mid]
+                timer_stats["median"] = median
+                timer_stats["sum"] = vsum
+                vsum_squares = cumul_sum_squares_values[count - 1]
+                timer_stats["sum_squares"] = vsum_squares
+                sum_of_diffs = sum(((value - mean) ** 2 for value in v))
+                stddev = math.sqrt(sum_of_diffs / count)
+                timer_stats["std"] = stddev
 
             if timer_stats:
-                self.enqueue(self.name_timer, timer_name, timer_stats, stime, timer_metadata)
+                buf.append(cfg.timer_prefix + timer_name, timer_stats, timestamp, timer_metadata)
 
             self.timers[k] = []
 
-    def enqueue_sets(self, stime):
+    def enqueue_sets(self, timestamp, buf):
         for k, v in self.sets.items():
             set_name, set_metadata = k
-            self.enqueue(self.name_set, set_name, {"count": len(v)}, stime, set_metadata)
+            buf.append(cfg.set_prefix + set_name, {"count": len(v)}, timestamp, set_metadata)
             self.sets[k] = set()
 
-    def enqueue_gauges(self, stime):
+    def enqueue_gauges(self, timestamp, buf):
         for k, v in self.gauges.items():
             gauge_name, gauge_metadata = k
-            if k in self.keys_seen:
-                self.enqueue(self.name_gauge, gauge_name, v, stime, gauge_metadata)
+            buf.append(cfg.gauge_prefix + gauge_name, v, timestamp, gauge_metadata)
 
-    def enqueue_counters(self, stime):
+    def enqueue_counters(self, timestamp, buf):
         for k, v in self.counters.items():
             counter_name, counter_metadata = k
             stats = {
-                'rate': v / self.flush_time,
+                'rate': v / cfg.interval,
                 'count': v
             }
-            self.enqueue(self.name_counter, counter_name, stats, stime, counter_metadata)
+            buf.append(cfg.counter_prefix + counter_name, stats, timestamp, counter_metadata)
             self.counters[k] = 0
 
-    def handle(self, data, addr):
+    def handle_packet(self, data, addr):
         # Adding a bit of extra sauce so clients can
         # send multiple samples in a single UDP packet.
         data = data.decode()
         for line in data.splitlines():
-            self.line = line
-            if not line.strip():
-                continue
-            self.handle_line(line)
-        return True
+            line = line.strip()
+            if line:
+                self.handle_line(line)
 
     def handle_metadata(self, line):
         # http://docs.datadoghq.com/guides/dogstatsd/#datagram-format
         bits = line.split("#")
         if len(bits) < 2:
-            return line, None
+            return line, None, None
         metadata = {}
         for i in bits[1].split(","):
             kv = i.split("=")
@@ -278,13 +196,13 @@ class StatsDServer(common.ManagedProcess, common.UDPConnector):
                     metadata[kv[0]] = kv[1]
                 else:
                     metadata[kv[0]] = None
-        return bits[0], tuple((k, metadata[k]) for k in sorted(metadata.keys()))
+        return bits[0], metadata, tuple((k, metadata[k]) for k in sorted(metadata.keys()))
 
     def handle_line(self, line):
         # DataDog special packets for service check and events, ignore them
         if line.startswith('sc|') or line.startswith('_e{'):
             return
-        line, metadata = self.handle_metadata(line)
+        line, metadata_dict, metadata_tuple = self.handle_metadata(line)
         bits = line.split(":")
         key = self.handle_key(bits.pop(0), metadata)
 
