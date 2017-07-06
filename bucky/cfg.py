@@ -1,75 +1,55 @@
 
-debug = False
-log_level = "INFO"
-directory = "/var/lib/bucky"
-process_join_timeout = 2
+sysstats = {
+    # "type": "system_stats",
+    "log_level": "INFO",
+    "interval": 10
+}
 
+dockers = {
+    # "type": "docker_stats",
+    "log_level": "INFO",
+    "interval": 10
+}
 
-metadata = []
+statsd = {
+    "type": "statsd_server",
+    "log_level": "INFO",
+    "interval": 10,
+    "local_port": 8125,
+    "timers_name": "stats_timers",
+    "sets_name": "stats_sets",
+    "gauges_name": "stats_gauges",
+    "counters_name": "stats_counters",
+    "timers_timeout": 60,
+    "sets_timeout": 60,
+    "gauges_timeout": 60,
+    "counters_timeout": 60
+}
 
+carbon = {
+    # "type": "carbon_client",
+    "log_level": "INFO",
+    "interval": 1,
+    "remote_hosts": [
+        "127.0.0.1:2003"
+    ]
+}
 
-statsd_ip = "127.0.0.1"
-statsd_port = 8125
-statsd_enabled = True
-statsd_flush_time = 10.0
-statsd_prefix_counter = "stats.counters"
-statsd_prefix_timer = "stats.timers"
-statsd_prefix_set = "stats.sets"
-statsd_prefix_gauge = "stats.gauges"
-statsd_persistent_gauges = False
-statsd_gauges_savefile = "gauges.save"
-statsd_delete_counters = True
-statsd_delete_timers = True
-statsd_delete_sets = True
-# `statsd_delete_gauges = True` would make gauges in practice useless, except if you get an absolute(!)
-# value every flush-interval which would makes this setting irrelevant, so this option doesn't exist.
-# Use metadata name=NAME instead of the original naming scheme
-statsd_metadata_namespace = False
-statsd_percentile_thresholds = [90]  # percentile thresholds for statsd timers
-statsd_timer_mean = True
-statsd_timer_upper = True
-statsd_timer_lower = True
-statsd_timer_count = True
-statsd_timer_count_ps = True
-statsd_timer_sum = True
-statsd_timer_sum_squares = True
-statsd_timer_median = True
-statsd_timer_std = True
+influxdb = {
+    "type": "influxdb_client",
+    "log_level": "INFO",
+    "interval": 1,
+    "remote_hosts": [
+        "127.0.0.1:8086"
+    ]
+}
 
-
-graphite_enabled = True
-graphite_ip = "127.0.0.1"
-graphite_port = 2003
-graphite_max_reconnects = 60
-graphite_reconnect_delay = 1
-graphite_backoff_factor = 1.5
-graphite_backoff_max = 60
-graphite_pickle_enabled = False
-graphite_pickle_buffer_size = 500
-
-
-influxdb_enabled = False
-influxdb_hosts = [
-    "127.0.0.1:8089"
-]
-
-
-prometheus_enabled = False
-prometheus_port = 9090
-prometheus_timeout = 60
-prometheus_path = 'metrics'
-
-
-system_stats_enabled = False
-system_stats_interval = 10
-system_stats_filesystem_blacklist = ['tmpfs', 'aufs', 'rootfs', 'devtmpfs']
-system_stats_filesystem_whitelist = None
-system_stats_interface_blacklist = None
-system_stats_interface_whitelist = None
-system_stats_disk_blacklist = ['loop0', 'loop1', 'loop2', 'loop3', 'loop4', 'loop5', 'loop6', 'loop7']
-system_stats_disk_whitelist = None
-
-
-docker_stats_enabled = False
-docker_stats_interval = 10
-docker_stats_version = '1.22'
+prometheus = {
+    # "type": "prometheus_exporter",
+    "log_level": "INFO",
+    "interval": 60,
+    "local_port": 9090,
+    "local_host": "0.0.0.0",
+    "http_path": "metrics",
+    "values_timeout": 60
+}

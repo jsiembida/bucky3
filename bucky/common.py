@@ -33,17 +33,20 @@ def prepare_module(module_name, config_file, tick_callback, termination_callback
             new_config = {}
             with open(config_file, 'r') as f:
                 exec(compile(f.read(), config_file, 'exec'), new_config)
-            if module_section:
-                if module_name not in new_config:
-                    new_config = {}
-                else:
-                    new_config = new_config[module_name]
+        else:
+            new_config = vars(cfg)
 
-            unused_config_keys = set(vars(cfg).keys()) - set(new_config.keys())
-            for k, v in new_config.items():
-                setattr(cfg, k, v)
-            for k in unused_config_keys:
-                delattr(cfg, k)
+        if module_section:
+            if module_name not in new_config:
+                new_config = {}
+            else:
+                new_config = new_config[module_name]
+
+        unused_config_keys = set(vars(cfg).keys()) - set(new_config.keys())
+        for k, v in new_config.items():
+            setattr(cfg, k, v)
+        for k in unused_config_keys:
+            delattr(cfg, k)
 
         setup_logging()  # Only after this step we have logger configured :-|
         setup_reconfig()
@@ -191,7 +194,7 @@ class HostResolver:
         now = time.time()
         if self.resolved_hosts is None or (now - self.resolved_hosts_timestamp) > 180:
             resolved_hosts = set()
-            for host in cfg.hosts:
+            for host in cfg.remote_hosts:
                 for ip, port in self.parse_address(host, self.default_port):
                     cfg.log.debug("Resolved %s as %s:%d", host, ip, port)
                     resolved_hosts.add((ip, port))
@@ -203,7 +206,7 @@ class HostResolver:
 
 class UDPConnector(HostResolver):
     def get_udp_socket(self, bind=False):
-        ip = getattr(cfg, 'local_ip', '0.0.0.0')
+        ip = getattr(cfg, 'local_host', '0.0.0.0')
         port = getattr(cfg, 'local_port', 0)
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         if bind:
@@ -215,7 +218,7 @@ class UDPConnector(HostResolver):
 
 class TCPConnector(HostResolver):
     def get_tcp_socket(self, bind=False, connect=False):
-        ip = getattr(cfg, 'local_ip', '0.0.0.0')
+        ip = getattr(cfg, 'local_host', '0.0.0.0')
         port = getattr(cfg, 'local_port', 0)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if bind:

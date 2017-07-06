@@ -21,7 +21,7 @@ class PrometheusExporter(common.MetricsDstProcess):
         super().run()
 
     def start_http_server(self):
-        if self.http_port != cfg.port or self.http_host != cfg.host:
+        if self.http_port != cfg.local_port or self.http_host != cfg.local_host:
             if self.http_server:
                 cfg.log.info("Stopping server running at %s:%d", self.http_host, self.http_port)
                 self.http_server.shutdown()
@@ -30,7 +30,7 @@ class PrometheusExporter(common.MetricsDstProcess):
             self.http_port = self.http_host = self.http_server = self.http_thread = None
 
         def do_GET(req):
-            if req.path.strip('/') != cfg.path:
+            if req.path.strip('/') != cfg.http_path:
                 req.send_response(404)
                 req.send_header("Content-type", "text/plain")
                 req.end_headers()
@@ -43,14 +43,14 @@ class PrometheusExporter(common.MetricsDstProcess):
 
         if not self.http_server:
             handler = type('PrometheusHandler', (http.server.BaseHTTPRequestHandler,), {'do_GET': do_GET})
-            cfg.log.debug("Starting server at %s:%d", cfg.host, cfg.port)
+            cfg.log.debug("Starting server at %s:%d", cfg.local_host, cfg.local_port)
             # TODO make the server use the same logging as logger
-            self.http_server = http.server.HTTPServer((cfg.host, cfg.port), handler)
+            self.http_server = http.server.HTTPServer((cfg.local_host, cfg.local_port), handler)
             self.http_thread = threading.Thread(target=lambda: self.http_server.serve_forever())
             self.http_thread.start()
-            cfg.log.info("Started server at %s:%d", cfg.host, cfg.port)
-            self.http_port = cfg.port
-            self.http_host = cfg.host
+            cfg.log.info("Started server at %s:%d", cfg.local_host, cfg.local_port)
+            self.http_port = cfg.local_port
+            self.http_host = cfg.local_host
 
     def get_or_render_line(self, k):
         timestamp, value, line = self.buffer[k]
@@ -67,7 +67,7 @@ class PrometheusExporter(common.MetricsDstProcess):
     def tick(self):
         now = time.time()
         if (now - self.flush_timestamp) > cfg.interval:
-            old_keys = [k for k, (timestamp, value, line) in self.buffer.items() if (now - timestamp) > cfg.timeout]
+            old_keys = [k for k, (timestamp, value, line) in self.buffer.items() if (now - timestamp) > cfg.values_timeout]
             for k in old_keys:
                 del self.buffer[k]
             self.flush_timestamp = now

@@ -23,18 +23,18 @@ import bucky.cfg as cfg
 import bucky.common as common
 
 import bucky.carbon as carbon
-# import bucky.statsd as statsd
-import bucky.systemstats as systemstats
-import bucky.dockerstats as dockerstats
+import bucky.statsd as statsd
 import bucky.influxdb as influxdb
 import bucky.prometheus as prometheus
+import bucky.systemstats as systemstats
+import bucky.dockerstats as dockerstats
 
 
 MODULES = {
     'carbon_client': carbon.CarbonClient,
     'influxdb_client': influxdb.InfluxDBClient,
     'prometheus_exporter': prometheus.PrometheusExporter,
-    # 'statsd_server': statsd.StatsDServer,
+    'statsd_server': statsd.StatsDServer,
     'system_stats': systemstats.SystemStatsCollector,
     'docker_stats': dockerstats.DockerStatsCollector
 }
