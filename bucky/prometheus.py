@@ -33,6 +33,9 @@ class PrometheusExporter(common.MetricsDstProcess):
                 response = ''.join(self.get_or_render_line(k) for k in self.buffer.keys())
                 req.wfile.write(response.encode())
 
+        def log_message(req, format, *args):
+            cfg.log.info(format, *args)
+
         if new_server_needed() and self.http_server:
             cfg.log.info("Stopping server running at %s:%d", self.http_host, self.http_port)
             self.http_server.shutdown()
@@ -41,9 +44,9 @@ class PrometheusExporter(common.MetricsDstProcess):
             self.http_port = self.http_host = self.http_server = self.http_thread = None
 
         if not self.http_server:
-            handler = type('PrometheusHandler', (http.server.BaseHTTPRequestHandler,), {'do_GET': do_GET})
+            handler = type('PrometheusHandler', (http.server.BaseHTTPRequestHandler,),
+                           {'do_GET': do_GET, 'log_message': log_message})
             cfg.log.debug("Starting server at %s:%d", cfg.local_host, cfg.local_port)
-            # TODO make the server use the same logging as logger
             self.http_server = http.server.HTTPServer((cfg.local_host, cfg.local_port), handler)
             self.http_thread = threading.Thread(target=lambda: self.http_server.serve_forever())
             self.http_thread.start()

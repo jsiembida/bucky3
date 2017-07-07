@@ -21,7 +21,6 @@ import time
 import multiprocessing
 import bucky.cfg as cfg
 import bucky.common as common
-
 import bucky.carbon as carbon
 import bucky.statsd as statsd
 import bucky.influxdb as influxdb

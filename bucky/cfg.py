@@ -7,7 +7,7 @@ sysstats = {
         "loop0", "loop1", "loop2", "loop3", "loop4", "loop5", "loop6", "loop7", "sr0"
     },
     "filesystem_blacklist": {
-        "tmpfs", "udev", "rootfs"
+        "tmpfs", "devtmpfs", "rootfs"
     }
 }
 

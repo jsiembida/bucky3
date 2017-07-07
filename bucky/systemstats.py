@@ -15,6 +15,18 @@ class SystemStatsCollector(common.MetricsSrcProcess):
     DISK_FIELDS = ('read_ops', 'read_merged', 'read_sectors', 'read_time',
                    'write_ops', 'write_merged', 'write_sectors', 'write_time',
                    'in_progress', 'io_time', 'weighted_time')
+    MEMORY_FIELDS = {
+        'MemTotal': 'total_bytes',
+        'MemFree': 'free_bytes',
+        'MemAvailable': 'available_bytes',
+        'Shmem': 'shared_bytes',
+        'Cached': 'cached_bytes',
+        'Slab': 'slab_bytes',
+        'Mapped': 'mapped_bytes',
+        'SwapTotal': 'swap_total_bytes',
+        'SwapFree': 'swap_free_bytes',
+        'SwapCached': 'swap_cached_bytes',
+    }
 
     def get_lists(self, name):
         blacklist = getattr(cfg, name + '_blacklist', None)
@@ -28,9 +40,9 @@ class SystemStatsCollector(common.MetricsSrcProcess):
             return val not in blacklist
         return True
 
-    def read_cpu_stats(self, timestamp, buf):
+    def read_activity_stats(self, timestamp, buf):
+        activity_stats = {}
         with open('/proc/stat') as f:
-            processes_stats = {}
             for l in f.readlines():
                 tokens = l.strip().split(maxsplit=20)
                 if not tokens:
@@ -38,19 +50,29 @@ class SystemStatsCollector(common.MetricsSrcProcess):
                 name = tokens.pop(0)
                 if not name.startswith('cpu'):
                     if name == 'ctxt':
-                        processes_stats['switches'] = int(tokens[0])
+                        activity_stats['switches'] = int(tokens[0])
                     elif name == 'processes':
-                        processes_stats['forks'] = int(tokens[0])
+                        activity_stats['forks'] = int(tokens[0])
                     elif name == 'procs_running':
-                        processes_stats['running'] = int(tokens[0])
+                        activity_stats['running'] = int(tokens[0])
+                    elif name == 'intr':
+                        activity_stats['interrupts'] = int(tokens[0])
                 else:
                     cpu_suffix = name[3:]
                     if not cpu_suffix:
                         continue
                     cpu_stats = {k: int(v) for k, v in zip(self.CPU_FIELDS, tokens)}
                     buf.append(("system_cpu", cpu_stats, timestamp, dict(name=cpu_suffix)))
-            if processes_stats:
-                buf.append(("system_processes", processes_stats, timestamp))
+        with open('/proc/loadavg') as f:
+            for l in f.readlines():
+                tokens = l.strip().split()
+                if not tokens or len(tokens) != 5:
+                    continue
+                activity_stats['load_1m'] = float(tokens[0])
+                activity_stats['load_5m'] = float(tokens[1])
+                activity_stats['load_15m'] = float(tokens[2])
+        if activity_stats:
+            buf.append(("system_activity", activity_stats, timestamp))
 
     def read_filesystem_stats(self, timestamp, buf, blacklist, whitelist):
         with open('/proc/mounts') as f:
@@ -95,19 +117,6 @@ class SystemStatsCollector(common.MetricsSrcProcess):
                 interface_stats = {k: int(v) for k, v in zip(self.INTERFACE_FIELDS, tokens) if k}
                 buf.append(("system_interface", interface_stats, timestamp, dict(name=interface_name)))
 
-    def read_load_stats(self, timestamp, buf):
-        with open('/proc/loadavg') as f:
-            for l in f.readlines():
-                tokens = l.strip().split()
-                if not tokens or len(tokens) != 5:
-                    continue
-                load_stats = {
-                    'last_1m': float(tokens[0]),
-                    'last_5m': float(tokens[1]),
-                    'last_15m': float(tokens[2])
-                }
-                buf.append(("system_load", load_stats, timestamp))
-
     def read_memory_stats(self, timestamp, buf):
         with open('/proc/meminfo') as f:
             memory_stats = {}
@@ -118,13 +127,9 @@ class SystemStatsCollector(common.MetricsSrcProcess):
                 name = tokens[0]
                 if not name.endswith(":"):
                     continue
-                name = name[:-1].lower()
-                if name == "memtotal":
-                    memory_stats['total_bytes'] = int(tokens[1]) * 1024
-                elif name == "memfree":
-                    memory_stats['free_bytes'] = int(tokens[1]) * 1024
-                elif name == "memavailable":
-                    memory_stats['available_bytes'] = int(tokens[1]) * 1024
+                name = name[:-1]
+                if name in self.MEMORY_FIELDS:
+                    memory_stats[self.MEMORY_FIELDS[name]] = int(tokens[1]) * 1024
             if memory_stats:
                 buf.append(("system_memory", memory_stats, timestamp))
 
@@ -144,8 +149,7 @@ class SystemStatsCollector(common.MetricsSrcProcess):
 
     def tick(self):
         timestamp, buf = time.time(), []
-        self.read_cpu_stats(timestamp, buf)
-        self.read_load_stats(timestamp, buf)
+        self.read_activity_stats(timestamp, buf)
         self.read_memory_stats(timestamp, buf)
         self.read_interface_stats(timestamp, buf, *self.get_lists('interface'))
         self.read_filesystem_stats(timestamp, buf, *self.get_lists('filesystem'))
