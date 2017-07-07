@@ -13,7 +13,9 @@
 # the License.
 
 
+import os
 import time
+import string
 import socket
 import signal
 import random
@@ -29,12 +31,11 @@ def prepare_module(module_name, config_file, tick_callback, termination_callback
     next_tick = None
 
     def load_config(module_section=True):
-        if config_file:
-            new_config = {}
-            with open(config_file, 'r') as f:
-                exec(compile(f.read(), config_file, 'exec'), new_config)
-        else:
-            new_config = vars(cfg)
+        new_config = {}
+        with open(config_file or cfg.__file__, 'r') as f:
+            config_template = string.Template(f.read())
+            config_str = config_template.substitute(os.environ)
+            exec(config_str, new_config)
 
         if module_section:
             if module_name not in new_config:
@@ -46,7 +47,8 @@ def prepare_module(module_name, config_file, tick_callback, termination_callback
         for k, v in new_config.items():
             setattr(cfg, k, v)
         for k in unused_config_keys:
-            delattr(cfg, k)
+            if not k.startswith('_'):
+                delattr(cfg, k)
 
         setup_logging()  # Only after this step we have logger configured :-|
         setup_reconfig()
@@ -154,11 +156,23 @@ class MetricsDstProcess(MetricsProcess):
                 self.process_batch(batch)
 
     def process_batch(self, batch):
+        config_metadata = getattr(cfg, 'metadata', None)
+
         for sample in batch:
-            if type(sample[1]) is dict:
-                self.process_values(*sample)
+            if len(sample) == 4:
+                name, value, timestamp, metadata = sample
             else:
-                self.process_value(*sample)
+                name, value, timestamp = sample
+                metadata = None
+            if metadata:
+                metadata.update((k, v) for k, v in config_metadata.items() if k not in metadata)
+            else:
+                metadata = config_metadata
+
+            if type(value) is dict:
+                self.process_values(name, value, timestamp, metadata)
+            else:
+                self.process_value(name, value, timestamp, metadata)
 
     def process_values(self, name, values, timestamp, metadata=None):
         raise NotImplementedError()
