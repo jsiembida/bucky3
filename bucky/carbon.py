@@ -15,47 +15,28 @@
 # Copyright 2011 Cloudant, Inc.
 
 
-import time
 import bucky.cfg as cfg
 import bucky.common as common
 
 
-class CarbonClient(common.MetricsDstProcess, common.TCPConnector):
+class CarbonClient(common.MetricsPushProcess, common.TCPConnector):
     def __init__(self, *args):
-        super().__init__(*args)
-        self.flush_timestamp = 0
-        self.buffer = []
-        self.socket = None
-        self.default_port = 2003
-        self.resolved_hosts = None
-        self.resolved_hosts_timestamp = 0
+        super().__init__(*args, default_port=2003)
 
-    def recoverable_tick(self):
-        now = time.time()
-        if len(self.buffer) > 10 or ((now - self.flush_timestamp) > 1 and len(self.buffer)):
-            try:
-                self.socket = self.socket or self.get_tcp_socket(connect=True)
-                payload = '\n'.join(self.buffer).encode()
-                self.socket.sendall(payload)
-                self.buffer = []
-                self.flush_timestamp = now
-            except (PermissionError, ConnectionError):
-                cfg.log.exception("TCP error")
-                if len(self.buffer) > 1000:
-                    self.buffer = self.buffer[-1000:]
-                self.socket = None  # Python will trigger close() when GCing it.
-                return False
-        return True
+    def flush_buffer(self):
+        # For TCP we probably can just pump all buffer into the wire.
+        self.socket = self.socket or self.get_tcp_socket(connect=True)
+        payload = '\n'.join(self.buffer).encode()
+        self.socket.sendall(payload)
 
     def build_name(self, metadata):
         buf = [metadata[k] for k in cfg.name_mapping if k in metadata]
         return '.'.join(buf)
 
-    def process_metrics(self, name, values, timestamp, metadata=None):
+    def process_values(self, name, values, timestamp, metadata=None):
         metadata = metadata or {}
         metadata.update(name=name)
         for k, v in values.items():
             metadata.update(value=k)
             name = self.build_name(metadata)
             self.buffer.append("%s %s %s" % (name, v, int(timestamp)))
-        self.tick()

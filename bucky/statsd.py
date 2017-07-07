@@ -30,6 +30,8 @@ class StatsDServer(common.MetricsSrcProcess, common.UDPConnector):
         self.gauges = {}
         self.counters = {}
         self.sets = {}
+        self.current_interval = None
+        self.last_flush_timestamp = None
         self.key_res = (
             (re.compile("\s+"), "_"),
             (re.compile("\/"), "-"),
@@ -37,12 +39,17 @@ class StatsDServer(common.MetricsSrcProcess, common.UDPConnector):
         )
 
     def tick(self):
-        timestamp, buf = int(time.time()), []
+        timestamp, buf = time.time(), []
+        if self.last_flush_timestamp:
+            self.current_interval = timestamp - self.last_flush_timestamp
+        else:
+            self.current_interval = cfg.interval
         self.enqueue_timers(timestamp, buf)
         self.enqueue_counters(timestamp, buf)
         self.enqueue_gauges(timestamp, buf)
         self.enqueue_sets(timestamp, buf)
         self.send_metrics(buf)
+        self.last_flush_timestamp = timestamp
 
     def work(self):
         while True:
@@ -61,7 +68,7 @@ class StatsDServer(common.MetricsSrcProcess, common.UDPConnector):
 
             if not v:
                 # Skip timers that haven't collected any values
-                timer_stats['count'] = 0
+                timer_stats['count'] = 0.0
                 timer_stats['count_ps'] = 0.0
             else:
                 v.sort()
@@ -83,65 +90,70 @@ class StatsDServer(common.MetricsSrcProcess, common.UDPConnector):
                     vsum = cumulative_values[t_index - 1]
                     t_suffix = "_" + str(int(t))
                     mean = vsum / float(t_index)
-                    timer_stats["mean" + t_suffix] = mean
+                    timer_stats["mean" + t_suffix] = float(mean)
                     vthresh = v[t_index - 1]
-                    timer_stats["upper" + t_suffix] = vthresh
-                    timer_stats["count" + t_suffix] = t_index
-                    timer_stats["sum" + t_suffix] = vsum
+                    timer_stats["upper" + t_suffix] = float(vthresh)
+                    timer_stats["count" + t_suffix] = float(t_index)
+                    timer_stats["sum" + t_suffix] = float(vsum)
                     vsum_squares = cumulative_squares[t_index - 1]
-                    timer_stats["sum_squares" + t_suffix] = vsum_squares
+                    timer_stats["sum_squares" + t_suffix] = float(vsum_squares)
 
                 vsum = cumulative_values[count - 1]
                 mean = vsum / float(count)
-                timer_stats["mean"] = mean
-                timer_stats["upper"] = vmax
-                timer_stats["lower"] = vmin
-                timer_stats["count"] = count
-                timer_stats["count_ps"] = float(count) / self.flush_time
+                timer_stats["mean"] = float(mean)
+                timer_stats["upper"] = float(vmax)
+                timer_stats["lower"] = float(vmin)
+                timer_stats["count"] = float(count)
+                timer_stats["count_ps"] = float(count) / self.current_interval
                 mid = int(count / 2)
                 median = (v[mid - 1] + v[mid]) / 2.0 if count % 2 == 0 else v[mid]
-                timer_stats["median"] = median
-                timer_stats["sum"] = vsum
+                timer_stats["median"] = float(median)
+                timer_stats["sum"] = float(vsum)
                 vsum_squares = cumulative_squares[count - 1]
-                timer_stats["sum_squares"] = vsum_squares
+                timer_stats["sum_squares"] = float(vsum_squares)
                 sum_of_diffs = sum(((value - mean) ** 2 for value in v))
                 stddev = math.sqrt(sum_of_diffs / count)
-                timer_stats["std"] = stddev
+                timer_stats["std"] = float(stddev)
 
             if timer_stats:
                 buf.append((cfg.timers_name, timer_stats, timestamp, dict(k)))
 
-            del self.timers[k]
+            self.timers[k] = timer_timestamp, []
 
     def enqueue_sets(self, timestamp, buf):
         timeout = cfg.sets_timeout
         for k, (set_timestamp, v) in tuple(self.sets.items()):
             if timestamp - set_timestamp <= timeout:
-                buf.append((cfg.sets_name, {"count": len(v)}, timestamp, dict(k)))
-            del self.sets[k]
+                buf.append((cfg.sets_name, {"count": float(len(v))}, timestamp, dict(k)))
+                self.sets[k] = set_timestamp, set()
+            else:
+                del self.sets[k]
 
     def enqueue_gauges(self, timestamp, buf):
         timeout = cfg.gauges_timeout
         for k, (gauge_timestamp, v) in tuple(self.gauges.items()):
             if timestamp - gauge_timestamp <= timeout:
-                buf.append((cfg.gauges_name, v, timestamp, dict(k)))
-            del self.gauges[k]
+                buf.append((cfg.gauges_name, float(v), timestamp, dict(k)))
+            else:
+                del self.gauges[k]
 
     def enqueue_counters(self, timestamp, buf):
         timeout = cfg.counters_timeout
         for k, (counter_timestamp, v) in tuple(self.counters.items()):
             if timestamp - counter_timestamp <= timeout:
                 stats = {
-                    'rate': v / cfg.interval,
-                    'count': v
+                    'rate': float(v) / self.current_interval,
+                    'count': float(v)
                 }
                 buf.append((cfg.counters_name, stats, timestamp, dict(k)))
-            del self.counters[k]
+                self.counters[k] = counter_timestamp, 0
+            else:
+                del self.counters[k]
 
     def handle_packet(self, data, addr):
         # Adding a bit of extra sauce so clients can
         # send multiple samples in a single UDP packet.
-        timestamp, data = int(time.time()), data.decode()
+        timestamp, data = time.time(), data.decode()
         for line in data.splitlines():
             line = line.strip()
             if line:
@@ -201,7 +213,7 @@ class StatsDServer(common.MetricsSrcProcess, common.UDPConnector):
 
     def handle_timer(self, timestamp, key, fields):
         try:
-            val = float(fields[0] or 0)
+            val = float(fields[0])
             if key in self.timers:
                 buf = self.timers[key][1]
                 buf.append(val)
@@ -212,37 +224,35 @@ class StatsDServer(common.MetricsSrcProcess, common.UDPConnector):
             pass
 
     def handle_gauge(self, timestamp, key, fields):
-        valstr = fields[0] or "0"
         try:
+            valstr = fields[0]
             val = float(valstr)
+            delta = valstr[0] in "+-"
+            if delta and key in self.gauges:
+                self.gauges[key] = timestamp, self.gauges[key][1] + val
+            else:
+                self.gauges[key] = timestamp, val
         except ValueError:
-            return
-        delta = valstr[0] in ["+", "-"]
-        if delta and key in self.gauges:
-            self.gauges[key] = timestamp, self.gauges[key][1] + val
-        else:
-            self.gauges[key] = timestamp, val
+            pass
 
     def handle_set(self, timestamp, key, fields):
-        valstr = fields[0]
+        val = fields[0]
         if key in self.sets:
             buf = self.sets[key][1]
-            buf.add(valstr)
+            buf.add(val)
             self.sets[key] = timestamp, buf
         else:
-            self.sets[key] = timestamp, set()
+            self.sets[key] = timestamp, {val}
 
     def handle_counter(self, timestamp, key, fields):
         try:
-            rate = 1.0
-            if len(fields) > 2 and fields[2][:1] == "@":
-                rate = float(fields[2][1:].strip())
-            val = int(float(fields[0] or 0) / rate)
-            if key in self.counters:
-                buf = self.counters[key][1]
-                buf += val
-                self.counters[key] = timestamp, buf
+            if len(fields) > 2 and fields[2][0] == "@":
+                rate = float(fields[2][1:])
+                val = float(fields[0]) / rate
             else:
-                self.counters[key] = timestamp, val
+                val = float(fields[0])
+            if key in self.counters:
+                val += self.counters[key][1]
+            self.counters[key] = timestamp, val
         except ValueError:
             pass

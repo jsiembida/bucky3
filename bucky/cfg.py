@@ -1,12 +1,18 @@
 
 sysstats = {
-    # "type": "system_stats",
+    "type": "system_stats",
     "log_level": "INFO",
-    "interval": 10
+    "interval": 10,
+    "disk_blacklist": {
+        "loop0", "loop1", "loop2", "loop3", "loop4", "loop5", "loop6", "loop7", "sr0"
+    },
+    "filesystem_blacklist": {
+        "tmpfs", "udev", "rootfs"
+    }
 }
 
 dockers = {
-    # "type": "docker_stats",
+    "type": "docker_stats",
     "log_level": "INFO",
     "interval": 10
 }
@@ -22,17 +28,22 @@ statsd = {
     "counters_name": "stats_counters",
     "timers_timeout": 60,
     "sets_timeout": 60,
-    "gauges_timeout": 60,
-    "counters_timeout": 60
+    "gauges_timeout": 300,
+    "counters_timeout": 60,
+    "percentile_thresholds": (90, 99)
 }
 
 carbon = {
-    # "type": "carbon_client",
+    "type": "carbon_client",
     "log_level": "INFO",
     "interval": 1,
     "remote_hosts": [
         "127.0.0.1:2003"
-    ]
+    ],
+    "name_mapping": (
+        "name",
+        "value"
+    )
 }
 
 influxdb = {
@@ -45,7 +56,7 @@ influxdb = {
 }
 
 prometheus = {
-    # "type": "prometheus_exporter",
+    "type": "prometheus_exporter",
     "log_level": "INFO",
     "interval": 60,
     "local_port": 9090,

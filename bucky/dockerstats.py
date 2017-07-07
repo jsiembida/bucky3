@@ -44,7 +44,7 @@ class DockerStatsCollector(common.MetricsSrcProcess):
         buf.append(("docker_memory", {'used_bytes': int(stats['usage'])}, timestamp, labels))
 
     def recoverable_tick(self):
-        timestamp, buf = int(time.time()), []
+        timestamp, buf = time.time(), []
         try:
             for i, container in enumerate(self.docker_client.api.containers(size=True)):
                 labels = container['Labels']

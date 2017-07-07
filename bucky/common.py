@@ -134,7 +134,7 @@ class MetricsProcess(multiprocessing.Process):
                 interval = max(self.next_interval, interval, 1)
                 self.next_interval = min(interval + interval, 180)
                 self.next_tick = now + self.next_interval
-                cfg.log.info("Tick error, next tick in %f secs", self.next_interval)
+                cfg.log.info("Tick error, next tick in %d secs", int(self.next_interval))
         else:
             pass
 
@@ -149,19 +149,22 @@ class MetricsDstProcess(MetricsProcess):
 
     def work(self):
         while True:
-            samples = self.src_pipe.recv()
-            if samples:
-                for sample in samples:
-                    if type(sample[1]) is dict:
-                        self.process_metrics(*sample)
-                    else:
-                        self.process_metric(*sample)
+            batch = self.src_pipe.recv()
+            if batch:
+                self.process_batch(batch)
 
-    def process_metrics(self, name, values, timestamp, metadata=None):
+    def process_batch(self, batch):
+        for sample in batch:
+            if type(sample[1]) is dict:
+                self.process_values(*sample)
+            else:
+                self.process_value(*sample)
+
+    def process_values(self, name, values, timestamp, metadata=None):
         raise NotImplementedError()
 
-    def process_metric(self, name, value, timestamp, metadata=None):
-        self.process_metrics(name, {'value': value}, timestamp, metadata)
+    def process_value(self, name, value, timestamp, metadata=None):
+        self.process_values(name, {'value': value}, timestamp, metadata)
 
 
 class MetricsSrcProcess(MetricsProcess):
@@ -228,3 +231,42 @@ class TCPConnector(HostResolver):
             remote_ip, remote_port = random.choice(self.resolve_hosts())
             sock.connect((remote_ip, remote_port))
         return sock
+
+
+class MetricsPushProcess(MetricsDstProcess):
+    def __init__(self, *args, default_port=None):
+        super().__init__(*args)
+        self.flush_timestamp = 0
+        self.buffer = []
+        self.socket = None
+        self.default_port = default_port
+        self.resolved_hosts = None
+        self.resolved_hosts_timestamp = 0
+
+    def process_batch(self, batch):
+        super().process_batch(batch)
+        self.tick()
+        self.trim_buffer()
+
+    def buffer_flush_needed(self, timestamp):
+        if len(self.buffer) > 10:
+            return True
+        return (timestamp - self.flush_timestamp) >= cfg.interval and len(self.buffer)
+
+    def recoverable_tick(self):
+        now = time.time()
+        if self.buffer_flush_needed(now):
+            try:
+                cfg.log.debug("Flushing %d entries from buffer", len(self.buffer))
+                self.flush_buffer()
+                self.buffer = []
+                self.flush_timestamp = now
+            except (PermissionError, ConnectionError):
+                cfg.log.exception("Connection error")
+                self.socket = None  # Python will trigger close() when GCing it.
+                return False
+        return True
+
+    def trim_buffer(self):
+        if len(self.buffer) > 1000:
+            self.buffer = self.buffer[-1000:]
