@@ -40,7 +40,7 @@ class SystemStatsCollector(common.MetricsSrcProcess):
             return val not in blacklist
         return True
 
-    def read_activity_stats(self, timestamp, buf):
+    def read_activity_stats(self, timestamp):
         activity_stats = {}
         with open('/proc/stat') as f:
             for l in f.readlines():
@@ -62,7 +62,7 @@ class SystemStatsCollector(common.MetricsSrcProcess):
                     if not cpu_suffix:
                         continue
                     cpu_stats = {k: int(v) for k, v in zip(self.CPU_FIELDS, tokens)}
-                    buf.append(("system_cpu", cpu_stats, timestamp, dict(name=cpu_suffix)))
+                    self.buffer.append(("system_cpu", cpu_stats, timestamp, dict(name=cpu_suffix)))
         with open('/proc/loadavg') as f:
             for l in f.readlines():
                 tokens = l.strip().split()
@@ -72,9 +72,9 @@ class SystemStatsCollector(common.MetricsSrcProcess):
                 activity_stats['load_5m'] = float(tokens[1])
                 activity_stats['load_15m'] = float(tokens[2])
         if activity_stats:
-            buf.append(("system_activity", activity_stats, timestamp))
+            self.buffer.append(("system_activity", activity_stats, timestamp))
 
-    def read_filesystem_stats(self, timestamp, buf, blacklist, whitelist):
+    def read_filesystem_stats(self, timestamp, blacklist, whitelist):
         with open('/proc/mounts') as f:
             for l in f.readlines():
                 tokens = l.strip().split()
@@ -98,12 +98,12 @@ class SystemStatsCollector(common.MetricsSrcProcess):
                         'free_inodes': int(stats.f_favail),
                         'total_inodes': total_inodes
                     }
-                    buf.append(("system_filesystem", df_stats, timestamp,
-                                dict(device=mount_target, name=mount_path, type=mount_filesystem)))
+                    self.buffer.append(("system_filesystem", df_stats, timestamp,
+                                        dict(device=mount_target, name=mount_path, type=mount_filesystem)))
                 except OSError:
                     pass
 
-    def read_interface_stats(self, timestamp, buf, blacklist, whitelist):
+    def read_interface_stats(self, timestamp, blacklist, whitelist):
         with open('/proc/net/dev') as f:
             for l in f.readlines():
                 tokens = l.strip().split()
@@ -115,9 +115,9 @@ class SystemStatsCollector(common.MetricsSrcProcess):
                 if not self.check_lists(interface_name, blacklist, whitelist):
                     continue
                 interface_stats = {k: int(v) for k, v in zip(self.INTERFACE_FIELDS, tokens) if k}
-                buf.append(("system_interface", interface_stats, timestamp, dict(name=interface_name)))
+                self.buffer.append(("system_interface", interface_stats, timestamp, dict(name=interface_name)))
 
-    def read_memory_stats(self, timestamp, buf):
+    def read_memory_stats(self, timestamp):
         with open('/proc/meminfo') as f:
             memory_stats = {}
             for l in f.readlines():
@@ -131,9 +131,9 @@ class SystemStatsCollector(common.MetricsSrcProcess):
                 if name in self.MEMORY_FIELDS:
                     memory_stats[self.MEMORY_FIELDS[name]] = int(tokens[1]) * 1024
             if memory_stats:
-                buf.append(("system_memory", memory_stats, timestamp))
+                self.buffer.append(("system_memory", memory_stats, timestamp))
 
-    def read_disk_stats(self, timestamp, buf, blacklist, whitelist):
+    def read_disk_stats(self, timestamp, blacklist, whitelist):
         with open('/proc/diskstats') as f:
             for l in f.readlines():
                 tokens = l.strip().split()
@@ -145,14 +145,13 @@ class SystemStatsCollector(common.MetricsSrcProcess):
                 disk_stats = {k: int(v) for k, v in zip(self.DISK_FIELDS, tokens[3:])}
                 disk_stats['read_bytes'] = disk_stats['read_sectors'] * 512
                 disk_stats['write_bytes'] = disk_stats['write_sectors'] * 512
-                buf.append(("system_disk", disk_stats, timestamp, dict(name=disk_name)))
+                self.buffer.append(("system_disk", disk_stats, timestamp, dict(name=disk_name)))
 
-    def tick(self):
-        timestamp, buf = time.time(), []
-        self.read_activity_stats(timestamp, buf)
-        self.read_memory_stats(timestamp, buf)
-        self.read_interface_stats(timestamp, buf, *self.get_lists('interface'))
-        self.read_filesystem_stats(timestamp, buf, *self.get_lists('filesystem'))
-        self.read_disk_stats(timestamp, buf, *self.get_lists('disk'))
-        self.send_metrics(buf)
-        return True
+    def flush(self):
+        timestamp = round(time.time(), 3)
+        self.read_activity_stats(timestamp)
+        self.read_memory_stats(timestamp)
+        self.read_interface_stats(timestamp, *self.get_lists('interface'))
+        self.read_filesystem_stats(timestamp, *self.get_lists('filesystem'))
+        self.read_disk_stats(timestamp, *self.get_lists('disk'))
+        return super().flush()

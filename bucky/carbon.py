@@ -23,10 +23,10 @@ class CarbonClient(common.MetricsPushProcess, common.TCPConnector):
     def __init__(self, *args):
         super().__init__(*args, default_port=2003)
 
-    def flush_buffer(self):
+    def push_buffer(self):
         # For TCP we probably can just pump all buffer into the wire.
         self.socket = self.socket or self.get_tcp_socket(connect=True)
-        payload = '\n'.join(self.buffer).encode()
+        payload = ''.join(self.buffer).encode()
         self.socket.sendall(payload)
 
     def build_name(self, metadata):
@@ -35,8 +35,8 @@ class CarbonClient(common.MetricsPushProcess, common.TCPConnector):
 
     def process_values(self, name, values, timestamp, metadata=None):
         metadata = metadata or {}
-        metadata.update(name=name)
+        metadata.update(bucket=name)
         for k, v in values.items():
             metadata.update(value=k)
             name = self.build_name(metadata)
-            self.buffer.append("%s %s %s" % (name, v, int(timestamp)))
+            self.buffer.append("%s %s %s\n" % (name, v, int(timestamp)))

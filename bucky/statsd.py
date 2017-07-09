@@ -30,34 +30,32 @@ class StatsDServer(common.MetricsSrcProcess, common.UDPConnector):
         self.gauges = {}
         self.counters = {}
         self.sets = {}
-        self.current_interval = None
-        self.last_flush_timestamp = None
+        self.current_timestamp = self.last_timestamp = time.monotonic()
         self.key_res = (
             (re.compile("\s+"), "_"),
             (re.compile("\/"), "-"),
             (re.compile("[^a-zA-Z_\-0-9\.]"), "")
         )
 
-    def tick(self):
-        timestamp, buf = time.time(), []
-        if self.last_flush_timestamp:
-            self.current_interval = timestamp - self.last_flush_timestamp
-        else:
-            self.current_interval = cfg.interval
-        self.enqueue_timers(timestamp, buf)
-        self.enqueue_counters(timestamp, buf)
-        self.enqueue_gauges(timestamp, buf)
-        self.enqueue_sets(timestamp, buf)
-        self.send_metrics(buf)
-        self.last_flush_timestamp = timestamp
+    def flush(self):
+        self.last_timestamp = self.current_timestamp
+        self.current_timestamp = time.monotonic()
+        timestamp = round(time.time(), 3)
+        self.enqueue_timers(timestamp)
+        self.enqueue_counters(timestamp)
+        self.enqueue_gauges(timestamp)
+        self.enqueue_sets(timestamp)
+        return super().flush()
 
-    def work(self):
+    def run(self):
+        super().run(loop=False)
         while True:
             self.socket = self.socket or self.get_udp_socket(bind=True)
             data, addr = self.socket.recvfrom(65535)
             self.handle_packet(data, addr)
 
-    def enqueue_timers(self, timestamp, buf):
+    def enqueue_timers(self, timestamp):
+        interval = self.current_timestamp - self.last_timestamp
         timeout = cfg.timers_timeout
         for k, (timer_timestamp, v) in tuple(self.timers.items()):
             if timestamp - timer_timestamp > timeout:
@@ -104,7 +102,7 @@ class StatsDServer(common.MetricsSrcProcess, common.UDPConnector):
                 timer_stats["upper"] = float(vmax)
                 timer_stats["lower"] = float(vmin)
                 timer_stats["count"] = float(count)
-                timer_stats["count_ps"] = float(count) / self.current_interval
+                timer_stats["count_ps"] = float(count) / interval
                 mid = int(count / 2)
                 median = (v[mid - 1] + v[mid]) / 2.0 if count % 2 == 0 else v[mid]
                 timer_stats["median"] = float(median)
@@ -116,36 +114,37 @@ class StatsDServer(common.MetricsSrcProcess, common.UDPConnector):
                 timer_stats["std"] = float(stddev)
 
             if timer_stats:
-                buf.append((cfg.timers_name, timer_stats, timestamp, dict(k)))
+                self.buffer.append((cfg.timers_name, timer_stats, timestamp, dict(k)))
 
             self.timers[k] = timer_timestamp, []
 
-    def enqueue_sets(self, timestamp, buf):
+    def enqueue_sets(self, timestamp):
         timeout = cfg.sets_timeout
         for k, (set_timestamp, v) in tuple(self.sets.items()):
             if timestamp - set_timestamp <= timeout:
-                buf.append((cfg.sets_name, {"count": float(len(v))}, timestamp, dict(k)))
+                self.buffer.append((cfg.sets_name, {"count": float(len(v))}, timestamp, dict(k)))
                 self.sets[k] = set_timestamp, set()
             else:
                 del self.sets[k]
 
-    def enqueue_gauges(self, timestamp, buf):
+    def enqueue_gauges(self, timestamp):
         timeout = cfg.gauges_timeout
         for k, (gauge_timestamp, v) in tuple(self.gauges.items()):
             if timestamp - gauge_timestamp <= timeout:
-                buf.append((cfg.gauges_name, float(v), timestamp, dict(k)))
+                self.buffer.append((cfg.gauges_name, float(v), timestamp, dict(k)))
             else:
                 del self.gauges[k]
 
-    def enqueue_counters(self, timestamp, buf):
+    def enqueue_counters(self, timestamp):
+        interval = self.current_timestamp - self.last_timestamp
         timeout = cfg.counters_timeout
         for k, (counter_timestamp, v) in tuple(self.counters.items()):
             if timestamp - counter_timestamp <= timeout:
                 stats = {
-                    'rate': float(v) / self.current_interval,
+                    'rate': float(v) / interval,
                     'count': float(v)
                 }
-                buf.append((cfg.counters_name, stats, timestamp, dict(k)))
+                self.buffer.append((cfg.counters_name, stats, timestamp, dict(k)))
                 self.counters[k] = counter_timestamp, 0
             else:
                 del self.counters[k]

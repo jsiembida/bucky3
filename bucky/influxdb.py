@@ -7,7 +7,7 @@ class InfluxDBClient(common.MetricsPushProcess, common.UDPConnector):
     def __init__(self, *args):
         super().__init__(*args, default_port=8086)
 
-    def flush_buffer(self):
+    def push_buffer(self):
         # For UDP we want to chunk it up into smaller packets.
         self.socket = self.socket or self.get_udp_socket()
         chunk_size = 5

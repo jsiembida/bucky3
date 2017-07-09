@@ -18,6 +18,7 @@
 import os
 import sys
 import time
+import signal
 import multiprocessing
 import bucky.cfg as cfg
 import bucky.common as common
@@ -49,88 +50,98 @@ def main(argv=sys.argv):
         print("Error...", file=sys.stderr)
         sys.exit(1)
 
-    src_subprocesses, dst_subprocesses = {}, {}
+    log, src_group, dst_group = None, {}, {}
 
-    def shutdown(subprocesses):
+    def terminate(group):
         err = 0
-        for timestamps, p, arg in subprocesses.values():
+        for timestamps, p, args in group.values():
             if p and p.exitcode is None:
-                cfg.log.info("Terminating module %s", p.name)
+                log.info("Terminating module %s", p.name)
                 p.terminate()
-        for timestamps, p, arg in subprocesses.values():
+        for timestamps, p, args in group.values():
             p.join(1)
             if p.exitcode is None:
-                cfg.log.warning("Module %s still running, killing", p.name)
-                err = 1
+                log.warning("Module %s still running, killing", p.name)
+                err += 1
                 os.kill(p.pid, 9)
                 p.join()
         return err
 
-    def healthcheck(subprocesses):
-        def start_module(module_name, module_class, timestamps, arg):
+    def terminate_and_exit(err=0):
+        err += terminate(src_group)
+        err += terminate(dst_group)
+        sys.exit(err != 0)
+
+    def healthcheck(group):
+        def start(module_name, module_class, timestamps, args):
             now = time.time()
             timestamps.append(now)
             timestamps = timestamps[-10:]
-            p = module_class(module_name, config_file, arg)
-            cfg.log.info("Starting module %s", p.name)
+            p = module_class(module_name, config_file, *args)
+            log.info("Starting module %s", p.name)
             p.start()
-            return timestamps, p, arg
+            return timestamps, p, args
 
         err = 0
 
-        for (module_name, module_class), (timestamps, p, arg) in subprocesses.items():
+        for (module_name, module_class), (timestamps, p, args) in group.items():
             if p is None:
-                subprocesses[(module_name, module_class)] = start_module(module_name, module_class, timestamps, arg)
-                continue
-            if p.exitcode is not None:
-                cfg.log.warning("Module %s has exited, trying to recover", p.name)
+                group[(module_name, module_class)] = start(module_name, module_class, timestamps, args)
+            elif p.exitcode is not None:
+                log.warning("Module %s has exited, trying to recover", p.name)
                 p.join()
                 if len(timestamps) > 5:
                     average_time_between_starts = sum(
                         timestamps[i] - timestamps[i - 1] for i in range(1, len(timestamps))
                     ) / (len(timestamps) - 1)
                     if average_time_between_starts < 60:
-                        cfg.log.critical("Module %s keeps failing, cannot recover", p.name)
-                        err = 1
+                        log.critical("Module %s keeps failing, cannot recover", p.name)
+                        err += 1
                         continue
-                subprocesses[(module_name, module_class)] = start_module(module_name, module_class, timestamps, arg)
-                continue
-            cfg.log.debug("Module %s is up", p.name)
+                group[(module_name, module_class)] = start(module_name, module_class, timestamps, args)
+            else:
+                log.debug("Module %s is up", p.name)
 
         return err
 
-    def terminate(err=0):
-        err += shutdown(src_subprocesses)
-        err += shutdown(dst_subprocesses)
-        sys.exit(err != 0)
+    def prepare_modules():
+        src_buf, dst_buf = [], []
 
-    common.prepare_module('bucky3', config_file, lambda: True, terminate)
+        for k, v in vars(cfg).items():
+            if not k.startswith('_') and type(v) == dict and 'module_type' in v:
+                module_name, module_type = k, v['module_type']
+                module_class = MODULES[module_type]
+                if issubclass(module_class, common.MetricsSrcProcess):
+                    src_buf.append((module_name, module_class))
+                elif issubclass(module_class, common.MetricsDstProcess):
+                    dst_buf.append((module_name, module_class))
+                else:
+                    raise ValueError("Invalid module type")
 
-    src_buf, dst_buf = [], []
+        src, dst, pipes = {}, {}, []
 
-    for k, v in vars(cfg).items():
-        if not k.startswith('_') and type(v) == dict and 'type' in v:
-            module_name, module_type = k, v['type']
-            module_class = MODULES[module_type]
-            if issubclass(module_class, common.MetricsSrcProcess):
-                src_buf.append((module_name, module_class))
-            elif issubclass(module_class, common.MetricsDstProcess):
-                dst_buf.append((module_name, module_class))
-            else:
-                raise ValueError("Invalid module type")
+        for module_name, module_class in dst_buf:
+            send, recv = multiprocessing.Pipe()
+            dst[(module_name, module_class)] = [], None, (recv,)
+            pipes.append(send)
+        for module_name, module_class in src_buf:
+            src[(module_name, module_class)] = [], None, (pipes,)
 
-    pipes = []
-    for module_name, module_class in dst_buf:
-        send, recv = multiprocessing.Pipe()
-        dst_subprocesses[(module_name, module_class)] = [], None, recv
-        pipes.append(send)
-    for module_name, module_class in src_buf:
-        src_subprocesses[(module_name, module_class)] = [], None, pipes
+        return src, dst
+
+    def termination_handler(signal_number, stack_frame):
+        terminate_and_exit(0)
+
+    signal.signal(signal.SIGINT, termination_handler)
+    signal.signal(signal.SIGTERM, termination_handler)
+    common.load_config(config_file)
+    log = common.setup_logging('bucky3')
+    src_group, dst_group = prepare_modules()
 
     while True:
-        err = healthcheck(src_subprocesses) + healthcheck(dst_subprocesses)
+        err = healthcheck(src_group) + healthcheck(dst_group)
         if err:
-            terminate(err)
+            terminate_and_exit(err)
         time.sleep(10)
 
 
