@@ -3,14 +3,13 @@
 import time
 import docker
 import requests.exceptions
-import bucky.cfg as cfg
 import bucky.common as common
 
 
 class DockerStatsCollector(common.MetricsSrcProcess):
     def __init__(self, *args):
         super().__init__(*args)
-        api_version = getattr(cfg, 'api_version', None)
+        api_version = self.cfg.get('api_version', None)
         if api_version:
             self.docker_client = docker.client.from_env(version=api_version)
         else:

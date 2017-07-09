@@ -2,7 +2,6 @@
 
 import os
 import time
-import bucky.cfg as cfg
 import bucky.common as common
 
 
@@ -29,8 +28,8 @@ class SystemStatsCollector(common.MetricsSrcProcess):
     }
 
     def get_lists(self, name):
-        blacklist = getattr(cfg, name + '_blacklist', None)
-        whitelist = getattr(cfg, name + '_whitelist', None)
+        blacklist = self.cfg.get(name + '_blacklist', None)
+        whitelist = self.cfg.get(name + '_whitelist', None)
         return blacklist, whitelist
 
     def check_lists(self, val, blacklist, whitelist):

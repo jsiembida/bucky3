@@ -3,7 +3,6 @@
 import time
 import threading
 import http.server
-import bucky.cfg as cfg
 import bucky.common as common
 
 
@@ -49,15 +48,16 @@ class PrometheusExporter(common.MetricsDstProcess):
         return line
 
     def loop(self):
-        host = getattr(cfg, "local_host", "127.0.0.1")
-        port = getattr(cfg, "local_port", 9090)
-        path = getattr(cfg, "http_path", "metrics")
+        host = self.cfg.get("local_host", "127.0.0.1")
+        port = self.cfg.get("local_port", 9090)
+        path = self.cfg.get("http_path", "metrics")
         self.start_http_server(host, port, path)
         super().loop()
 
     def flush(self):
         now = time.time()
-        old_keys = [k for k, (timestamp, v, l) in self.buffer.items() if (now - timestamp) > cfg.values_timeout]
+        timeout = self.cfg['values_timeout']
+        old_keys = [k for k, (timestamp, v, l) in self.buffer.items() if (now - timestamp) > timeout]
         for k in old_keys:
             self.log.debug("Removing old key: %s", str(k))
             del self.buffer[k]

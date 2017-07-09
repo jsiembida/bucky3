@@ -20,7 +20,6 @@ import sys
 import time
 import signal
 import multiprocessing
-import bucky.cfg as cfg
 import bucky.common as common
 import bucky.carbon as carbon
 import bucky.statsd as statsd
@@ -50,7 +49,7 @@ def main(argv=sys.argv):
         print("Error...", file=sys.stderr)
         sys.exit(1)
 
-    log, src_group, dst_group = None, {}, {}
+    cfg, log, src_group, dst_group = None, None, {}, {}
 
     def terminate(group):
         err = 0
@@ -107,7 +106,7 @@ def main(argv=sys.argv):
     def prepare_modules():
         src_buf, dst_buf = [], []
 
-        for k, v in vars(cfg).items():
+        for k, v in cfg.items():
             if not k.startswith('_') and type(v) == dict and 'module_type' in v:
                 module_name, module_type = k, v['module_type']
                 module_class = MODULES[module_type]
@@ -134,8 +133,8 @@ def main(argv=sys.argv):
 
     signal.signal(signal.SIGINT, termination_handler)
     signal.signal(signal.SIGTERM, termination_handler)
-    common.load_config(config_file)
-    log = common.setup_logging('bucky3')
+    cfg = common.load_config(config_file)
+    log = common.setup_logging(cfg, 'bucky3')
     src_group, dst_group = prepare_modules()
 
     while True:

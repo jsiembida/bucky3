@@ -18,7 +18,6 @@
 import re
 import math
 import time
-import bucky.cfg as cfg
 import bucky.common as common
 
 
@@ -56,7 +55,7 @@ class StatsDServer(common.MetricsSrcProcess, common.UDPConnector):
 
     def enqueue_timers(self, timestamp):
         interval = self.current_timestamp - self.last_timestamp
-        timeout = cfg.timers_timeout
+        timeout = self.cfg['timers_timeout']
         for k, (timer_timestamp, v) in tuple(self.timers.items()):
             if timestamp - timer_timestamp > timeout:
                 del self.timers[k]
@@ -81,7 +80,7 @@ class StatsDServer(common.MetricsSrcProcess, common.UDPConnector):
                     cumulative_values.append(value + cumulative_values[i - 1])
                     cumulative_squares.append(value * value + cumulative_squares[i - 1])
 
-                for t in cfg.percentile_thresholds:
+                for t in self.cfg['percentile_thresholds']:
                     t_index = int(math.floor(t / 100.0 * count))
                     if t_index == 0:
                         continue
@@ -114,37 +113,37 @@ class StatsDServer(common.MetricsSrcProcess, common.UDPConnector):
                 timer_stats["std"] = float(stddev)
 
             if timer_stats:
-                self.buffer.append((cfg.timers_name, timer_stats, timestamp, dict(k)))
+                self.buffer.append((self.cfg['timers_name'], timer_stats, timestamp, dict(k)))
 
             self.timers[k] = timer_timestamp, []
 
     def enqueue_sets(self, timestamp):
-        timeout = cfg.sets_timeout
+        timeout = self.cfg['sets_timeout']
         for k, (set_timestamp, v) in tuple(self.sets.items()):
             if timestamp - set_timestamp <= timeout:
-                self.buffer.append((cfg.sets_name, {"count": float(len(v))}, timestamp, dict(k)))
+                self.buffer.append((self.cfg['sets_name'], {"count": float(len(v))}, timestamp, dict(k)))
                 self.sets[k] = set_timestamp, set()
             else:
                 del self.sets[k]
 
     def enqueue_gauges(self, timestamp):
-        timeout = cfg.gauges_timeout
+        timeout = self.cfg['gauges_timeout']
         for k, (gauge_timestamp, v) in tuple(self.gauges.items()):
             if timestamp - gauge_timestamp <= timeout:
-                self.buffer.append((cfg.gauges_name, float(v), timestamp, dict(k)))
+                self.buffer.append((self.cfg['gauges_name'], float(v), timestamp, dict(k)))
             else:
                 del self.gauges[k]
 
     def enqueue_counters(self, timestamp):
         interval = self.current_timestamp - self.last_timestamp
-        timeout = cfg.counters_timeout
+        timeout = self.cfg['counters_timeout']
         for k, (counter_timestamp, v) in tuple(self.counters.items()):
             if timestamp - counter_timestamp <= timeout:
                 stats = {
                     'rate': float(v) / interval,
                     'count': float(v)
                 }
-                self.buffer.append((cfg.counters_name, stats, timestamp, dict(k)))
+                self.buffer.append((self.cfg['counters_name'], stats, timestamp, dict(k)))
                 self.counters[k] = counter_timestamp, 0
             else:
                 del self.counters[k]

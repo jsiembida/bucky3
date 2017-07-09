@@ -39,15 +39,10 @@ def load_config(config_file, module_name=None):
             module_config = new_config.pop(module_name)
             new_config.update(module_config)
 
-    unused_config_keys = set(vars(cfg).keys()) - set(new_config.keys())
-    for k, v in new_config.items():
-        setattr(cfg, k, v)
-    for k in unused_config_keys:
-        if not k.startswith('_'):
-            delattr(cfg, k)
+    return new_config
 
 
-def setup_logging(module_name=None):
+def setup_logging(cfg, module_name=None):
     if module_name:
         # Reinit those in subprocesses to avoid races on the underlying streams
         sys.stdout = io.TextIOWrapper(io.FileIO(1, mode='wb', closefd=False))
@@ -55,7 +50,7 @@ def setup_logging(module_name=None):
     root = logging.getLogger(module_name)
     for h in list(root.handlers):
         root.removeHandler(h)
-    root.setLevel(getattr(cfg, 'log_level', 'INFO'))
+    root.setLevel(cfg.get('log_level', 'INFO'))
     handler = logging.StreamHandler()
     formatter = logging.Formatter("[%(asctime)-15s][%(levelname)s] %(name)s(%(process)d) - %(message)s")
     handler.setFormatter(formatter)
@@ -82,7 +77,7 @@ class MetricsProcess(multiprocessing.Process):
         self.schedule_tick()
 
     def setup_tick(self):
-        self.tick_interval = getattr(cfg, 'flush_interval', None) or None
+        self.tick_interval = self.cfg.get('flush_interval', None) or None
         if self.tick_interval:
             self.next_tick = time.monotonic() + self.tick_interval
             signal.signal(signal.SIGALRM, self.tick_handler)
@@ -114,9 +109,9 @@ class MetricsProcess(multiprocessing.Process):
         signal.signal(signal.SIGCHLD, signal.SIG_DFL)
         signal.signal(signal.SIGALRM, signal.SIG_IGN)
 
-        load_config(self.config_file, self.name)
-        self.log = setup_logging(self.name)
-        self.buffer_limit = getattr(cfg, 'buffer_limit', 10000)
+        self.cfg = load_config(self.config_file, self.name)
+        self.log = setup_logging(self.cfg, self.name)
+        self.buffer_limit = self.cfg.get('buffer_limit', 10000)
         self.setup_tick()
         self.log.info("Module set up")
 
@@ -149,7 +144,7 @@ class MetricsDstProcess(MetricsProcess):
                 time.sleep(1)
 
     def process_batch(self, batch):
-        config_metadata = getattr(cfg, 'metadata', None)
+        config_metadata = self.cfg.get('metadata', None)
 
         self.log.debug("Received %d samples", len(batch))
 
@@ -205,7 +200,7 @@ class HostResolver:
         now = time.monotonic()
         if self.resolved_hosts is None or (now - self.resolved_hosts_timestamp) > 180:
             resolved_hosts = set()
-            for host in cfg.remote_hosts:
+            for host in self.cfg['remote_hosts']:
                 for ip, port in self.parse_address(host, self.default_port):
                     self.log.debug("Resolved %s as %s:%d", host, ip, port)
                     resolved_hosts.add((ip, port))
@@ -217,8 +212,8 @@ class HostResolver:
 
 class UDPConnector(HostResolver):
     def get_udp_socket(self, bind=False):
-        ip = getattr(cfg, 'local_host', '0.0.0.0')
-        port = getattr(cfg, 'local_port', 0)
+        ip = self.cfg.get('local_host', '0.0.0.0')
+        port = self.cfg.get('local_port', 0)
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         if bind:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -229,8 +224,8 @@ class UDPConnector(HostResolver):
 
 class TCPConnector(HostResolver):
     def get_tcp_socket(self, bind=False, connect=False):
-        ip = getattr(cfg, 'local_host', '0.0.0.0')
-        port = getattr(cfg, 'local_port', 0)
+        ip = self.cfg.get('local_host', '0.0.0.0')
+        port = self.cfg.get('local_port', 0)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if bind:
             sock.bind((ip, port))

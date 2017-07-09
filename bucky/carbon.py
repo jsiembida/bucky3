@@ -15,7 +15,6 @@
 # Copyright 2011 Cloudant, Inc.
 
 
-import bucky.cfg as cfg
 import bucky.common as common
 
 
@@ -30,7 +29,7 @@ class CarbonClient(common.MetricsPushProcess, common.TCPConnector):
         self.socket.sendall(payload)
 
     def build_name(self, metadata):
-        buf = [metadata[k] for k in cfg.name_mapping if k in metadata]
+        buf = [metadata[k] for k in self.cfg['name_mapping'] if k in metadata]
         return '.'.join(buf)
 
     def process_values(self, name, values, timestamp, metadata=None):
