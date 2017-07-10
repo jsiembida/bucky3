@@ -113,7 +113,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 timer_stats["std"] = float(stddev)
 
             if timer_stats:
-                self.buffer.append((self.cfg['timers_name'], timer_stats, timestamp, dict(k)))
+                self.buffer.append((self.cfg['timers_bucket'], timer_stats, timestamp, dict(k)))
 
             self.timers[k] = timer_timestamp, []
 
@@ -121,7 +121,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         timeout = self.cfg['sets_timeout']
         for k, (set_timestamp, v) in tuple(self.sets.items()):
             if timestamp - set_timestamp <= timeout:
-                self.buffer.append((self.cfg['sets_name'], {"count": float(len(v))}, timestamp, dict(k)))
+                self.buffer.append((self.cfg['sets_bucket'], {"count": float(len(v))}, timestamp, dict(k)))
                 self.sets[k] = set_timestamp, set()
             else:
                 del self.sets[k]
@@ -130,7 +130,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         timeout = self.cfg['gauges_timeout']
         for k, (gauge_timestamp, v) in tuple(self.gauges.items()):
             if timestamp - gauge_timestamp <= timeout:
-                self.buffer.append((self.cfg['gauges_name'], float(v), timestamp, dict(k)))
+                self.buffer.append((self.cfg['gauges_bucket'], float(v), timestamp, dict(k)))
             else:
                 del self.gauges[k]
 
@@ -143,7 +143,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                     'rate': float(v) / interval,
                     'count': float(v)
                 }
-                self.buffer.append((self.cfg['counters_name'], stats, timestamp, dict(k)))
+                self.buffer.append((self.cfg['counters_bucket'], stats, timestamp, dict(k)))
                 self.counters[k] = counter_timestamp, 0
             else:
                 del self.counters[k]

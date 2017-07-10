@@ -29,12 +29,14 @@ class CarbonClient(module.MetricsPushProcess, module.TCPConnector):
         self.socket.sendall(payload)
 
     def build_name(self, metadata):
-        buf = [metadata[k] for k in self.cfg['name_mapping'] if k in metadata]
+        found_mappings = tuple(k for k in self.cfg['name_mapping'] if k in metadata)
+        buf = [metadata.pop(k) for k in found_mappings]
+        buf.extend(metadata[k] for k in sorted(metadata.keys()))
         return '.'.join(buf)
 
-    def process_values(self, name, values, timestamp, metadata=None):
+    def process_values(self, bucket, values, timestamp, metadata=None):
         metadata = metadata or {}
-        metadata.update(bucket=name)
+        metadata.update(bucket=bucket)
         for k, v in values.items():
             metadata.update(value=k)
             name = self.build_name(metadata)

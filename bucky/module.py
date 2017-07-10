@@ -102,13 +102,11 @@ class MetricsDstProcess(MetricsProcess):
     def process_batch(self, batch):
         config_metadata = self.cfg.get('metadata', None)
 
-        self.log.debug("Received %d samples", len(batch))
-
         for sample in batch:
             if len(sample) == 4:
-                name, value, timestamp, metadata = sample
+                bucket, value, timestamp, metadata = sample
             else:
-                name, value, timestamp = sample
+                bucket, value, timestamp = sample
                 metadata = None
             if metadata:
                 metadata.update((k, v) for k, v in config_metadata.items() if k not in metadata)
@@ -116,15 +114,15 @@ class MetricsDstProcess(MetricsProcess):
                 metadata = config_metadata
 
             if type(value) is dict:
-                self.process_values(name, value, timestamp, metadata)
+                self.process_values(bucket, value, timestamp, metadata)
             else:
-                self.process_value(name, value, timestamp, metadata)
+                self.process_value(bucket, value, timestamp, metadata)
 
-    def process_values(self, name, values, timestamp, metadata=None):
+    def process_values(self, bucket, values, timestamp, metadata=None):
         raise NotImplementedError()
 
-    def process_value(self, name, value, timestamp, metadata=None):
-        self.process_values(name, {'value': value}, timestamp, metadata)
+    def process_value(self, bucket, value, timestamp, metadata=None):
+        self.process_values(bucket, {'value': value}, timestamp, metadata)
 
 
 class MetricsSrcProcess(MetricsProcess):
@@ -206,13 +204,14 @@ class MetricsPushProcess(MetricsDstProcess):
         self.trim_buffer()
 
     def trim_buffer(self):
-        if len(self.buffer) > self.buffer_limit:
+        buffer_len = len(self.buffer)
+        if buffer_len > self.buffer_limit:
             self.buffer = self.buffer[-int(self.buffer_limit / 2):]
+            self.log.debug("Buffer trimmed from %d to %d entries", buffer_len, len(self.buffer))
 
     def flush(self):
         if len(self.buffer):
             try:
-                self.log.debug("Flushing %d buffered entries", len(self.buffer))
                 self.push_buffer()
                 self.buffer = []
             except (PermissionError, ConnectionError):

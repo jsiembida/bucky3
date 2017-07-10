@@ -38,11 +38,11 @@ class PrometheusExporter(module.MetricsDstProcess):
         timestamp, value, line = self.buffer[k]
         if not line:
             # https://prometheus.io/docs/instrumenting/exposition_formats/
-            name, metadata = k[0], k[1:]
+            bucket, metadata = k[0], k[1:]
             metadata_str = ','.join(str(k) + '="' + str(v) + '"' for k, v in metadata)
             # Lines MUST end with \n (not \r\n), the last line MUST also end with \n
             # Otherwise, Prometheus will reject the whole scrape!
-            line = name + '{' + metadata_str + '} ' + str(value) + ' ' + str(int(timestamp * 1000)) + '\n'
+            line = bucket + '{' + metadata_str + '} ' + str(value) + ' ' + str(int(timestamp * 1000)) + '\n'
             self.buffer[k] = timestamp, value, line
         return line
 
@@ -61,11 +61,11 @@ class PrometheusExporter(module.MetricsDstProcess):
             del self.buffer[k]
         return True
 
-    def process_values(self, name, values, timestamp, metadata=None):
+    def process_values(self, bucket, values, timestamp, metadata=None):
         for k, v in values.items():
             metadata_dict = dict(value=k)
             if metadata:
                 metadata_dict.update(metadata)
-            metadata_tuple = (name,) + tuple((k, metadata_dict[k]) for k in sorted(metadata_dict.keys()))
+            metadata_tuple = (bucket,) + tuple((k, metadata_dict[k]) for k in sorted(metadata_dict.keys()))
             # The None below will get lazily rendered during HTTP req
             self.buffer[metadata_tuple] = timestamp, v, None

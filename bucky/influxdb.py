@@ -17,9 +17,9 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
             for ip, port in self.resolve_hosts():
                 self.socket.sendto(payload, (ip, port))
 
-    def process_values(self, name, values, timestamp, metadata=None):
+    def process_values(self, bucket, values, timestamp, metadata=None):
         # https://docs.influxdata.com/influxdb/v1.2/write_protocols/line_protocol_tutorial/
-        label_buf = [name]
+        label_buf = [bucket]
         if metadata:
             # InfluxDB docs recommend sorting tags
             for k in sorted(metadata.keys()):
