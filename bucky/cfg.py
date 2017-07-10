@@ -1,5 +1,5 @@
 
-log_level = "DEBUG"
+log_level = "INFO"
 
 flush_interval = 1
 
@@ -10,7 +10,7 @@ metadata = dict(
 )
 
 sysstats = dict(
-    module_type="system_stats",
+    # module_type="system_stats",
     disk_blacklist={
         "loop0", "loop1", "loop2", "loop3",
         "loop4", "loop5", "loop6", "loop7",
@@ -26,7 +26,7 @@ dockers = dict(
 )
 
 statsd = dict(
-    # module_type="statsd_server",
+    module_type="statsd_server",
     local_port=8125,
     timers_name="stats_timers",
     sets_name="stats_sets",
@@ -59,7 +59,7 @@ influxdb = dict(
 prometheus = dict(
     module_type="prometheus_exporter",
     local_port=9090,
-    local_host="0.0.0.0",
+    local_host="127.0.0.1",
     http_path="metrics",
     values_timeout=60,
 )

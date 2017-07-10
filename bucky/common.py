@@ -72,12 +72,13 @@ class MetricsProcess(multiprocessing.Process):
         signal.setitimer(signal.ITIMER_REAL, self.next_tick - now)
 
     def tick_handler(self, signal_number, stack_frame):
-        self.log.debug("Tick signal received")
+        self.log.debug("Tick received")
         self.tick()
         self.schedule_tick()
 
     def setup_tick(self):
         self.tick_interval = self.cfg.get('flush_interval', None) or None
+        self.flush_interval = self.tick_interval or 1
         if self.tick_interval:
             self.next_tick = time.monotonic() + self.tick_interval
             signal.signal(signal.SIGALRM, self.tick_handler)
@@ -90,7 +91,6 @@ class MetricsProcess(multiprocessing.Process):
             return
         if self.flush():
             self.flush_interval = self.tick_interval or 1
-            self.log.debug("Flush succeeded, next in %d secs", int(self.flush_interval))
         else:
             self.flush_interval = self.flush_interval + self.flush_interval
             self.flush_interval = min(self.flush_interval, 600)
@@ -102,18 +102,23 @@ class MetricsProcess(multiprocessing.Process):
         self.next_flush = now + self.flush_interval - 0.03
 
     def run(self, loop=True):
+        def termination_handler(signal_number, stack_frame):
+            self.log.info("Received signal %d", signal_number)
+            sys.exit(0)
+
         # We have to reset signals set up by master process to reasonable defaults
         # (because we inherited them via fork, which is most likely invalid in our context)
-        signal.signal(signal.SIGINT, signal.SIG_DFL)
-        signal.signal(signal.SIGTERM, signal.SIG_DFL)
-        signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+        signal.signal(signal.SIGINT, termination_handler)
+        signal.signal(signal.SIGTERM, termination_handler)
+        signal.signal(signal.SIGHUP, termination_handler)
+        signal.signal(signal.SIGCHLD, signal.SIG_IGN)
         signal.signal(signal.SIGALRM, signal.SIG_IGN)
 
         self.cfg = load_config(self.config_file, self.name)
         self.log = setup_logging(self.cfg, self.name)
         self.buffer_limit = self.cfg.get('buffer_limit', 10000)
         self.setup_tick()
-        self.log.info("Module set up")
+        self.log.info("Set up")
 
         if loop:
             self.loop()
@@ -218,7 +223,7 @@ class UDPConnector(HostResolver):
         if bind:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind((ip, port))
-            self.log.info("Bound UDP socket %s", str(sock.getsockname()))
+            self.log.info("Bound UDP socket %s:%d", ip, port)
         return sock
 
 
@@ -229,7 +234,7 @@ class TCPConnector(HostResolver):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if bind:
             sock.bind((ip, port))
-            self.log.info("Bound TCP socket %s", str(sock.getsockname()))
+            self.log.info("Bound TCP socket %s:%d", ip, port)
         if connect:
             remote_ip, remote_port = random.choice(self.resolve_hosts())
             sock.connect((remote_ip, remote_port))
@@ -256,7 +261,7 @@ class MetricsPushProcess(MetricsDstProcess):
     def flush(self):
         if len(self.buffer):
             try:
-                self.log.debug("Flushing %d entries from buffer", len(self.buffer))
+                self.log.debug("Flushing %d buffered entries", len(self.buffer))
                 self.push_buffer()
                 self.buffer = []
             except (PermissionError, ConnectionError):

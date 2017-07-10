@@ -49,21 +49,23 @@ def main(argv=sys.argv):
         print("Error...", file=sys.stderr)
         sys.exit(1)
 
-    cfg, log, src_group, dst_group = None, None, {}, {}
+    log, src_group, dst_group = None, {}, {}
 
     def terminate(group):
         err = 0
         for timestamps, p, args in group.values():
-            if p and p.exitcode is None:
-                log.info("Terminating module %s", p.name)
-                p.terminate()
-        for timestamps, p, args in group.values():
-            p.join(1)
-            if p.exitcode is None:
-                log.warning("Module %s still running, killing", p.name)
-                err += 1
-                os.kill(p.pid, 9)
-                p.join()
+            if p:
+                if p.exitcode is None:
+                    log.info("Stopping %s", p.name)
+                    p.terminate()
+                    p.join(1)
+                    if p.exitcode is None:
+                        log.warning("%s still running, killing", p.name)
+                        err += 1
+                        os.kill(p.pid, 9)
+                        p.join()
+                else:
+                    log.info("%s has already exited", p.name)
         return err
 
     def terminate_and_exit(err=0):
@@ -72,12 +74,11 @@ def main(argv=sys.argv):
         sys.exit(err != 0)
 
     def healthcheck(group):
-        def start(module_name, module_class, timestamps, args):
-            now = time.time()
-            timestamps.append(now)
+        def start(module_name, module_class, timestamps, args, message="Starting %s"):
+            timestamps.append(time.monotonic())
             timestamps = timestamps[-10:]
             p = module_class(module_name, config_file, *args)
-            log.info("Starting module %s", p.name)
+            log.info(message, p.name)
             p.start()
             return timestamps, p, args
 
@@ -87,23 +88,27 @@ def main(argv=sys.argv):
             if p is None:
                 group[(module_name, module_class)] = start(module_name, module_class, timestamps, args)
             elif p.exitcode is not None:
-                log.warning("Module %s has exited, trying to recover", p.name)
                 p.join()
                 if len(timestamps) > 5:
                     average_time_between_starts = sum(
                         timestamps[i] - timestamps[i - 1] for i in range(1, len(timestamps))
                     ) / (len(timestamps) - 1)
                     if average_time_between_starts < 60:
-                        log.critical("Module %s keeps failing, cannot recover", p.name)
+                        log.critical("%s keeps failing, cannot recover", p.name)
                         err += 1
                         continue
-                group[(module_name, module_class)] = start(module_name, module_class, timestamps, args)
+                if timestamps and (time.monotonic() - timestamps[-1]) < 1:
+                    log.warning("%s has stopped, too early for restart", p.name)
+                else:
+                    group[(module_name, module_class)] = start(
+                        module_name, module_class, timestamps, args, "%s has stopped, restarting"
+                    )
             else:
-                log.debug("Module %s is up", p.name)
+                log.debug("%s is up", p.name)
 
         return err
 
-    def prepare_modules():
+    def prepare_modules(cfg):
         src_buf, dst_buf = [], []
 
         for k, v in cfg.items():
@@ -131,17 +136,24 @@ def main(argv=sys.argv):
     def termination_handler(signal_number, stack_frame):
         terminate_and_exit(0)
 
+    def restart_handler(signal_number, stack_frame):
+        nonlocal log, src_group, dst_group
+        terminate(src_group)
+        terminate(dst_group)
+        cfg = common.load_config(config_file)
+        log = common.setup_logging(cfg, 'bucky3')
+        src_group, dst_group = prepare_modules(cfg)
+
     signal.signal(signal.SIGINT, termination_handler)
     signal.signal(signal.SIGTERM, termination_handler)
-    cfg = common.load_config(config_file)
-    log = common.setup_logging(cfg, 'bucky3')
-    src_group, dst_group = prepare_modules()
+    signal.signal(signal.SIGHUP, restart_handler)
 
+    restart_handler(None, None)
     while True:
         err = healthcheck(src_group) + healthcheck(dst_group)
         if err:
             terminate_and_exit(err)
-        time.sleep(10)
+        time.sleep(3)
 
 
 if __name__ == '__main__':

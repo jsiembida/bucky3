@@ -29,11 +29,10 @@ class PrometheusExporter(common.MetricsDstProcess):
 
         handler = type('PrometheusHandler', (http.server.BaseHTTPRequestHandler,),
                        {'do_GET': do_GET, 'log_message': log_message})
-        self.log.debug("Starting http server at %s:%d", host, port)
         http_server = http.server.HTTPServer((host, port), handler)
         http_thread = threading.Thread(target=lambda: http_server.serve_forever())
         http_thread.start()
-        self.log.info("Started server at %s:%d", host, port)
+        self.log.info("Started server at http://%s:%d/%s", host, port, path)
 
     def get_or_render_line(self, k):
         timestamp, value, line = self.buffer[k]
@@ -59,7 +58,6 @@ class PrometheusExporter(common.MetricsDstProcess):
         timeout = self.cfg['values_timeout']
         old_keys = [k for k, (timestamp, v, l) in self.buffer.items() if (now - timestamp) > timeout]
         for k in old_keys:
-            self.log.debug("Removing old key: %s", str(k))
             del self.buffer[k]
         return True
 
