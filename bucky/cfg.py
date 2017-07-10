@@ -1,16 +1,20 @@
 
+
+import os
+
+
 log_level = "INFO"
 
-flush_interval = 1
+flush_interval = 10
 
 metadata = dict(
-    team="my-team",
-    app="my-app",
-    host="my-host",
+    team=os.environ.get("TEAM", "my-team"),
+    app=os.environ.get("APP", "my-app"),
+    host=os.environ.get("HOST", "my-host"),
 )
 
 sysstats = dict(
-    # module_type="system_stats",
+    module_type="system_stats",
     disk_blacklist={
         "loop0", "loop1", "loop2", "loop3",
         "loop4", "loop5", "loop6", "loop7",
@@ -22,7 +26,7 @@ sysstats = dict(
 )
 
 dockers = dict(
-    # module_type="docker_stats",
+    module_type="docker_stats",
 )
 
 statsd = dict(
@@ -47,6 +51,7 @@ carbon = dict(
     name_mapping=(
         "bucket", "team", "app", "host", "name", "value",
     ),
+    flush_interval=1
 )
 
 influxdb = dict(
@@ -54,6 +59,7 @@ influxdb = dict(
     remote_hosts=(
         "127.0.0.1:8086",
     ),
+    flush_interval=1
 )
 
 prometheus = dict(
@@ -62,4 +68,5 @@ prometheus = dict(
     local_host="127.0.0.1",
     http_path="metrics",
     values_timeout=60,
+    flush_interval=60
 )

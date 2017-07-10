@@ -36,8 +36,8 @@ class CarbonClient(module.MetricsPushProcess, module.TCPConnector):
 
     def process_values(self, bucket, values, timestamp, metadata=None):
         metadata = metadata or {}
-        metadata.update(bucket=bucket)
         for k, v in values.items():
-            metadata.update(value=k)
-            name = self.build_name(metadata)
+            value_metadata = metadata.copy()
+            value_metadata.update(bucket=bucket, value=k)
+            name = self.build_name(value_metadata)
             self.buffer.append("%s %s %s\n" % (name, v, int(timestamp)))

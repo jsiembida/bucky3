@@ -2,6 +2,7 @@
 
 import os
 import time
+import platform
 import bucky.module as module
 
 
@@ -26,6 +27,11 @@ class SystemStatsCollector(module.MetricsSrcProcess):
         'SwapFree': 'swap_free_bytes',
         'SwapCached': 'swap_cached_bytes',
     }
+
+    def __init__(self, *args):
+        assert platform.system() == 'Linux'
+        assert platform.release() >= '3'
+        super().__init__(*args)
 
     def get_lists(self, name):
         blacklist = self.cfg.get(name + '_blacklist', None)
