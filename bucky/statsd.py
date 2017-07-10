@@ -18,10 +18,10 @@
 import re
 import math
 import time
-import bucky.common as common
+import bucky.module as module
 
 
-class StatsDServer(common.MetricsSrcProcess, common.UDPConnector):
+class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def __init__(self, *args):
         super().__init__(*args)
         self.socket = None

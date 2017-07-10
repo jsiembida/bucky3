@@ -15,10 +15,10 @@
 # Copyright 2011 Cloudant, Inc.
 
 
-import bucky.common as common
+import bucky.module as module
 
 
-class CarbonClient(common.MetricsPushProcess, common.TCPConnector):
+class CarbonClient(module.MetricsPushProcess, module.TCPConnector):
     def __init__(self, *args):
         super().__init__(*args, default_port=2003)
 

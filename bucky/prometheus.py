@@ -3,10 +3,10 @@
 import time
 import threading
 import http.server
-import bucky.common as common
+import bucky.module as module
 
 
-class PrometheusExporter(common.MetricsDstProcess):
+class PrometheusExporter(module.MetricsDstProcess):
     def __init__(self, *args):
         super().__init__(*args)
         self.buffer = {}

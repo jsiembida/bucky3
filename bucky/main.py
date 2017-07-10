@@ -21,6 +21,7 @@ import time
 import signal
 import multiprocessing
 import bucky.common as common
+import bucky.module as module
 import bucky.carbon as carbon
 import bucky.statsd as statsd
 import bucky.influxdb as influxdb
@@ -114,13 +115,15 @@ def main(argv=sys.argv):
         for k, v in cfg.items():
             if not k.startswith('_') and type(v) == dict and 'module_type' in v:
                 module_name, module_type = k, v['module_type']
-                module_class = MODULES[module_type]
-                if issubclass(module_class, common.MetricsSrcProcess):
+                module_class = MODULES.get(module_type, None)
+                if not module_class:
+                    raise ValueError("Invalid module type %s", module_type)
+                if issubclass(module_class, module.MetricsSrcProcess):
                     src_buf.append((module_name, module_class))
-                elif issubclass(module_class, common.MetricsDstProcess):
+                elif issubclass(module_class, module.MetricsDstProcess):
                     dst_buf.append((module_name, module_class))
                 else:
-                    raise ValueError("Invalid module type")
+                    raise ValueError("Invalid module class %s", module_class)
 
         src, dst, pipes = {}, {}, []
 

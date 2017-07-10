@@ -2,10 +2,10 @@
 
 import os
 import time
-import bucky.common as common
+import bucky.module as module
 
 
-class SystemStatsCollector(common.MetricsSrcProcess):
+class SystemStatsCollector(module.MetricsSrcProcess):
     # The order of cpu fields in /proc/stat
     CPU_FIELDS = ('user', 'nice', 'system', 'idle', 'wait', 'interrupt', 'softirq', 'steal')
     INTERFACE_FIELDS = ('rx_bytes', 'rx_packets', 'rx_errors', 'rx_dropped',

@@ -3,10 +3,10 @@
 import time
 import docker
 import requests.exceptions
-import bucky.common as common
+import bucky.module as module
 
 
-class DockerStatsCollector(common.MetricsSrcProcess):
+class DockerStatsCollector(module.MetricsSrcProcess):
     def __init__(self, *args):
         super().__init__(*args)
 

@@ -1,9 +1,9 @@
 
 
-import bucky.common as common
+import bucky.module as module
 
 
-class InfluxDBClient(common.MetricsPushProcess, common.UDPConnector):
+class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
     def __init__(self, *args):
         super().__init__(*args, default_port=8086)
 
