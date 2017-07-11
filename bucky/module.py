@@ -1,12 +1,15 @@
 
 
 import sys
-import time
 import socket
 import signal
 import random
 import multiprocessing
 import bucky.common as common
+
+from time import monotonic as monotonic_time
+from time import time as system_time
+from time import sleep as sleep
 
 
 class MetricsProcess(multiprocessing.Process):
@@ -17,7 +20,7 @@ class MetricsProcess(multiprocessing.Process):
         self.next_flush = 0
 
     def schedule_tick(self):
-        now = time.monotonic()
+        now = monotonic_time()
         while now + 0.3 >= self.next_tick:
             self.next_tick += self.tick_interval
         signal.setitimer(signal.ITIMER_REAL, self.next_tick - now)
@@ -31,16 +34,16 @@ class MetricsProcess(multiprocessing.Process):
         self.tick_interval = self.cfg.get('flush_interval', None) or None
         self.flush_interval = self.tick_interval or 1
         if self.tick_interval:
-            self.next_tick = time.monotonic() + self.tick_interval
+            self.next_tick = monotonic_time() + self.tick_interval
             signal.signal(signal.SIGALRM, self.tick_handler)
             signal.setitimer(signal.ITIMER_REAL, self.tick_interval)
 
     def tick(self):
-        now = time.monotonic()
+        now = monotonic_time()
         if now < self.next_flush:
             # self.log.debug("Flush held back, now is %f, should be at least %f", now, self.next_flush)
             return
-        if self.flush():
+        if self.flush(now, round(system_time(), 3)):
             self.flush_interval = self.tick_interval or 1
         else:
             self.flush_interval = self.flush_interval + self.flush_interval
@@ -76,7 +79,7 @@ class MetricsProcess(multiprocessing.Process):
 
     def loop(self):
         while True:
-            time.sleep(60)
+            sleep(60)
 
 
 class MetricsDstProcess(MetricsProcess):
@@ -97,7 +100,7 @@ class MetricsDstProcess(MetricsProcess):
                 if err > 10:
                     self.log.error("Input not ready, quitting")
                     return
-                time.sleep(1)
+                sleep(1)
 
     def process_batch(self, batch):
         config_metadata = self.cfg.get('metadata', None)
@@ -130,7 +133,7 @@ class MetricsSrcProcess(MetricsProcess):
         super().__init__(module_name, config_file)
         self.dst_pipes = dst_pipes
 
-    def flush(self):
+    def flush(self, monotonic_timestamp, system_timestamp):
         if self.buffer:
             for i in self.dst_pipes:
                 i.send(self.buffer)
@@ -151,7 +154,7 @@ class HostResolver:
         return {(ip, port) for ip in ipaddrlist}
 
     def resolve_hosts(self):
-        now = time.monotonic()
+        now = monotonic_time()
         if self.resolved_hosts is None or (now - self.resolved_hosts_timestamp) > 180:
             resolved_hosts = set()
             for host in self.cfg['remote_hosts']:
@@ -209,7 +212,7 @@ class MetricsPushProcess(MetricsDstProcess):
             self.buffer = self.buffer[-int(self.buffer_limit / 2):]
             self.log.debug("Buffer trimmed from %d to %d entries", buffer_len, len(self.buffer))
 
-    def flush(self):
+    def flush(self, monotonic_timestamp, system_timestamp):
         if len(self.buffer):
             try:
                 self.push_buffer()

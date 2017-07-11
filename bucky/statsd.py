@@ -17,7 +17,6 @@
 
 import re
 import math
-import time
 import bucky.module as module
 
 
@@ -29,22 +28,21 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.gauges = {}
         self.counters = {}
         self.sets = {}
-        self.current_timestamp = self.last_timestamp = time.monotonic()
+        self.current_timestamp = self.last_timestamp = module.monotonic_time()
         self.key_res = (
             (re.compile("\s+"), "_"),
             (re.compile("\/"), "-"),
             (re.compile("[^a-zA-Z_\-0-9\.]"), "")
         )
 
-    def flush(self):
+    def flush(self, monotonic_timestamp, system_timestamp):
         self.last_timestamp = self.current_timestamp
-        self.current_timestamp = time.monotonic()
-        timestamp = round(time.time(), 3)
-        self.enqueue_timers(timestamp)
-        self.enqueue_counters(timestamp)
-        self.enqueue_gauges(timestamp)
-        self.enqueue_sets(timestamp)
-        return super().flush()
+        self.current_timestamp = monotonic_timestamp
+        self.enqueue_timers(system_timestamp)
+        self.enqueue_counters(system_timestamp)
+        self.enqueue_gauges(system_timestamp)
+        self.enqueue_sets(system_timestamp)
+        return super().flush(monotonic_timestamp, system_timestamp)
 
     def run(self):
         super().run(loop=False)
@@ -151,7 +149,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def handle_packet(self, data, addr):
         # Adding a bit of extra sauce so clients can
         # send multiple samples in a single UDP packet.
-        timestamp, data = time.time(), data.decode()
+        timestamp, data = round(module.system_time(), 3), data.decode()
         for line in data.splitlines():
             line = line.strip()
             if line:

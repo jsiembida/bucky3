@@ -1,6 +1,5 @@
 
 
-import time
 import threading
 import http.server
 import bucky.module as module
@@ -53,10 +52,9 @@ class PrometheusExporter(module.MetricsDstProcess):
         self.start_http_server(host, port, path)
         super().loop()
 
-    def flush(self):
-        now = time.time()
+    def flush(self, monotonic_timestamp, system_timestamp):
         timeout = self.cfg['values_timeout']
-        old_keys = [k for k, (timestamp, v, l) in self.buffer.items() if (now - timestamp) > timeout]
+        old_keys = [k for k, (timestamp, v, l) in self.buffer.items() if (system_timestamp - timestamp) > timeout]
         for k in old_keys:
             del self.buffer[k]
         return True

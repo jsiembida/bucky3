@@ -1,13 +1,11 @@
 
 
 import os
-import time
 import platform
 import bucky.module as module
 
 
 class SystemStatsCollector(module.MetricsSrcProcess):
-    # The order of cpu fields in /proc/stat
     CPU_FIELDS = ('user', 'nice', 'system', 'idle', 'wait', 'interrupt', 'softirq', 'steal')
     INTERFACE_FIELDS = ('rx_bytes', 'rx_packets', 'rx_errors', 'rx_dropped',
                         None, None, None, None,
@@ -29,8 +27,7 @@ class SystemStatsCollector(module.MetricsSrcProcess):
     }
 
     def __init__(self, *args):
-        assert platform.system() == 'Linux'
-        assert platform.release() >= '3'
+        assert platform.system() == 'Linux' and platform.release() >= '3'
         super().__init__(*args)
 
     def get_lists(self, name):
@@ -152,11 +149,10 @@ class SystemStatsCollector(module.MetricsSrcProcess):
                 disk_stats['write_bytes'] = disk_stats['write_sectors'] * 512
                 self.buffer.append(("system_disk", disk_stats, timestamp, dict(name=disk_name)))
 
-    def flush(self):
-        timestamp = round(time.time(), 3)
-        self.read_activity_stats(timestamp)
-        self.read_memory_stats(timestamp)
-        self.read_interface_stats(timestamp, *self.get_lists('interface'))
-        self.read_filesystem_stats(timestamp, *self.get_lists('filesystem'))
-        self.read_disk_stats(timestamp, *self.get_lists('disk'))
-        return super().flush()
+    def flush(self, monotonic_timestamp, system_timestamp):
+        self.read_activity_stats(system_timestamp)
+        self.read_memory_stats(system_timestamp)
+        self.read_interface_stats(system_timestamp, *self.get_lists('interface'))
+        self.read_filesystem_stats(system_timestamp, *self.get_lists('filesystem'))
+        self.read_disk_stats(system_timestamp, *self.get_lists('disk'))
+        return super().flush(monotonic_timestamp, system_timestamp)

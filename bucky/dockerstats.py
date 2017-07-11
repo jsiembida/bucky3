@@ -1,6 +1,5 @@
 
 
-import time
 import docker
 import requests.exceptions
 import bucky.module as module
@@ -45,20 +44,19 @@ class DockerStatsCollector(module.MetricsSrcProcess):
     def read_memory_stats(self, timestamp, labels, stats):
         self.buffer.append(("docker_memory", {'used_bytes': int(stats['usage'])}, timestamp, labels))
 
-    def flush(self):
-        timestamp = round(time.time(), 3)
+    def flush(self, monotonic_timestamp, system_timestamp):
         try:
             for i, container in enumerate(self.docker_client.api.containers(size=True)):
                 labels = container['Labels']
                 if 'docker_id' not in labels:
                     labels['docker_id'] = container['Id'][:12]
                 stats = self.docker_client.api.stats(container['Id'], decode=True, stream=False)
-                self.read_df_stats(timestamp, labels, int(container['SizeRootFs']), int(container.get('SizeRw', 0)))
-                self.read_cpu_stats(timestamp, labels, stats['cpu_stats']['cpu_usage'])
-                self.read_memory_stats(timestamp, labels, stats['memory_stats'])
-                self.read_interface_stats(timestamp, labels, stats['networks'])
-            return super().flush()
+                self.read_df_stats(system_timestamp, labels, int(container['SizeRootFs']), int(container.get('SizeRw', 0)))
+                self.read_cpu_stats(system_timestamp, labels, stats['cpu_stats']['cpu_usage'])
+                self.read_memory_stats(system_timestamp, labels, stats['memory_stats'])
+                self.read_interface_stats(system_timestamp, labels, stats['networks'])
+            return super().flush(monotonic_timestamp, system_timestamp)
         except (requests.exceptions.ConnectionError, ValueError):
             self.log.exception("Docker error")
-            super().flush()
+            super().flush(monotonic_timestamp, system_timestamp)
             return False
