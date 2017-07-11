@@ -56,7 +56,11 @@ class DockerStatsCollector(module.MetricsSrcProcess):
                 self.read_memory_stats(system_timestamp, labels, stats['memory_stats'])
                 self.read_interface_stats(system_timestamp, labels, stats['networks'])
             return super().flush(monotonic_timestamp, system_timestamp)
-        except (requests.exceptions.ConnectionError, ValueError):
+        except requests.exceptions.ConnectionError:
+            self.log.info("Docker connection error, is docker running?")
+            super().flush(monotonic_timestamp, system_timestamp)
+            return False
+        except ValueError:
             self.log.exception("Docker error")
             super().flush(monotonic_timestamp, system_timestamp)
             return False
