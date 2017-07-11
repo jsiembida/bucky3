@@ -13,13 +13,8 @@ l10 = range(10)
 l100 = range(100)
 l1000 = range(1000)
 
-# try:
-#     import queue
-# except ImportError:
-#     import Queue as queue
 
 queue = multiprocessing.Queue()
-
 handler = bucky.statsd.StatsDServer(queue, bucky.cfg)
 
 
