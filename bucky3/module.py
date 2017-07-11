@@ -79,7 +79,10 @@ class MetricsProcess(multiprocessing.Process):
 
     def loop(self):
         while True:
-            sleep(60)
+            try:
+                sleep(60)
+            except InterruptedError:
+                pass
 
 
 class MetricsDstProcess(MetricsProcess):
@@ -94,6 +97,8 @@ class MetricsDstProcess(MetricsProcess):
                 batch = self.src_pipe.recv()
                 self.process_batch(batch)
                 err = 0
+            except InterruptedError:
+                pass
             except EOFError:
                 # This happens when no source is connected up, keep trying for 10s, then give up.
                 err += 1

@@ -153,10 +153,13 @@ class Manager:
         signal.signal(signal.SIGHUP, self.restart_handler)
 
         while True:
-            err = self.healthcheck(self.src_group) + self.healthcheck(self.dst_group)
-            if err:
-                self.terminate_and_exit(err)
-            module.sleep(3)
+            try:
+                err = self.healthcheck(self.src_group) + self.healthcheck(self.dst_group)
+                if err:
+                    self.terminate_and_exit(err)
+                module.sleep(3)
+            except InterruptedError:
+                pass
 
 
 def main(argv=sys.argv):

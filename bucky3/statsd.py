@@ -47,9 +47,12 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def run(self):
         super().run(loop=False)
         while True:
-            self.socket = self.socket or self.get_udp_socket(bind=True)
-            data, addr = self.socket.recvfrom(65535)
-            self.handle_packet(data, addr)
+            try:
+                self.socket = self.socket or self.get_udp_socket(bind=True)
+                data, addr = self.socket.recvfrom(65535)
+                self.handle_packet(data, addr)
+            except InterruptedError:
+                pass
 
     def enqueue_timers(self, timestamp):
         interval = self.current_timestamp - self.last_timestamp
