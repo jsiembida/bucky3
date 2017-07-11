@@ -19,14 +19,14 @@ import os
 import sys
 import signal
 import multiprocessing
-import bucky.common as common
-import bucky.module as module
-import bucky.carbon as carbon
-import bucky.statsd as statsd
-import bucky.influxdb as influxdb
-import bucky.prometheus as prometheus
-import bucky.systemstats as systemstats
-import bucky.dockerstats as dockerstats
+import bucky3.common as common
+import bucky3.module as module
+import bucky3.carbon as carbon
+import bucky3.statsd as statsd
+import bucky3.influxdb as influxdb
+import bucky3.prometheus as prometheus
+import bucky3.linuxstats as linuxstats
+import bucky3.dockerstats as dockerstats
 
 
 MODULES = {
@@ -34,7 +34,7 @@ MODULES = {
     'influxdb_client': influxdb.InfluxDBClient,
     'prometheus_exporter': prometheus.PrometheusExporter,
     'statsd_server': statsd.StatsDServer,
-    'system_stats': systemstats.SystemStatsCollector,
+    'linux_stats': linuxstats.LinuxStatsCollector,
     'docker_stats': dockerstats.DockerStatsCollector
 }
 
@@ -146,11 +146,12 @@ class Manager:
         self.src_group, self.dst_group = self.prepare_modules(cfg)
 
     def run(self):
+        self.restart_handler(None, None)
+
         signal.signal(signal.SIGINT, self.termination_handler)
         signal.signal(signal.SIGTERM, self.termination_handler)
         signal.signal(signal.SIGHUP, self.restart_handler)
 
-        self.restart_handler(None, None)
         while True:
             err = self.healthcheck(self.src_group) + self.healthcheck(self.dst_group)
             if err:
@@ -164,8 +165,7 @@ def main(argv=sys.argv):
     elif len(argv) == 2:
         config_file = argv[1]
     else:
-        # TODO show a meaningful message
-        print("Error...", file=sys.stderr)
+        print("\n\nOne optional argument is accepted, path to config file.\n\n", file=sys.stderr)
         sys.exit(1)
 
     Manager(config_file).run()

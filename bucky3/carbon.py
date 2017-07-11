@@ -15,7 +15,7 @@
 # Copyright 2011 Cloudant, Inc.
 
 
-import bucky.module as module
+import bucky3.module as module
 
 
 class CarbonClient(module.MetricsPushProcess, module.TCPConnector):

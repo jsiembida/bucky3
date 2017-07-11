@@ -1,20 +1,17 @@
 
-
-import os
-
-
 log_level = "INFO"
 
 flush_interval = 10
 
 metadata = dict(
-    team=os.environ.get("TEAM", "my-team"),
-    app=os.environ.get("APP", "my-app"),
-    host=os.environ.get("HOST", "my-host"),
+    host="${BUCKY3_HOST}",
+    team="${BUCKY3_TEAM}",
+    app="${BUCKY3_APP}",
 )
 
-sysstats = dict(
-    module_type="system_stats",
+linuxstats = dict(
+    # Linux specific, comment out the 'module_type' line to disable it
+    module_type="linux_stats",
     disk_blacklist={
         "loop0", "loop1", "loop2", "loop3",
         "loop4", "loop5", "loop6", "loop7",
@@ -25,8 +22,10 @@ sysstats = dict(
     },
 )
 
-dockers = dict(
-    module_type="docker_stats",
+dockerstats = dict(
+    # Uncomment the 'module_type' to enable docker stats.
+    # It depends on 'docker' package, i.e. `pip3 install docker`
+    # module_type="docker_stats",
 )
 
 statsd = dict(
@@ -40,11 +39,11 @@ statsd = dict(
     sets_timeout=60,
     gauges_timeout=300,
     counters_timeout=60,
-    percentile_thresholds=(50, 90, 99),
+    percentile_thresholds=(90, 99),
 )
 
 carbon = dict(
-    module_type="carbon_client",
+    # module_type="carbon_client",
     remote_hosts=(
         "127.0.0.1:2003",
     ),
@@ -55,7 +54,7 @@ carbon = dict(
 )
 
 influxdb = dict(
-    module_type="influxdb_client",
+    # module_type="influxdb_client",
     remote_hosts=(
         "127.0.0.1:8086",
     ),
@@ -64,9 +63,9 @@ influxdb = dict(
 
 prometheus = dict(
     module_type="prometheus_exporter",
-    local_port=9090,
-    local_host="127.0.0.1",
+    local_port=9103,
+    local_host="0.0.0.0",
     http_path="metrics",
-    values_timeout=60,
+    values_timeout=300,
     flush_interval=60
 )

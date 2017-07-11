@@ -2,7 +2,7 @@
 
 import threading
 import http.server
-import bucky.module as module
+import bucky3.module as module
 
 
 class PrometheusExporter(module.MetricsDstProcess):

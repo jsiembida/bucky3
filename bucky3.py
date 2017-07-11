@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-import bucky.main
+import bucky3.main
 
 if __name__ == '__main__':
-    bucky.main.main()
-
+    bucky3.main.main()

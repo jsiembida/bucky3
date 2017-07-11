@@ -2,10 +2,10 @@
 
 import os
 import platform
-import bucky.module as module
+import bucky3.module as module
 
 
-class SystemStatsCollector(module.MetricsSrcProcess):
+class LinuxStatsCollector(module.MetricsSrcProcess):
     CPU_FIELDS = ('user', 'nice', 'system', 'idle', 'wait', 'interrupt', 'softirq', 'steal')
     INTERFACE_FIELDS = ('rx_bytes', 'rx_packets', 'rx_errors', 'rx_dropped',
                         None, None, None, None,

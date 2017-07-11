@@ -4,7 +4,7 @@
 .coverage
 .cache
 .eggs
-bucky.egg-info/
+bucky3.egg-info/
 build/
 dist/
 .idea/

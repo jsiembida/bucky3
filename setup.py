@@ -16,27 +16,25 @@
 
 import os
 from setuptools import setup
-from bucky import __version__
+from bucky3 import __version__
 
 install_requires = [e.strip() for e in open("requirements.txt") if not e.startswith("#")]
 
 setup(
-    name='bucky',
+    name='bucky3',
     version=__version__,
 
-    description='StatsD and CollectD adapter for Graphite',
+    description='Monitoring agent for Linux and Docker with StatsD, Carbon, InfluxDB and Prometheus support',
     long_description=open(
         os.path.join(
             os.path.dirname(__file__),
             'README.rst'
         )
     ).read(),
-    author='Paul J. Davis',
-    author_email='paul@cloudant.com',
-    maintainer='Trbs',
-    maintainer_email='trbs@trbs.net',
+    author='Jarek Siembida',
+    author_email='jarek.siembida@gmail.com',
     license='ASF2.0',
-    url='http://github.com/trbs/bucky.git',
+    url='http://github.com/jsiembida/bucky3.git',
     install_requires=install_requires,
 
     classifiers=[
@@ -52,18 +50,17 @@ setup(
         'Operating System :: POSIX :: BSD',
         'Operating System :: Unix',
         'Programming Language :: Python',
-        "Programming Language :: Python :: 2",
         "Programming Language :: Python :: 3",
         'Topic :: Internet :: Log Analysis',
         'Topic :: System :: Networking :: Monitoring',
         'Topic :: Utilities',
     ],
     zip_safe=False,
-    packages=['bucky', 'bucky.metrics', 'bucky.metrics.stats'],
+    packages=['bucky3'],
     include_package_data=True,
 
     entry_points="""\
     [console_scripts]
-    bucky=bucky.main:main
+    bucky3=bucky3.main:main
     """
 )

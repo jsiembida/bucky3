@@ -1,6 +1,6 @@
 
 
-import bucky.module as module
+import bucky3.module as module
 
 
 class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):

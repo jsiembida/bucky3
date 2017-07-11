@@ -17,7 +17,7 @@
 
 import re
 import math
-import bucky.module as module
+import bucky3.module as module
 
 
 class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
@@ -198,7 +198,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                     metadata[kv[0]] = kv[1]
                 else:
                     metadata[kv[0]] = None
-        return bits[0], metadata
+        return bits[0].rstrip('|'), metadata
 
     def handle_key(self, key, metadata):
         for (rexp, repl) in self.key_res:
@@ -242,7 +242,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
 
     def handle_counter(self, timestamp, key, fields):
         try:
-            if len(fields) > 2 and fields[2][0] == "@":
+            if len(fields) > 2 and fields[2] and fields[2][0] == "@":
                 rate = float(fields[2][1:])
                 val = float(fields[0]) / rate
             else:

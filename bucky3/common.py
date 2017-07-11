@@ -18,7 +18,7 @@ import io
 import sys
 import string
 import logging
-import bucky.cfg as cfg
+import bucky3.cfg as cfg
 
 
 def load_config(config_file, module_name=None):

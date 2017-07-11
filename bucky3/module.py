@@ -5,7 +5,7 @@ import socket
 import signal
 import random
 import multiprocessing
-import bucky.common as common
+import bucky3.common as common
 
 from time import monotonic as monotonic_time
 from time import time as system_time

@@ -2,7 +2,7 @@
 
 import docker
 import requests.exceptions
-import bucky.module as module
+import bucky3.module as module
 
 
 class DockerStatsCollector(module.MetricsSrcProcess):
