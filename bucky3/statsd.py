@@ -29,11 +29,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.counters = {}
         self.sets = {}
         self.current_timestamp = self.last_timestamp = module.monotonic_time()
-        self.key_res = (
-            (re.compile("\s+"), "_"),
-            (re.compile("\/"), "-"),
-            (re.compile("[^a-zA-Z_\-0-9\.]"), "")
-        )
+        self.illegal_metadata_chars = re.compile('[^a-zA-Z0-9\-\+\._/:]')
 
     def flush(self, monotonic_timestamp, system_timestamp):
         self.last_timestamp = self.current_timestamp
@@ -166,7 +162,12 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         bits = line.split(":")
         if len(bits) < 2:
             return
-        key = self.handle_key(bits.pop(0), metadata)
+        name = bits.pop(0)
+        if not name.isidentifier():
+            return
+        key = self.handle_key(name, metadata)
+        if not key:
+            return
 
         # I'm not sure if statsd is doing this on purpose
         # but the code allows for name:v1|t1:v2|t2 etc etc.
@@ -176,14 +177,19 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             if "|" not in sample:
                 continue
             fields = sample.split("|")
-            if fields[1] == "ms":
-                self.handle_timer(timestamp, key, fields)
-            elif fields[1] == "g":
-                self.handle_gauge(timestamp, key, fields)
-            elif fields[1] == "s":
-                self.handle_set(timestamp, key, fields)
+            valstr = fields[0]
+            if not valstr:
+                continue
+            typestr = fields[1]
+            ratestr = fields[2] if len(fields) > 2 else None
+            if typestr == "ms" or typestr == "h":
+                self.handle_timer(timestamp, key, valstr, ratestr)
+            elif typestr == "g":
+                self.handle_gauge(timestamp, key, valstr, ratestr)
+            elif typestr == "s":
+                self.handle_set(timestamp, key, valstr, ratestr)
             else:
-                self.handle_counter(timestamp, key, fields)
+                self.handle_counter(timestamp, key, valstr, ratestr)
 
     def handle_metadata(self, line):
         # http://docs.datadoghq.com/guides/dogstatsd/#datagram-format
@@ -192,27 +198,27 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         if len(bits) < 2:
             return line, metadata
         for i in bits[1].split(","):
-            kv = i.split("=")
+            k, v, kv = None, None, i.split("=")
             if len(kv) > 1:
-                metadata[kv[0]] = kv[1]
+                k, v = kv[0], kv[1]
             else:
                 kv = i.split(":")
                 if len(kv) > 1:
-                    metadata[kv[0]] = kv[1]
-                else:
-                    metadata[kv[0]] = None
+                    k, v = kv[0], kv[1]
+            if k and k.isidentifier() and v and not self.illegal_metadata_chars.search(v):
+                metadata[k] = v
         return bits[0].rstrip('|'), metadata
 
-    def handle_key(self, key, metadata):
-        for (rexp, repl) in self.key_res:
-            key = rexp.sub(repl, key)
-        metadata.update(name=key)
+    def handle_key(self, name, metadata):
+        if not name:
+            return None
+        metadata.update(name=name)
         key = tuple((k, metadata[k]) for k in sorted(metadata.keys()))
         return key
 
-    def handle_timer(self, timestamp, key, fields):
+    def handle_timer(self, timestamp, key, valstr, ratestr):
         try:
-            val = float(fields[0])
+            val = float(valstr)
             if key in self.timers:
                 buf = self.timers[key][1]
                 buf.append(val)
@@ -222,9 +228,8 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         except ValueError:
             pass
 
-    def handle_gauge(self, timestamp, key, fields):
+    def handle_gauge(self, timestamp, key, valstr, ratestr):
         try:
-            valstr = fields[0]
             val = float(valstr)
             delta = valstr[0] in "+-"
             if delta and key in self.gauges:
@@ -234,22 +239,21 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         except ValueError:
             pass
 
-    def handle_set(self, timestamp, key, fields):
-        val = fields[0]
+    def handle_set(self, timestamp, key, valstr, ratestr):
         if key in self.sets:
             buf = self.sets[key][1]
-            buf.add(val)
+            buf.add(valstr)
             self.sets[key] = timestamp, buf
         else:
-            self.sets[key] = timestamp, {val}
+            self.sets[key] = timestamp, {valstr}
 
-    def handle_counter(self, timestamp, key, fields):
+    def handle_counter(self, timestamp, key, valstr, ratestr):
         try:
-            if len(fields) > 2 and fields[2] and fields[2][0] == "@":
-                rate = float(fields[2][1:])
-                val = float(fields[0]) / rate
+            if ratestr and ratestr[0] == "@":
+                rate = float(ratestr[1:])
+                val = float(valstr) / rate
             else:
-                val = float(fields[0])
+                val = float(valstr)
             if key in self.counters:
                 val += self.counters[key][1]
             self.counters[key] = timestamp, val
