@@ -28,8 +28,8 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.gauges = {}
         self.counters = {}
         self.sets = {}
-        self.current_timestamp = self.last_timestamp = module.monotonic_time()
-        self.illegal_metadata_chars = re.compile('[^a-zA-Z0-9\-\+\._/:]')
+        self.current_timestamp = self.last_timestamp = 0
+        self.illegal_metadata_chars = re.compile('[^a-zA-Z0-9\-\+\._/%<>\*\:]')
 
     def flush(self, monotonic_timestamp, system_timestamp):
         self.last_timestamp = self.current_timestamp
@@ -42,6 +42,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
 
     def run(self):
         super().run(loop=False)
+        self.current_timestamp = self.last_timestamp = module.monotonic_time()
         while True:
             try:
                 self.socket = self.socket or self.get_udp_socket(bind=True)
@@ -77,7 +78,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                     cumulative_values.append(value + cumulative_values[i - 1])
                     cumulative_squares.append(value * value + cumulative_squares[i - 1])
 
-                for t in self.cfg['percentile_thresholds']:
+                for t in self.cfg.get('percentile_thresholds', ()):
                     t_index = int(math.floor(t / 100.0 * count))
                     if t_index == 0:
                         continue
@@ -158,6 +159,10 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         # DataDog special packets for service check and events, ignore them
         if line.startswith('sc|') or line.startswith('_e{'):
             return
+        # TODO what to do with partially invalid input?
+        # I.e. in foo:1|c|#123=456 the "123" is not a valid tag name.
+        # Currently such a tag is being ignored, so the whole thing
+        # gets silently reduced to foo:1|c
         line, metadata = self.handle_metadata(line)
         bits = line.split(":")
         if len(bits) < 2:
