@@ -55,13 +55,29 @@ def statsd_setup(timestamps, **extra_cfg):
 
 
 class TestStatsDModule(unittest.TestCase):
+    def malformed_entries(self, statsd_module, entry_type, check_numeric=True):
+        mock_pipe = statsd_module.dst_pipes[0]
+        statsd_module.handle_line(0, ":1|" + entry_type)
+        statsd_verify(mock_pipe, [])
+        statsd_module.tick()
+        statsd_module.handle_line(0, "g.o.r.m:1|" + entry_type)
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [])
+        statsd_module.handle_line(0, "gorm:|" + entry_type)
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [])
+        if check_numeric:
+            statsd_module.handle_line(0, "gorm:abc|" + entry_type)
+            statsd_module.tick()
+            statsd_verify(mock_pipe, [])
+
     @statsd_setup(counters_timeout=3, timestamps=(2, 4, 6, 8, 10, 12, 14))
     def test_counters(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
-        statsd_module.handle_line(0, "gorm:1|c")
+        statsd_module.handle_line(0, "gorm:1.5|c")
         statsd_module.handle_line(0, "gurm:1|c|@0.1")
         statsd_module.handle_line(0, "gorm:3|c")
-        statsd_module.handle_line(0, "gorm:1|c")
+        statsd_module.handle_line(0, "gorm:0.5|c")
         statsd_module.handle_line(0, "form:10|c|@0.2")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
@@ -70,11 +86,11 @@ class TestStatsDModule(unittest.TestCase):
             ('stats_counters', dict(rate=25.0, count=50), 2, dict(name='form'))
         ])
         statsd_module.handle_line(2, "gorm:1|c")
-        statsd_module.handle_line(2, "gurm:1|c|@0.2")
+        statsd_module.handle_line(2, "gurm:1.3|c|@0.2")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
             ('stats_counters', dict(rate=0.5, count=1), 4, dict(name='gorm')),
-            ('stats_counters', dict(rate=2.5, count=5), 4, dict(name='gurm'))
+            ('stats_counters', dict(rate=3.25, count=6.5), 4, dict(name='gurm'))
         ])
         statsd_module.handle_line(4, "gurm:3|c|@0.2")
         statsd_module.tick()
@@ -84,31 +100,35 @@ class TestStatsDModule(unittest.TestCase):
         statsd_module.tick()
         statsd_verify(mock_pipe, [])
 
+    @statsd_setup(timestamps=range(1000))
+    def test_malformed_counters(self, statsd_module):
+        self.malformed_entries(statsd_module, 'c')
+
     @statsd_setup(gauges_timeout=3, timestamps=(1, 2, 3, 4, 5, 6, 7, 8))
     def test_gauges(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
-        statsd_module.handle_line(0, "gorm:6|g")
+        statsd_module.handle_line(0, "gorm:6.7|g")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_gauges', 6, 1, dict(name='gorm'))
+            ('stats_gauges', 6.7, 1, dict(name='gorm'))
         ])
         statsd_module.handle_line(1, "gorm:3|g|@0.5")
-        statsd_module.handle_line(1, "gorm:8|g")
+        statsd_module.handle_line(1, "gorm:8.1|g")
         statsd_module.handle_line(1, "gurm:123|g|@0.2")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_gauges', 8, 2, dict(name='gorm')),
+            ('stats_gauges', 8.1, 2, dict(name='gorm')),
             ('stats_gauges', 123, 2, dict(name='gurm'))
         ])
-        statsd_module.tick()
         statsd_module.handle_line(2, "gurm:12|g|@0.5")
+        statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_gauges', 8, 3, dict(name='gorm')),
-            ('stats_gauges', 123, 3, dict(name='gurm')),
+            ('stats_gauges', 8.1, 3, dict(name='gorm')),
+            ('stats_gauges', 12, 3, dict(name='gurm')),
         ])
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_gauges', 8, 4, dict(name='gorm')),
+            ('stats_gauges', 8.1, 4, dict(name='gorm')),
             ('stats_gauges', 12, 4, dict(name='gurm'))
         ])
         statsd_module.tick()
@@ -117,6 +137,10 @@ class TestStatsDModule(unittest.TestCase):
         ])
         statsd_module.tick()
         statsd_verify(mock_pipe, [])
+
+    @statsd_setup(timestamps=range(1000))
+    def test_malformed_gauges(self, statsd_module):
+        self.malformed_entries(statsd_module, 'g')
 
     @statsd_setup(sets_timeout=3, timestamps=(1, 2, 3, 4, 5, 6, 7, 8))
     def test_sets(self, statsd_module):
@@ -151,6 +175,10 @@ class TestStatsDModule(unittest.TestCase):
         ])
         statsd_module.tick()
         statsd_verify(mock_pipe, [])
+
+    @statsd_setup(timestamps=range(1000))
+    def test_malformed_sets(self, statsd_module):
+        self.malformed_entries(statsd_module, 's', check_numeric=False)
 
     @statsd_setup(timers_timeout=0.3,
                   flush_interval=0.1,
@@ -274,6 +302,10 @@ class TestStatsDModule(unittest.TestCase):
         statsd_verify(mock_pipe, [
             ('stats_timers', expected_value, 0.5, dict(name='gorm'))
         ])
+
+    @statsd_setup(timestamps=range(1000))
+    def test_malformed_timers(self, statsd_module):
+        self.malformed_entries(statsd_module, 'ms')
 
 
 if __name__ == '__main__':

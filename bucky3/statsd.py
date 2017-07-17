@@ -29,7 +29,8 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.counters = {}
         self.sets = {}
         self.current_timestamp = self.last_timestamp = 0
-        self.illegal_metadata_chars = re.compile('[^a-zA-Z0-9\-\+\._/%<>\*\:]')
+        # Some of those are illegal in Graphite, so Carbon module has to handle them separately.
+        self.illegal_metadata_chars = re.compile('[^a-zA-Z0-9\-\+\@\?\#\.\_\/\%\<\>\*\:\;\&\[\]]')
 
     def flush(self, monotonic_timestamp, system_timestamp):
         self.last_timestamp = self.current_timestamp
@@ -159,11 +160,9 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         # DataDog special packets for service check and events, ignore them
         if line.startswith('sc|') or line.startswith('_e{'):
             return
-        # TODO what to do with partially invalid input?
-        # I.e. in foo:1|c|#123=456 the "123" is not a valid tag name.
-        # Currently such a tag is being ignored, so the whole thing
-        # gets silently reduced to foo:1|c
         line, metadata = self.handle_metadata(line)
+        if not line:
+            return
         bits = line.split(":")
         if len(bits) < 2:
             return
@@ -198,25 +197,26 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
 
     def handle_metadata(self, line):
         # http://docs.datadoghq.com/guides/dogstatsd/#datagram-format
-        bits = line.split("#")
+        bits = line.split("|#", 1)  # We allow '#' in tag values, too
         metadata = {}
         if len(bits) < 2:
             return line, metadata
         for i in bits[1].split(","):
-            k, v, kv = None, None, i.split("=")
-            if len(kv) > 1:
+            # DataDog docs / examples use key:value, we use key=value.
+            # That should be ok since DataDog client libraries just send them as is.
+            # We let : be used in tag values (URIs, route paths).
+            kv = i.split("=")
+            # Reject samples with malformed tags, seems to be better then silently falling over
+            # the invalid bits and risking some side effects i.e. clashes in metrics name space.
+            if len(kv) == 2:
                 k, v = kv[0], kv[1]
-            else:
-                kv = i.split(":")
-                if len(kv) > 1:
-                    k, v = kv[0], kv[1]
-            if k and k.isidentifier() and v and not self.illegal_metadata_chars.search(v):
-                metadata[k] = v
-        return bits[0].rstrip('|'), metadata
+                if k and k.isidentifier() and v and not self.illegal_metadata_chars.search(v):
+                    metadata[k] = v
+                    continue
+            return None, None
+        return bits[0], metadata
 
     def handle_key(self, name, metadata):
-        if not name:
-            return None
         metadata.update(name=name)
         key = tuple((k, metadata[k]) for k in sorted(metadata.keys()))
         return key
