@@ -30,10 +30,11 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
         assert platform.system() == 'Linux' and platform.release() >= '3'
         super().__init__(*args)
 
-    def get_lists(self, name):
-        blacklist = self.cfg.get(name + '_blacklist', None)
-        whitelist = self.cfg.get(name + '_whitelist', None)
-        return blacklist, whitelist
+    def init_config(self):
+        super().init_config()
+        for name in 'interface', 'disk', 'filesystem':
+            setattr(self, name + '_blacklist', self.cfg.get(name + '_blacklist', None))
+            setattr(self, name + '_whitelist', self.cfg.get(name + '_whitelist', None))
 
     def check_lists(self, val, blacklist, whitelist):
         if whitelist:
@@ -76,7 +77,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
         if activity_stats:
             self.buffer.append(("system_activity", activity_stats, timestamp))
 
-    def read_filesystem_stats(self, timestamp, blacklist, whitelist):
+    def read_filesystem_stats(self, timestamp):
         with open('/proc/mounts') as f:
             for l in f.readlines():
                 tokens = l.strip().split()
@@ -85,7 +86,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
                 if not tokens[1].startswith('/'):
                     continue
                 mount_target, mount_path, mount_filesystem = tokens[:3]
-                if not self.check_lists(mount_filesystem, blacklist, whitelist):
+                if not self.check_lists(mount_filesystem, self.filesystem_blacklist, self.filesystem_whitelist):
                     continue
                 try:
                     stats = os.statvfs(mount_path)
@@ -105,7 +106,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
                 except OSError:
                     pass
 
-    def read_interface_stats(self, timestamp, blacklist, whitelist):
+    def read_interface_stats(self, timestamp):
         with open('/proc/net/dev') as f:
             for l in f.readlines():
                 tokens = l.strip().split()
@@ -114,7 +115,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
                 if not tokens[0].endswith(':'):
                     continue
                 interface_name = tokens.pop(0)[:-1]
-                if not self.check_lists(interface_name, blacklist, whitelist):
+                if not self.check_lists(interface_name, self.interface_blacklist, self.interface_whitelist):
                     continue
                 interface_stats = {k: int(v) for k, v in zip(self.INTERFACE_FIELDS, tokens) if k}
                 self.buffer.append(("system_interface", interface_stats, timestamp, dict(name=interface_name)))
@@ -135,14 +136,14 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
             if memory_stats:
                 self.buffer.append(("system_memory", memory_stats, timestamp))
 
-    def read_disk_stats(self, timestamp, blacklist, whitelist):
+    def read_disk_stats(self, timestamp):
         with open('/proc/diskstats') as f:
             for l in f.readlines():
                 tokens = l.strip().split()
                 if not tokens or len(tokens) != 14:
                     continue
                 disk_name = tokens[2]
-                if not self.check_lists(disk_name, blacklist, whitelist):
+                if not self.check_lists(disk_name, self.interface_blacklist, self.interface_whitelist):
                     continue
                 disk_stats = {k: int(v) for k, v in zip(self.DISK_FIELDS, tokens[3:])}
                 disk_stats['read_bytes'] = disk_stats['read_sectors'] * 512
@@ -152,7 +153,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
     def flush(self, monotonic_timestamp, system_timestamp):
         self.read_activity_stats(system_timestamp)
         self.read_memory_stats(system_timestamp)
-        self.read_interface_stats(system_timestamp, *self.get_lists('interface'))
-        self.read_filesystem_stats(system_timestamp, *self.get_lists('filesystem'))
-        self.read_disk_stats(system_timestamp, *self.get_lists('disk'))
+        self.read_interface_stats(system_timestamp)
+        self.read_filesystem_stats(system_timestamp)
+        self.read_disk_stats(system_timestamp)
         return super().flush(monotonic_timestamp, system_timestamp)

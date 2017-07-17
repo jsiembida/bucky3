@@ -1,23 +1,22 @@
 
 
 import sys
+import time
 import socket
 import signal
 import random
 import multiprocessing
 import bucky3.common as common
 
-from time import monotonic as monotonic_time
-from time import time as system_time
-from time import sleep as sleep
+monotonic_time = time.monotonic
+system_time = time.time
+sleep = time.sleep
 
 
 class MetricsProcess(multiprocessing.Process):
     def __init__(self, module_name, config_file):
         super().__init__(name=module_name, daemon=True)
         self.config_file = config_file
-        self.buffer = []
-        self.next_flush = 0
 
     def schedule_tick(self):
         now = monotonic_time()
@@ -31,8 +30,6 @@ class MetricsProcess(multiprocessing.Process):
         self.schedule_tick()
 
     def setup_tick(self):
-        self.tick_interval = self.cfg.get('flush_interval', None) or None
-        self.flush_interval = self.tick_interval or 1
         if self.tick_interval:
             self.next_tick = monotonic_time() + self.tick_interval
             signal.signal(signal.SIGALRM, self.tick_handler)
@@ -55,6 +52,17 @@ class MetricsProcess(multiprocessing.Process):
         # The 0.03s is a harmless margin that seems to solve the problem.
         self.next_flush = now + self.flush_interval - 0.03
 
+    def init_config(self):
+        self.cfg = common.load_config(self.config_file, self.name)
+        self.log = common.setup_logging(self.cfg, self.name)
+        self.buffer = []
+        self.buffer_limit = self.cfg.get('buffer_limit', 10000)
+        self.tick_interval = self.cfg.get('flush_interval', None) or None
+        self.next_tick = None
+        self.flush_interval = self.tick_interval or 1
+        self.next_flush = 0
+        self.metadata = self.cfg.get('metadata', None)
+
     def run(self, loop=True):
         def termination_handler(signal_number, stack_frame):
             self.log.info("Received signal %d", signal_number)
@@ -68,9 +76,7 @@ class MetricsProcess(multiprocessing.Process):
         signal.signal(signal.SIGCHLD, signal.SIG_IGN)
         signal.signal(signal.SIGALRM, signal.SIG_IGN)
 
-        self.cfg = common.load_config(self.config_file, self.name)
-        self.log = common.setup_logging(self.cfg, self.name)
-        self.buffer_limit = self.cfg.get('buffer_limit', 10000)
+        self.init_config()
         self.setup_tick()
         self.log.info("Set up")
 
@@ -108,8 +114,6 @@ class MetricsDstProcess(MetricsProcess):
                 sleep(1)
 
     def process_batch(self, batch):
-        config_metadata = self.cfg.get('metadata', None)
-
         for sample in batch:
             if len(sample) == 4:
                 bucket, value, timestamp, metadata = sample
@@ -117,9 +121,10 @@ class MetricsDstProcess(MetricsProcess):
                 bucket, value, timestamp = sample
                 metadata = None
             if metadata:
-                metadata.update((k, v) for k, v in config_metadata.items() if k not in metadata)
+                if self.metadata:
+                    metadata.update((k, v) for k, v in self.metadata.items() if k not in metadata)
             else:
-                metadata = config_metadata
+                metadata = self.metadata
 
             if type(value) is dict:
                 self.process_values(bucket, value, timestamp, metadata)
