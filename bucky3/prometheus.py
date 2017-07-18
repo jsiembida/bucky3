@@ -8,6 +8,9 @@ import bucky3.module as module
 class PrometheusExporter(module.MetricsDstProcess):
     def __init__(self, *args):
         super().__init__(*args)
+
+    def init_config(self):
+        super().init_config()
         self.buffer = {}
 
     def start_http_server(self, host, port, path):
@@ -20,8 +23,7 @@ class PrometheusExporter(module.MetricsDstProcess):
                 req.send_response(200)
                 req.send_header("Content-Type", "text/plain; version=0.0.4")
                 req.end_headers()
-                response = ''.join(self.get_or_render_line(k) for k in self.buffer.keys())
-                req.wfile.write(response.encode())
+                req.wfile.write(self.get_page().encode())
 
         def log_message(req, format, *args):
             self.log.info(format, *args)
@@ -33,17 +35,23 @@ class PrometheusExporter(module.MetricsDstProcess):
         http_thread.start()
         self.log.info("Started server at http://%s:%d/%s", host, port, path)
 
-    def get_or_render_line(self, k):
+    def get_line(self, k):
         timestamp, value, line = self.buffer[k]
         if not line:
             # https://prometheus.io/docs/instrumenting/exposition_formats/
             bucket, metadata = k[0], k[1:]
-            metadata_str = ','.join(str(k) + '="' + str(v) + '"' for k, v in metadata)
-            # Lines MUST end with \n (not \r\n), the last line MUST also end with \n
-            # Otherwise, Prometheus will reject the whole scrape!
-            line = bucket + '{' + metadata_str + '} ' + str(value) + ' ' + str(int(timestamp * 1000)) + '\n'
+            if metadata:
+                metadata_str = ','.join(str(k) + '="' + str(v) + '"' for k, v in metadata)
+                # Lines MUST end with \n (not \r\n), the last line MUST also end with \n
+                # Otherwise, Prometheus will reject the whole scrape!
+                line = bucket + '{' + metadata_str + '} ' + str(value) + ' ' + str(int(timestamp * 1000)) + '\n'
+            else:
+                line = bucket + ' ' + str(value) + ' ' + str(int(timestamp * 1000)) + '\n'
             self.buffer[k] = timestamp, value, line
         return line
+
+    def get_page(self):
+        return ''.join(self.get_line(k) for k in self.buffer.keys())
 
     def loop(self):
         host = self.cfg.get("local_host", "127.0.0.1")
@@ -61,9 +69,17 @@ class PrometheusExporter(module.MetricsDstProcess):
 
     def process_values(self, bucket, values, timestamp, metadata=None):
         for k, v in values.items():
-            metadata_dict = dict(value=k)
             if metadata:
-                metadata_dict.update(metadata)
-            metadata_tuple = (bucket,) + tuple((k, metadata_dict[k]) for k in sorted(metadata_dict.keys()))
-            # The None below will get lazily rendered during HTTP req
-            self.buffer[metadata_tuple] = timestamp, v, None
+                metadata_dict = metadata.copy()
+                metadata_dict.update(value=k)
+            else:
+                metadata_dict = dict(value=k)
+            self.process_value(bucket, v, timestamp, metadata_dict)
+
+    def process_value(self, bucket, value, timestamp, metadata=None):
+        if metadata:
+            metadata_tuple = (bucket,) + tuple((k, metadata[k]) for k in sorted(metadata.keys()))
+        else:
+            metadata_tuple = (bucket,)
+        # The None below will get lazily rendered during HTTP req
+        self.buffer[metadata_tuple] = timestamp, value, None

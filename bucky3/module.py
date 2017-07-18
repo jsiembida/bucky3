@@ -135,7 +135,7 @@ class MetricsDstProcess(MetricsProcess):
         raise NotImplementedError()
 
     def process_value(self, bucket, value, timestamp, metadata=None):
-        self.process_values(bucket, {'value': value}, timestamp, metadata)
+        raise NotImplementedError()
 
 
 class MetricsSrcProcess(MetricsProcess):
