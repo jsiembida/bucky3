@@ -30,8 +30,7 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
                 v = str(v).replace(' ', '')
                 label_buf.append(str(k) + '=' + v)
         value_buf = []
-        for k in values.keys():
-            v = values[k]
+        for k, v in values.items():
             t = type(v)
             if t is int:
                 value_buf.append(str(k) + '=' + str(v) + 'i')
@@ -42,3 +41,6 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
         # So, the lower timestamp precisions don't seem to work with line protocol...
         line = ' '.join((','.join(label_buf), ','.join(value_buf), str(int(timestamp * 1000000000))))
         self.buffer.append(line)
+
+    def process_value(self, bucket, value, timestamp, metadata=None):
+        self.process_values(bucket, {'value': value}, timestamp, metadata)

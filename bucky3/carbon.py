@@ -29,15 +29,23 @@ class CarbonClient(module.MetricsPushProcess, module.TCPConnector):
         self.socket.sendall(payload)
 
     def build_name(self, metadata):
+        if not metadata:
+            return ''  # This should not happen in Carbon protocol, raise an exception
         found_mappings = tuple(k for k in self.cfg['name_mapping'] if k in metadata)
         buf = [metadata.pop(k) for k in found_mappings]
         buf.extend(metadata[k] for k in sorted(metadata.keys()))
         return '.'.join(buf)
 
     def process_values(self, bucket, values, timestamp, metadata=None):
-        metadata = metadata or {}
         for k, v in values.items():
-            value_metadata = metadata.copy()
-            value_metadata.update(bucket=bucket, value=k)
-            name = self.build_name(value_metadata)
+            if metadata:
+                metadata_dict = metadata.copy()
+                metadata_dict.update(bucket=bucket, value=k)
+            else:
+                metadata_dict = dict(bucket=bucket, value=k)
+            name = self.build_name(metadata_dict)
             self.buffer.append("%s %s %s\n" % (name, v, int(timestamp)))
+
+    def process_value(self, bucket, value, timestamp, metadata=None):
+        name = self.build_name(metadata)
+        self.buffer.append("%s %s %s\n" % (name, value, int(timestamp)))

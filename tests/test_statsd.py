@@ -1,5 +1,7 @@
 
 
+import string
+import random
 import unittest
 from unittest.mock import patch, MagicMock
 import bucky3.statsd as statsd
@@ -69,7 +71,39 @@ class TestStatsDModule(unittest.TestCase):
         if check_numeric:
             statsd_module.handle_line(0, "gorm:abc|" + entry_type)
             statsd_module.tick()
-            statsd_verify(mock_pipe, [])
+            assert not mock_pipe.called
+            mock_pipe.reset_mock()
+
+    def malformed_metadata(self, statsd_module, entry):
+        mock_pipe = statsd_module.dst_pipes[0]
+        legal_name_chars = string.ascii_letters + '_'
+        illegal_name_chars = '-+@?#./%<>*:;&[], '
+        legal_value_chars = string.ascii_letters + string.digits + '-+@?#._/%<>*:;&[]'
+        illegal_value_chars = ', '
+
+        def get_token(legal_chars, illegal_char=None):
+            n = random.randint(1, 5) * random.choice(legal_chars)
+            if illegal_char:
+                n = n + illegal_char + random.randint(1, 5) * random.choice(legal_chars)
+            return n
+
+        i = 0
+
+        for c in illegal_name_chars:
+            name, value = get_token(legal_name_chars, c), get_token(legal_value_chars)
+            statsd_module.handle_line(i, entry + '|#' + name + '=' + value)
+            statsd_module.tick()
+            assert not mock_pipe.called
+            mock_pipe.reset_mock()
+            i += 1
+
+        for c in illegal_value_chars:
+            name, value = get_token(legal_name_chars), get_token(legal_value_chars, c)
+            statsd_module.handle_line(i, entry + '|#' + name + '=' + value)
+            statsd_module.tick()
+            assert not mock_pipe.called
+            mock_pipe.reset_mock()
+            i += 1
 
     @statsd_setup(counters_timeout=3, timestamps=(2, 4, 6, 8, 10, 12, 14))
     def test_counters(self, statsd_module):
@@ -100,9 +134,41 @@ class TestStatsDModule(unittest.TestCase):
         statsd_module.tick()
         statsd_verify(mock_pipe, [])
 
-    @statsd_setup(timestamps=range(1000))
+    @statsd_setup(counters_timeout=2, timestamps=range(1, 100))
+    def test_counters_metadata(self, statsd_module):
+        mock_pipe = statsd_module.dst_pipes[0]
+        statsd_module.handle_line(0, "gorm:1.5|c")
+        statsd_module.handle_line(0, "gorm:2.0|c|#a=b")
+        statsd_module.handle_line(0, "gorm:2.5|c|#a=b,c=5")
+        statsd_module.handle_line(0, "gorm:3.0|c|#a=z,c=5")
+        statsd_module.handle_line(0, "gorm:3.5|c|#c=5,a=b")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_counters', dict(rate=1.5, count=1.5), 1, dict(name='gorm')),
+            ('stats_counters', dict(rate=2.0, count=2.0), 1, dict(name='gorm', a='b')),
+            ('stats_counters', dict(rate=6.0, count=6.0), 1, dict(name='gorm', a='b', c='5')),
+            ('stats_counters', dict(rate=3.0, count=3.0), 1, dict(name='gorm', a='z', c='5')),
+        ])
+        statsd_module.handle_line(1, "gorm:4.0|c|#c=5,a=z")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_counters', dict(rate=0.0, count=0.0), 2, dict(name='gorm')),
+            ('stats_counters', dict(rate=0.0, count=0.0), 2, dict(name='gorm', a='b')),
+            ('stats_counters', dict(rate=0.0, count=0.0), 2, dict(name='gorm', a='b', c='5')),
+            ('stats_counters', dict(rate=4.0, count=4.0), 2, dict(name='gorm', a='z', c='5')),
+        ])
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_counters', dict(rate=0.0, count=0.0), 3, dict(name='gorm', a='z', c='5')),
+        ])
+
+    @statsd_setup(timestamps=range(1, 1000))
     def test_malformed_counters(self, statsd_module):
         self.malformed_entries(statsd_module, 'c')
+
+    @statsd_setup(timestamps=range(1, 1000))
+    def test_malformed_counters_metadata(self, statsd_module):
+        self.malformed_metadata(statsd_module, "gorm:1|c")
 
     @statsd_setup(gauges_timeout=3, timestamps=(1, 2, 3, 4, 5, 6, 7, 8))
     def test_gauges(self, statsd_module):
@@ -138,9 +204,41 @@ class TestStatsDModule(unittest.TestCase):
         statsd_module.tick()
         statsd_verify(mock_pipe, [])
 
-    @statsd_setup(timestamps=range(1000))
+    @statsd_setup(gauges_timeout=2, timestamps=range(1, 100))
+    def test_gauges_metadata(self, statsd_module):
+        mock_pipe = statsd_module.dst_pipes[0]
+        statsd_module.handle_line(0, "gorm:1.5|g")
+        statsd_module.handle_line(0, "gorm:2.0|g|#a=b")
+        statsd_module.handle_line(0, "gorm:2.5|g|#a=b,c=5")
+        statsd_module.handle_line(0, "gorm:3.0|g|#a=z,c=5")
+        statsd_module.handle_line(0, "gorm:3.5|g|#c=5,a=b")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_gauges', 1.5, 1, dict(name='gorm')),
+            ('stats_gauges', 2.0, 1, dict(name='gorm', a='b')),
+            ('stats_gauges', 3.5, 1, dict(name='gorm', a='b', c='5')),
+            ('stats_gauges', 3.0, 1, dict(name='gorm', a='z', c='5')),
+        ])
+        statsd_module.handle_line(1, "gorm:4.0|g|#c=5,a=z")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_gauges', 1.5, 2, dict(name='gorm')),
+            ('stats_gauges', 2.0, 2, dict(name='gorm', a='b')),
+            ('stats_gauges', 3.5, 2, dict(name='gorm', a='b', c='5')),
+            ('stats_gauges', 4.0, 2, dict(name='gorm', a='z', c='5')),
+        ])
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_gauges', 4.0, 3, dict(name='gorm', a='z', c='5')),
+        ])
+
+    @statsd_setup(timestamps=range(1, 1000))
     def test_malformed_gauges(self, statsd_module):
         self.malformed_entries(statsd_module, 'g')
+
+    @statsd_setup(timestamps=range(1, 1000))
+    def test_malformed_gauges_metadata(self, statsd_module):
+        self.malformed_metadata(statsd_module, "gorm:1|g")
 
     @statsd_setup(sets_timeout=3, timestamps=(1, 2, 3, 4, 5, 6, 7, 8))
     def test_sets(self, statsd_module):
@@ -176,9 +274,41 @@ class TestStatsDModule(unittest.TestCase):
         statsd_module.tick()
         statsd_verify(mock_pipe, [])
 
-    @statsd_setup(timestamps=range(1000))
+    @statsd_setup(sets_timeout=2, timestamps=range(1, 100))
+    def test_sets_metadata(self, statsd_module):
+        mock_pipe = statsd_module.dst_pipes[0]
+        statsd_module.handle_line(0, "gorm:p|s")
+        statsd_module.handle_line(0, "gorm:q|s|#a=b")
+        statsd_module.handle_line(0, "gorm:r|s|#a=b,c=5")
+        statsd_module.handle_line(0, "gorm:s|s|#a=z,c=5")
+        statsd_module.handle_line(0, "gorm:t|s|#c=5,a=b")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_sets', dict(count=1), 1, dict(name='gorm')),
+            ('stats_sets', dict(count=1), 1, dict(name='gorm', a='b')),
+            ('stats_sets', dict(count=2), 1, dict(name='gorm', a='b', c='5')),
+            ('stats_sets', dict(count=1), 1, dict(name='gorm', a='z', c='5')),
+        ])
+        statsd_module.handle_line(1, "gorm:u|s|#c=5,a=z")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_sets', dict(count=0), 2, dict(name='gorm')),
+            ('stats_sets', dict(count=0), 2, dict(name='gorm', a='b')),
+            ('stats_sets', dict(count=0), 2, dict(name='gorm', a='b', c='5')),
+            ('stats_sets', dict(count=1), 2, dict(name='gorm', a='z', c='5')),
+        ])
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_sets', dict(count=0), 3, dict(name='gorm', a='z', c='5')),
+        ])
+
+    @statsd_setup(timestamps=range(1, 1000))
     def test_malformed_sets(self, statsd_module):
         self.malformed_entries(statsd_module, 's', check_numeric=False)
+
+    @statsd_setup(timestamps=range(1, 1000))
+    def test_malformed_sets_metadata(self, statsd_module):
+        self.malformed_metadata(statsd_module, "gorm:x|s")
 
     @statsd_setup(timers_timeout=0.3,
                   flush_interval=0.1,
@@ -303,9 +433,54 @@ class TestStatsDModule(unittest.TestCase):
             ('stats_timers', expected_value, 0.5, dict(name='gorm'))
         ])
 
-    @statsd_setup(timestamps=range(1000))
+    @statsd_setup(timers_timeout=2, timestamps=range(1, 100))
+    def test_timers_metadata(self, statsd_module):
+        mock_pipe = statsd_module.dst_pipes[0]
+        expected_value = {
+            "mean": 100,
+            "upper": 100,
+            "lower": 100,
+            "count": 1,
+            "count_ps": 1,
+            "median": 100,
+            "sum": 100,
+            "sum_squares": 10000,
+            "std": 0
+        }
+        expected_value2 = expected_value.copy()
+        expected_value2.update(count=2, count_ps=2, sum=200, sum_squares=20000)
+        statsd_module.handle_line(0, "gorm:100|ms")
+        statsd_module.handle_line(0, "gorm:100|ms|#a=b")
+        statsd_module.handle_line(0, "gorm:100|ms|#a=b,c=5")
+        statsd_module.handle_line(0, "gorm:100|ms|#a=z,c=5")
+        statsd_module.handle_line(0, "gorm:100|ms|#c=5,a=b")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_timers', expected_value, 1, dict(name='gorm')),
+            ('stats_timers', expected_value, 1, dict(name='gorm', a='b')),
+            ('stats_timers', expected_value2, 1, dict(name='gorm', a='b', c='5')),
+            ('stats_timers', expected_value, 1, dict(name='gorm', a='z', c='5')),
+        ])
+        statsd_module.handle_line(1, "gorm:100|ms|#a=b,c=5")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_timers', dict(count=0, count_ps=0), 2, dict(name='gorm')),
+            ('stats_timers', dict(count=0, count_ps=0), 2, dict(name='gorm', a='b')),
+            ('stats_timers', expected_value, 2, dict(name='gorm', a='b', c='5')),
+            ('stats_timers', dict(count=0, count_ps=0), 2, dict(name='gorm', a='z', c='5')),
+        ])
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_timers', dict(count=0, count_ps=0), 3, dict(name='gorm', a='b', c='5')),
+        ])
+
+    @statsd_setup(timestamps=range(1, 1000))
     def test_malformed_timers(self, statsd_module):
         self.malformed_entries(statsd_module, 'ms')
+
+    @statsd_setup(timestamps=range(1, 1000))
+    def test_malformed_timers_metadata(self, statsd_module):
+        self.malformed_metadata(statsd_module, "gorm:1|ms")
 
 
 if __name__ == '__main__':
