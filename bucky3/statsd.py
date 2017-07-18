@@ -30,7 +30,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.sets = {}
         self.current_timestamp = self.last_timestamp = 0
         # Some of those are illegal in Graphite, so Carbon module has to handle them separately.
-        self.illegal_metadata_chars = re.compile('[^a-zA-Z0-9\-\+\@\?\#\.\_\/\%\<\>\*\:\;\&\[\]]')
+        self.illegal_metadata_chars = re.compile('[^a-zA-Z0-9\-\+\@\?\#\.\_\/\%\<\>\*\:\;\&\[\]]', re.ASCII)
 
     def flush(self, monotonic_timestamp, system_timestamp):
         self.last_timestamp = self.current_timestamp
@@ -150,7 +150,10 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def handle_packet(self, data, addr):
         # Adding a bit of extra sauce so clients can
         # send multiple samples in a single UDP packet.
-        timestamp, data = round(module.system_time(), 3), data.decode()
+        try:
+            timestamp, data = round(module.system_time(), 3), data.decode("ascii")
+        except UnicodeDecodeError:
+            return
         for line in data.splitlines():
             line = line.strip()
             if line:

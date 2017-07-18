@@ -23,7 +23,7 @@ class PrometheusExporter(module.MetricsDstProcess):
                 req.send_response(200)
                 req.send_header("Content-Type", "text/plain; version=0.0.4")
                 req.end_headers()
-                req.wfile.write(self.get_page().encode())
+                req.wfile.write(self.get_page().encode("ascii"))
 
         def log_message(req, format, *args):
             self.log.info(format, *args)

@@ -13,7 +13,7 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
         chunk_size = 5
         for i in range(0, len(self.buffer), chunk_size):
             chunk = self.buffer[i:i + chunk_size]
-            payload = '\n'.join(chunk).encode()
+            payload = '\n'.join(chunk).encode("ascii")
             for ip, port in self.resolve_hosts():
                 self.socket.sendto(payload, (ip, port))
 
