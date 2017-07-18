@@ -56,7 +56,7 @@ def statsd_setup(timestamps, **extra_cfg):
         return wrapper
 
 
-class TestStatsDModule(unittest.TestCase):
+class TestStatsDServer(unittest.TestCase):
     def malformed_entries(self, statsd_module, entry_type, check_numeric=True):
         mock_pipe = statsd_module.dst_pipes[0]
         statsd_module.handle_line(0, ":1|" + entry_type)

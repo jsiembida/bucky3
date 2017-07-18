@@ -28,24 +28,32 @@ class CarbonClient(module.MetricsPushProcess, module.TCPConnector):
         payload = ''.join(self.buffer).encode("ascii")
         self.socket.sendall(payload)
 
+    def translate_token(self, token):
+        # TODO: Which chars we have to translate? '[\-\+\@\?\#\.\_\/\%\<\>\*\:\;\&\[\]]'
+        return token.replace('/', '_').replace('.', '_').replace('*', '_').replace('[', '_').replace(']', '_')
+
     def build_name(self, metadata):
         if not metadata:
-            return ''  # This should not happen in Carbon protocol, raise an exception
+            return None
         found_mappings = tuple(k for k in self.cfg['name_mapping'] if k in metadata)
         buf = [metadata.pop(k) for k in found_mappings]
         buf.extend(metadata[k] for k in sorted(metadata.keys()))
-        return '.'.join(buf)
+        return '.'.join(self.translate_token(t) for t in buf)
 
     def process_values(self, bucket, values, timestamp, metadata=None):
         for k, v in values.items():
             if metadata:
                 metadata_dict = metadata.copy()
-                metadata_dict.update(bucket=bucket, value=k)
+                metadata_dict.update(value=k)
             else:
-                metadata_dict = dict(bucket=bucket, value=k)
-            name = self.build_name(metadata_dict)
-            self.buffer.append("%s %s %s\n" % (name, v, int(timestamp)))
+                metadata_dict = dict(value=k)
+            self.process_value(bucket, v, timestamp, metadata_dict)
 
     def process_value(self, bucket, value, timestamp, metadata=None):
+        if metadata:
+            metadata.update(bucket=bucket)
+        else:
+            metadata = dict(bucket=bucket)
         name = self.build_name(metadata)
-        self.buffer.append("%s %s %s\n" % (name, value, int(timestamp)))
+        if name:
+            self.buffer.append("%s %s %s\n" % (name, value, int(timestamp)))
