@@ -30,7 +30,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.sets = {}
         self.current_timestamp = self.last_timestamp = 0
         # Some of those are illegal in Graphite, so Carbon module has to handle them separately.
-        self.illegal_metadata_chars = re.compile('[^a-zA-Z0-9\-\+\@\?\#\.\_\/\%\<\>\*\:\;\&\[\]]', re.ASCII)
+        self.metadata_regex = re.compile('^([a-zA-Z][a-zA-Z0-9_]*)[:=]([a-zA-Z0-9_:=\-\+\@\?\#\.\/\%\<\>\*\;\&\[\]]+)$', re.ASCII)
 
     def flush(self, monotonic_timestamp, system_timestamp):
         self.last_timestamp = self.current_timestamp
@@ -205,18 +205,11 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         if len(bits) < 2:
             return line, metadata
         for i in bits[1].split(","):
-            # DataDog docs / examples use key:value, we use key=value.
-            # That should be ok since DataDog client libraries just send them as is.
-            # We let : be used in tag values (URIs, route paths).
-            kv = i.split("=")
-            # Reject samples with malformed tags, seems to be better then silently falling over
-            # the invalid bits and risking some side effects i.e. clashes in metrics name space.
-            if len(kv) == 2:
-                k, v = kv[0], kv[1]
-                if k and k.isidentifier() and v and not self.illegal_metadata_chars.search(v):
-                    metadata[k] = v
-                    continue
-            return None, None
+            # DataDog docs / examples use key:value, we also handle key=value.
+            m = self.metadata_regex.match(i)
+            if not m:
+                return None, None
+            metadata[m.group(1)] = m.group(2)
         return bits[0], metadata
 
     def handle_key(self, name, metadata):
