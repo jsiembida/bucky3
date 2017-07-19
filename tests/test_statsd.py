@@ -1,5 +1,8 @@
 
 
+import os
+import sys
+import time
 import string
 import random
 import unittest
@@ -481,6 +484,71 @@ class TestStatsDServer(unittest.TestCase):
     @statsd_setup(timestamps=range(1, 1000))
     def test_malformed_timers_metadata(self, statsd_module):
         self.malformed_metadata(statsd_module, "gorm:1|ms")
+
+    def performance_test_set(self, metric_type, set_size, tags_per_sample):
+        def rand_str(min_len=3, max_len=10, chars=string.ascii_lowercase):
+            return ''.join(random.choice(chars) for i in range(random.randint(min_len, max_len)))
+
+        def rand_num(min_len=1, max_len=3):
+            return rand_str(min_len, max_len, string.digits)
+
+        buf = set()
+        while len(buf) < set_size:
+            if tags_per_sample > 0:
+                tags_str = ','.join(rand_str() + '=' + rand_str() for i in range(tags_per_sample))
+            else:
+                tags_str = ''
+            l = rand_str() + ':' + rand_num() + '|' + metric_type
+            if tags_str:
+                l = l + '|#' + tags_str
+            buf.add(l)
+
+        return buf
+
+    def performance_test(self, statsd_module, prefix, metric_type, N, M, set_size, tags_per_sample):
+        flag = os.environ.get('TEST_PERFORMANCE', 'no').lower()
+        test_requested = flag == 'yes' or flag == 'true' or flag == '1'
+        if not test_requested:
+            self.skipTest("Performance test not requested")
+
+        mock_pipe = statsd_module.dst_pipes[0]
+        test_sample_set = self.performance_test_set(metric_type, set_size, tags_per_sample)
+        start_time = time.process_time()
+        t = 0
+        for i in range(N):
+            for j in range(M):
+                for sample in test_sample_set:
+                    statsd_module.handle_line(t, sample)
+            statsd_module.tick()
+            t += 1
+            mock_pipe.reset_mock()
+        time_delta = time.process_time() - start_time
+        micros_per_sample = round(1000000 * time_delta / (N * M * len(test_sample_set)), 3)
+        print("\n", prefix, "performance,   us/sample =", micros_per_sample, flush=True, file=sys.stderr)
+
+    @statsd_setup(timestamps=range(1, 10000000))
+    def test_counters_performance(self, statsd_module):
+        self.performance_test(statsd_module, "counters without tags", 'c', 100, 10, 1000, 0)
+        self.performance_test(statsd_module, "counters with 3 tags", 'c', 100, 10, 1000, 3)
+        self.performance_test(statsd_module, "counters with 10 tags", 'c', 100, 10, 1000, 10)
+
+    @statsd_setup(timestamps=range(1, 10000000))
+    def test_gauges_performance(self, statsd_module):
+        self.performance_test(statsd_module, "gauges without tags", 'g', 100, 10, 1000, 0)
+        self.performance_test(statsd_module, "gauges with 3 tags", 'g', 100, 10, 1000, 3)
+        self.performance_test(statsd_module, "gauges with 10 tags", 'g', 100, 10, 1000, 10)
+
+    @statsd_setup(timestamps=range(1, 10000000))
+    def test_sets_performance(self, statsd_module):
+        self.performance_test(statsd_module, "sets without tags", 's', 100, 10, 1000, 0)
+        self.performance_test(statsd_module, "sets with 3 tags", 's', 100, 10, 1000, 3)
+        self.performance_test(statsd_module, "sets with 10 tags", 's', 100, 10, 1000, 10)
+
+    @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(90, 99))
+    def test_timers_performance(self, statsd_module):
+        self.performance_test(statsd_module, "timers without tags", 'ms', 100, 10, 1000, 0)
+        self.performance_test(statsd_module, "timers with 3 tags", 'ms', 100, 10, 1000, 3)
+        self.performance_test(statsd_module, "timers with 10 tags", 'ms', 100, 10, 1000, 10)
 
 
 if __name__ == '__main__':
