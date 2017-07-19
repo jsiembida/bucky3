@@ -50,7 +50,6 @@ def prometheus_setup(timestamps, **extra_cfg):
             expected_output = fun(self, prometheus_module)
             if expected_output is None:
                 return
-            prometheus_module.tick()
             prometheus_verify(prometheus_module, expected_output)
 
     if callable(timestamps):
@@ -64,7 +63,7 @@ def prometheus_setup(timestamps, **extra_cfg):
         return wrapper
 
 
-class TestPrometheusModule(unittest.TestCase):
+class TestPrometheusExporter(unittest.TestCase):
     @prometheus_setup(values_timeout=2, timestamps=range(1, 100))
     def test_simple_single_values(self, prometheus_module):
         prometheus_module.process_value('val1', 10, 1)
