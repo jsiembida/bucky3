@@ -18,24 +18,19 @@
 import os
 import sys
 import signal
+import importlib
 import multiprocessing
 import bucky3.common as common
 import bucky3.module as module
-import bucky3.carbon as carbon
-import bucky3.statsd as statsd
-import bucky3.influxdb as influxdb
-import bucky3.prometheus as prometheus
-import bucky3.linuxstats as linuxstats
-import bucky3.dockerstats as dockerstats
 
 
 MODULES = {
-    'carbon_client': carbon.CarbonClient,
-    'influxdb_client': influxdb.InfluxDBClient,
-    'prometheus_exporter': prometheus.PrometheusExporter,
-    'statsd_server': statsd.StatsDServer,
-    'linux_stats': linuxstats.LinuxStatsCollector,
-    'docker_stats': dockerstats.DockerStatsCollector
+    'carbon_client': ('bucky3.carbon', 'CarbonClient'),
+    'influxdb_client': ('bucky3.influxdb', 'InfluxDBClient'),
+    'prometheus_exporter': ('bucky3.prometheus', 'PrometheusExporter'),
+    'statsd_server': ('bucky3.statsd', 'StatsDServer'),
+    'linux_stats': ('bucky3.linuxstats', 'LinuxStatsCollector'),
+    'docker_stats': ('bucky3.dockerstats', 'DockerStatsCollector')
 }
 
 
@@ -108,15 +103,20 @@ class Manager:
 
         return err
 
+    def import_module(self, module_package, module_class):
+        importlib.invalidate_caches()
+        m = importlib.import_module(module_package)
+        return getattr(m, module_class)
+
     def prepare_modules(self, cfg):
         src_buf, dst_buf = [], []
 
         for k, v in cfg.items():
             if not k.startswith('_') and type(v) == dict and 'module_type' in v:
                 module_name, module_type = k, v['module_type']
-                module_class = MODULES.get(module_type, None)
-                if not module_class:
+                if module_type not in MODULES:
                     raise ValueError("Invalid module type %s", module_type)
+                module_class = self.import_module(*MODULES[module_type])
                 if issubclass(module_class, module.MetricsSrcProcess):
                     src_buf.append((module_name, module_class))
                 elif issubclass(module_class, module.MetricsDstProcess):
