@@ -1,19 +1,37 @@
 
 
+import io
 import sys
 import time
 import socket
 import signal
 import random
+import logging
 import multiprocessing
-import bucky3.common as common
+
 
 monotonic_time = time.monotonic
 system_time = time.time
 sleep = time.sleep
 
 
-class MetricsProcess(multiprocessing.Process):
+class Logger:
+    def setup_logging(self, cfg, module_name=None):
+        # Reinit those to avoid races on the underlying streams
+        sys.stdout = io.TextIOWrapper(io.FileIO(1, mode='wb', closefd=False))
+        sys.stderr = io.TextIOWrapper(io.FileIO(2, mode='wb', closefd=False))
+        root = logging.getLogger(module_name)
+        for h in list(root.handlers):
+            root.removeHandler(h)
+        root.setLevel(cfg.get('log_level', 'INFO'))
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter("[%(asctime)-15s][%(levelname)s] %(name)s(%(process)d) - %(message)s")
+        handler.setFormatter(formatter)
+        root.addHandler(handler)
+        return logging.getLogger(module_name)
+
+
+class MetricsProcess(multiprocessing.Process, Logger):
     def __init__(self, module_name, module_config):
         super().__init__(name=module_name, daemon=True)
         self.cfg = module_config
@@ -53,7 +71,7 @@ class MetricsProcess(multiprocessing.Process):
         self.next_flush = now + self.flush_interval - 0.03
 
     def init_config(self):
-        self.log = common.setup_logging(self.cfg, self.name)
+        self.log = self.setup_logging(self.cfg, self.name)
         self.buffer = []
         self.buffer_limit = self.cfg.get('buffer_limit', 10000)
         self.tick_interval = self.cfg.get('flush_interval', None) or None

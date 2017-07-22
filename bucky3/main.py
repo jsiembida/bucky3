@@ -23,7 +23,6 @@ import argparse
 import importlib
 import multiprocessing
 import bucky3.cfg as cfg
-import bucky3.common as common
 import bucky3.module as module
 
 
@@ -37,7 +36,7 @@ MODULES = {
 }
 
 
-class Manager:
+class Manager(module.Logger):
     def __init__(self, config_file):
         self.config_file = config_file
         self.log = None
@@ -171,7 +170,7 @@ class Manager:
             if ignore_config_errors:
                 return
             raise
-        self.log = common.setup_logging(new_config, 'bucky3')
+        self.log = self.setup_logging(new_config, 'bucky3')
         self.terminate_group(self.src_group)
         self.terminate_group(self.dst_group)
         self.src_group, self.dst_group = self.prepare_modules(src_modules, dst_modules)
