@@ -18,6 +18,7 @@
 import os
 import sys
 import signal
+import argparse
 import importlib
 import multiprocessing
 import bucky3.common as common
@@ -163,15 +164,10 @@ class Manager:
 
 
 def main(argv=sys.argv):
-    if len(argv) == 1:
-        config_file = None
-    elif len(argv) == 2:
-        config_file = argv[1]
-    else:
-        print("\n\nOne optional argument is accepted, path to config file.\n\n", file=sys.stderr)
-        sys.exit(1)
-
-    Manager(config_file).run()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("config_file", help="An optional config file", nargs='?', default=None)
+    args = parser.parse_args(argv[1:])
+    Manager(args.config_file).run()
 
 
 if __name__ == '__main__':
