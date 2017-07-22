@@ -14,9 +14,9 @@ sleep = time.sleep
 
 
 class MetricsProcess(multiprocessing.Process):
-    def __init__(self, module_name, config_file):
+    def __init__(self, module_name, module_config):
         super().__init__(name=module_name, daemon=True)
-        self.config_file = config_file
+        self.cfg = module_config
 
     def schedule_tick(self):
         now = monotonic_time()
@@ -53,7 +53,6 @@ class MetricsProcess(multiprocessing.Process):
         self.next_flush = now + self.flush_interval - 0.03
 
     def init_config(self):
-        self.cfg = common.load_config(self.config_file, self.name)
         self.log = common.setup_logging(self.cfg, self.name)
         self.buffer = []
         self.buffer_limit = self.cfg.get('buffer_limit', 10000)
@@ -92,8 +91,8 @@ class MetricsProcess(multiprocessing.Process):
 
 
 class MetricsDstProcess(MetricsProcess):
-    def __init__(self, module_name, config_file, src_pipe):
-        super().__init__(module_name, config_file)
+    def __init__(self, module_name, module_config, src_pipe):
+        super().__init__(module_name, module_config)
         self.src_pipe = src_pipe
 
     def loop(self):
@@ -139,8 +138,8 @@ class MetricsDstProcess(MetricsProcess):
 
 
 class MetricsSrcProcess(MetricsProcess):
-    def __init__(self, module_name, config_file, dst_pipes):
-        super().__init__(module_name, config_file)
+    def __init__(self, module_name, module_config, dst_pipes):
+        super().__init__(module_name, module_config)
         self.dst_pipes = dst_pipes
 
     def flush(self, monotonic_timestamp, system_timestamp):

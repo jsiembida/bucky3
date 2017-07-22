@@ -25,8 +25,7 @@ def statsd_verify(output_pipe, expected_values):
 def statsd_setup(timestamps, **extra_cfg):
     def run(fun, self):
         with patch('bucky3.module.monotonic_time') as monotonic_time, \
-                patch('bucky3.module.system_time') as system_time, \
-                patch('bucky3.common.load_config') as load_config:
+                patch('bucky3.module.system_time') as system_time:
             buf = tuple(timestamps)
             system_time.side_effect = tuple(buf)
             monotonic_time.side_effect = tuple(buf)
@@ -38,9 +37,8 @@ def statsd_setup(timestamps, **extra_cfg):
                 counters_timeout=100, counters_bucket="stats_counters",
             )
             cfg.update(**extra_cfg)
-            load_config.side_effect = lambda *args: cfg
             output_pipe = MagicMock()
-            statsd_module = statsd.StatsDServer('statsd_test', 'statsd_config', [output_pipe])
+            statsd_module = statsd.StatsDServer('statsd_test', cfg, [output_pipe])
             statsd_module.init_config()
             expected_output = fun(self, statsd_module)
             if expected_output is None:

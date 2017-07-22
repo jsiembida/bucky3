@@ -13,28 +13,9 @@
 # the License.
 
 
-import os
 import io
 import sys
-import string
 import logging
-import bucky3.cfg as cfg
-
-
-def load_config(config_file, module_name=None):
-    new_config = {}
-    with open(config_file or cfg.__file__, 'r') as f:
-        config_template = string.Template(f.read())
-        config_str = config_template.substitute(os.environ)
-        exec(config_str, new_config)
-
-    if module_name:
-        # Module specific config requested, if exists, should override the globals
-        if module_name in new_config:
-            module_config = new_config.pop(module_name)
-            new_config.update(module_config)
-
-    return new_config
 
 
 def setup_logging(cfg, module_name=None):

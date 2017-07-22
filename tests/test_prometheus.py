@@ -37,15 +37,13 @@ def prometheus_verify(prometheus_module, expected_values):
 def prometheus_setup(timestamps, **extra_cfg):
     def run(fun, self):
         with patch('bucky3.module.monotonic_time') as monotonic_time, \
-                patch('bucky3.module.system_time') as system_time, \
-                patch('bucky3.common.load_config') as load_config:
+                patch('bucky3.module.system_time') as system_time:
             buf = tuple(timestamps)
             system_time.side_effect = tuple(buf)
             monotonic_time.side_effect = tuple(buf)
             cfg = dict(flush_interval=1, values_timeout=10)
             cfg.update(**extra_cfg)
-            load_config.side_effect = lambda *args: cfg
-            prometheus_module = prometheus.PrometheusExporter('prometheus_test', 'prometheus_config', None)
+            prometheus_module = prometheus.PrometheusExporter('prometheus_test', cfg, None)
             prometheus_module.init_config()
             expected_output = fun(self, prometheus_module)
             if expected_output is None:

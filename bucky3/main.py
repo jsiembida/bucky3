@@ -17,10 +17,12 @@
 
 import os
 import sys
+import string
 import signal
 import argparse
 import importlib
 import multiprocessing
+import bucky3.cfg as cfg
 import bucky3.common as common
 import bucky3.module as module
 
@@ -42,6 +44,47 @@ class Manager:
         self.src_group = {}
         self.dst_group = {}
 
+    def import_module(self, module_package, module_class):
+        importlib.invalidate_caches()
+        m = importlib.import_module(module_package)
+        return getattr(m, module_class)
+
+    def load_config(self, config_file):
+        new_config = {}
+        with open(config_file or cfg.__file__, 'r') as f:
+            config_template = string.Template(f.read())
+            config_str = config_template.substitute(os.environ)
+            exec(config_str, new_config)
+
+        src_modules, dst_modules = [], []
+
+        for k in list(new_config.keys()):
+            v = new_config[k]
+            if not k.startswith('_') and type(v) == dict and 'module_type' in v:
+                module_name, module_type, module_config = k, v['module_type'], new_config.pop(k)
+                if module_type not in MODULES:
+                    raise ValueError("Invalid module type %s", module_type)
+                module_class = self.import_module(*MODULES[module_type])
+                if issubclass(module_class, module.MetricsSrcProcess):
+                    src_modules.append((module_name, module_class, module_config))
+                elif issubclass(module_class, module.MetricsDstProcess):
+                    dst_modules.append((module_name, module_class, module_config))
+                else:
+                    raise ValueError("Invalid module class %s", module_class)
+
+        if not src_modules:
+            raise ValueError("No source modules configured")
+
+        if not dst_modules:
+            raise ValueError("No destination modules configured")
+
+        for module_name, module_class, module_config in src_modules + dst_modules:
+            for k, v in new_config.items():
+                if k not in module_config:
+                    module_config[k] = v
+
+        return new_config, src_modules, dst_modules
+
     def terminate_module(self, p):
         err = 0
         if p.exitcode is None:
@@ -59,7 +102,7 @@ class Manager:
 
     def terminate_group(self, group):
         err = 0
-        for timestamps, p, args in group.values():
+        for module_config, timestamps, p, args in group.values():
             if p:
                 err += self.terminate_module(p)
         return err
@@ -69,20 +112,22 @@ class Manager:
         err += self.terminate_group(self.dst_group)
         sys.exit(err != 0)
 
-    def start_module(self, module_name, module_class, timestamps, args, message="Starting %s"):
+    def start_module(self, module_name, module_class, module_config, timestamps, args, message="Starting %s"):
         timestamps.append(module.monotonic_time())
         timestamps = timestamps[-10:]
-        p = module_class(module_name, self.config_file, *args)
+        p = module_class(module_name, module_config, *args)
         self.log.info(message, p.name)
         p.start()
-        return timestamps, p, args
+        return module_config, timestamps, p, args
 
     def healthcheck(self, group):
         err = 0
 
-        for (module_name, module_class), (timestamps, p, args) in group.items():
+        for (module_name, module_class), (module_config, timestamps, p, args) in group.items():
             if p is None:
-                group[(module_name, module_class)] = self.start_module(module_name, module_class, timestamps, args)
+                group[(module_name, module_class)] = self.start_module(
+                    module_name, module_class, module_config, timestamps, args
+                )
             elif p.exitcode is not None:
                 p.join()
                 if len(timestamps) > 5:
@@ -97,57 +142,42 @@ class Manager:
                     self.log.warning("%s has stopped, too early for restart", p.name)
                 else:
                     group[(module_name, module_class)] = self.start_module(
-                        module_name, module_class, timestamps, args, "%s has stopped, restarting"
+                        module_name, module_class, module_config, timestamps, args, "%s has stopped, restarting"
                     )
             else:
                 self.log.debug("%s is up", p.name)
 
         return err
 
-    def import_module(self, module_package, module_class):
-        importlib.invalidate_caches()
-        m = importlib.import_module(module_package)
-        return getattr(m, module_class)
+    def prepare_modules(self, src_modules, dst_modules):
+        src_group, dst_group, pipes = {}, {}, []
 
-    def prepare_modules(self, cfg):
-        src_buf, dst_buf = [], []
-
-        for k, v in cfg.items():
-            if not k.startswith('_') and type(v) == dict and 'module_type' in v:
-                module_name, module_type = k, v['module_type']
-                if module_type not in MODULES:
-                    raise ValueError("Invalid module type %s", module_type)
-                module_class = self.import_module(*MODULES[module_type])
-                if issubclass(module_class, module.MetricsSrcProcess):
-                    src_buf.append((module_name, module_class))
-                elif issubclass(module_class, module.MetricsDstProcess):
-                    dst_buf.append((module_name, module_class))
-                else:
-                    raise ValueError("Invalid module class %s", module_class)
-
-        src, dst, pipes = {}, {}, []
-
-        for module_name, module_class in dst_buf:
+        for module_name, module_class, module_config in dst_modules:
             send, recv = multiprocessing.Pipe()
-            dst[(module_name, module_class)] = [], None, (recv,)
+            dst_group[(module_name, module_class)] = module_config, [], None, (recv,)
             pipes.append(send)
-        for module_name, module_class in src_buf:
-            src[(module_name, module_class)] = [], None, (pipes,)
+        for module_name, module_class, module_config in src_modules:
+            src_group[(module_name, module_class)] = module_config, [], None, (pipes,)
 
-        return src, dst
+        return src_group, dst_group
 
     def termination_handler(self, signal_number, stack_frame):
         self.terminate_and_exit(0)
 
-    def restart_handler(self, signal_number, stack_frame):
+    def restart_handler(self, signal_number, stack_frame, ignore_config_errors=True):
+        try:
+            new_config, src_modules, dst_modules = self.load_config(self.config_file)
+        except Exception:
+            if ignore_config_errors:
+                return
+            raise
+        self.log = common.setup_logging(new_config, 'bucky3')
         self.terminate_group(self.src_group)
         self.terminate_group(self.dst_group)
-        cfg = common.load_config(self.config_file)
-        self.log = common.setup_logging(cfg, 'bucky3')
-        self.src_group, self.dst_group = self.prepare_modules(cfg)
+        self.src_group, self.dst_group = self.prepare_modules(src_modules, dst_modules)
 
     def run(self):
-        self.restart_handler(None, None)
+        self.restart_handler(None, None, False)
 
         signal.signal(signal.SIGINT, self.termination_handler)
         signal.signal(signal.SIGTERM, self.termination_handler)
