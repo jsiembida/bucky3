@@ -147,7 +147,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             else:
                 del self.counters[k]
 
-    def handle_packet(self, data, addr):
+    def handle_packet(self, data, addr=None):
         # Adding a bit of extra sauce so clients can
         # send multiple samples in a single UDP packet.
         try:

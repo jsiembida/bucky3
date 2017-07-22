@@ -60,23 +60,19 @@ def statsd_setup(timestamps, **extra_cfg):
 class TestStatsDServer(unittest.TestCase):
     def malformed_entries(self, statsd_module, entry_type, check_numeric=True):
         mock_pipe = statsd_module.dst_pipes[0]
-        statsd_module.handle_line(0, ":1|" + entry_type)
-        statsd_module.tick()
-        assert not mock_pipe.called
-        mock_pipe.reset_mock()
-        statsd_module.handle_line(0, "g.o.r.m:1|" + entry_type)
-        statsd_module.tick()
-        assert not mock_pipe.called
-        mock_pipe.reset_mock()
-        statsd_module.handle_line(0, "gorm:|" + entry_type)
-        statsd_module.tick()
-        assert not mock_pipe.called
-        mock_pipe.reset_mock()
-        if check_numeric:
-            statsd_module.handle_line(0, "gorm:abc|" + entry_type)
+
+        def test(s):
+            statsd_module.handle_packet((s + entry_type).encode("utf-8"))
             statsd_module.tick()
             assert not mock_pipe.called
             mock_pipe.reset_mock()
+
+        test(":1|")
+        test("g.o.r.m:1|")
+        test("gérm:1|")
+        test("gorm:|")
+        if check_numeric:
+            test("gorm:abc|")
 
     def malformed_metadata(self, statsd_module, entry):
         mock_pipe = statsd_module.dst_pipes[0]
