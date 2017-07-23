@@ -1,22 +1,40 @@
 
 
+import io
 import sys
 import time
 import socket
 import signal
 import random
+import logging
 import multiprocessing
-import bucky3.common as common
+
 
 monotonic_time = time.monotonic
 system_time = time.time
 sleep = time.sleep
 
 
-class MetricsProcess(multiprocessing.Process):
-    def __init__(self, module_name, config_file):
+class Logger:
+    def setup_logging(self, cfg, module_name=None):
+        # Reinit those to avoid races on the underlying streams
+        sys.stdout = io.TextIOWrapper(io.FileIO(1, mode='wb', closefd=False))
+        sys.stderr = io.TextIOWrapper(io.FileIO(2, mode='wb', closefd=False))
+        root = logging.getLogger(module_name)
+        for h in list(root.handlers):
+            root.removeHandler(h)
+        root.setLevel(cfg.get('log_level', 'INFO'))
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter("[%(asctime)-15s][%(levelname)s] %(name)s(%(process)d) - %(message)s")
+        handler.setFormatter(formatter)
+        root.addHandler(handler)
+        return logging.getLogger(module_name)
+
+
+class MetricsProcess(multiprocessing.Process, Logger):
+    def __init__(self, module_name, module_config):
         super().__init__(name=module_name, daemon=True)
-        self.config_file = config_file
+        self.cfg = module_config
 
     def schedule_tick(self):
         now = monotonic_time()
@@ -53,8 +71,7 @@ class MetricsProcess(multiprocessing.Process):
         self.next_flush = now + self.flush_interval - 0.03
 
     def init_config(self):
-        self.cfg = common.load_config(self.config_file, self.name)
-        self.log = common.setup_logging(self.cfg, self.name)
+        self.log = self.setup_logging(self.cfg, self.name)
         self.buffer = []
         self.buffer_limit = self.cfg.get('buffer_limit', 10000)
         self.tick_interval = self.cfg.get('flush_interval', None) or None
@@ -92,8 +109,8 @@ class MetricsProcess(multiprocessing.Process):
 
 
 class MetricsDstProcess(MetricsProcess):
-    def __init__(self, module_name, config_file, src_pipe):
-        super().__init__(module_name, config_file)
+    def __init__(self, module_name, module_config, src_pipe):
+        super().__init__(module_name, module_config)
         self.src_pipe = src_pipe
 
     def loop(self):
@@ -139,8 +156,8 @@ class MetricsDstProcess(MetricsProcess):
 
 
 class MetricsSrcProcess(MetricsProcess):
-    def __init__(self, module_name, config_file, dst_pipes):
-        super().__init__(module_name, config_file)
+    def __init__(self, module_name, module_config, dst_pipes):
+        super().__init__(module_name, module_config)
         self.dst_pipes = dst_pipes
 
     def flush(self, monotonic_timestamp, system_timestamp):

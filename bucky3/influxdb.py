@@ -30,7 +30,8 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
                 v = str(v).replace(' ', '')
                 label_buf.append(str(k) + '=' + v)
         value_buf = []
-        for k, v in values.items():
+        for k in sorted(values.keys()):
+            v = values[k]
             t = type(v)
             if t is int:
                 value_buf.append(str(k) + '=' + str(v) + 'i')

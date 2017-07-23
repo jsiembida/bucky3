@@ -25,8 +25,7 @@ def statsd_verify(output_pipe, expected_values):
 def statsd_setup(timestamps, **extra_cfg):
     def run(fun, self):
         with patch('bucky3.module.monotonic_time') as monotonic_time, \
-                patch('bucky3.module.system_time') as system_time, \
-                patch('bucky3.common.load_config') as load_config:
+                patch('bucky3.module.system_time') as system_time:
             buf = tuple(timestamps)
             system_time.side_effect = tuple(buf)
             monotonic_time.side_effect = tuple(buf)
@@ -38,9 +37,8 @@ def statsd_setup(timestamps, **extra_cfg):
                 counters_timeout=100, counters_bucket="stats_counters",
             )
             cfg.update(**extra_cfg)
-            load_config.side_effect = lambda *args: cfg
             output_pipe = MagicMock()
-            statsd_module = statsd.StatsDServer('statsd_test', 'statsd_config', [output_pipe])
+            statsd_module = statsd.StatsDServer('statsd_test', cfg, [output_pipe])
             statsd_module.init_config()
             expected_output = fun(self, statsd_module)
             if expected_output is None:
@@ -62,23 +60,19 @@ def statsd_setup(timestamps, **extra_cfg):
 class TestStatsDServer(unittest.TestCase):
     def malformed_entries(self, statsd_module, entry_type, check_numeric=True):
         mock_pipe = statsd_module.dst_pipes[0]
-        statsd_module.handle_line(0, ":1|" + entry_type)
-        statsd_module.tick()
-        assert not mock_pipe.called
-        mock_pipe.reset_mock()
-        statsd_module.handle_line(0, "g.o.r.m:1|" + entry_type)
-        statsd_module.tick()
-        assert not mock_pipe.called
-        mock_pipe.reset_mock()
-        statsd_module.handle_line(0, "gorm:|" + entry_type)
-        statsd_module.tick()
-        assert not mock_pipe.called
-        mock_pipe.reset_mock()
-        if check_numeric:
-            statsd_module.handle_line(0, "gorm:abc|" + entry_type)
+
+        def test(s):
+            statsd_module.handle_packet((s + entry_type).encode("utf-8"))
             statsd_module.tick()
             assert not mock_pipe.called
             mock_pipe.reset_mock()
+
+        test(":1|")
+        test("g.o.r.m:1|")
+        test("gérm:1|")
+        test("gorm:|")
+        if check_numeric:
+            test("gorm:abc|")
 
     def malformed_metadata(self, statsd_module, entry):
         mock_pipe = statsd_module.dst_pipes[0]
