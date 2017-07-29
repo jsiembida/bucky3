@@ -58,7 +58,7 @@ def statsd_setup(timestamps, **extra_cfg):
 
 
 class TestStatsDServer(unittest.TestCase):
-    def malformed_entries(self, statsd_module, entry_type, check_numeric=True):
+    def malformed_entries(self, statsd_module, entry_type, check_numeric=True, check_rate=False):
         mock_pipe = statsd_module.dst_pipes[0]
 
         def test(s):
@@ -73,6 +73,11 @@ class TestStatsDServer(unittest.TestCase):
         test("gorm:|")
         if check_numeric:
             test("gorm:abc|")
+        if check_rate:
+            test("gorm:1|@")
+            test("gorm:1|@0")
+            test("gorm:1|@1.1")
+            test("gorm:1|@-0.3")
 
     def malformed_metadata(self, statsd_module, entry):
         mock_pipe = statsd_module.dst_pipes[0]
@@ -164,7 +169,7 @@ class TestStatsDServer(unittest.TestCase):
 
     @statsd_setup(timestamps=range(1, 1000))
     def test_malformed_counters(self, statsd_module):
-        self.malformed_entries(statsd_module, 'c')
+        self.malformed_entries(statsd_module, 'c', check_rate=True)
 
     @statsd_setup(timestamps=range(1, 1000))
     def test_malformed_counters_metadata(self, statsd_module):
@@ -496,6 +501,8 @@ class TestStatsDServer(unittest.TestCase):
             else:
                 tags_str = ''
             l = rand_str() + ':' + rand_num() + '|' + metric_type
+            if random.random() > 0.5:
+                l = l + '|@{:.1f}'.format(random.random())
             if tags_str:
                 l = l + '|#' + tags_str
             buf.add(l)
@@ -520,8 +527,11 @@ class TestStatsDServer(unittest.TestCase):
             t += 1
             mock_pipe.reset_mock()
         time_delta = time.process_time() - start_time
-        micros_per_sample = round(1000000 * time_delta / (N * M * len(test_sample_set)), 3)
-        print("\n", prefix, "performance,   us/sample =", micros_per_sample, flush=True, file=sys.stderr)
+        total_samples = N * M * len(test_sample_set)
+        us_per_sample = 1000000 * time_delta / total_samples
+        print('\n{prefix}: {total_samples:d} samples in {time_delta:.2f}s -> {us_per_sample:.1f}us/sample'.format(
+            prefix=prefix, total_samples=total_samples, time_delta=time_delta, us_per_sample=us_per_sample
+        ), flush=True, file=sys.stderr)
 
     @statsd_setup(timestamps=range(1, 10000000))
     def test_counters_performance(self, statsd_module):
