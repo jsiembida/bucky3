@@ -162,6 +162,7 @@ class MetricsSrcProcess(MetricsProcess):
 
     def flush(self, monotonic_timestamp, system_timestamp):
         if self.buffer:
+            self.log.debug("Flushing %d entries from buffer", len(self.buffer))
             for i in self.dst_pipes:
                 i.send(self.buffer)
             self.buffer = []
@@ -201,6 +202,8 @@ class UDPConnector(HostResolver):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         if bind:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, 'SO_REUSEPORT'):
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             sock.bind((ip, port))
             self.log.info("Bound UDP socket %s:%d", ip, port)
         return sock
@@ -240,10 +243,10 @@ class MetricsPushProcess(MetricsDstProcess):
             self.log.debug("Buffer trimmed from %d to %d entries", buffer_len, len(self.buffer))
 
     def flush(self, monotonic_timestamp, system_timestamp):
-        if len(self.buffer):
+        if self.buffer:
             try:
                 self.push_buffer()
-                self.buffer = []
+                self.buffer.clear()
             except (PermissionError, ConnectionError):
                 self.log.exception("Connection error")
                 self.socket = None  # Python will trigger close() when GCing it.
