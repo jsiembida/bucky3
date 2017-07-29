@@ -84,26 +84,26 @@ class Manager(module.Logger):
 
         return new_config, src_modules, dst_modules
 
-    def terminate_module(self, p):
+    def terminate_process(self, proc):
         err = 0
-        if p.exitcode is None:
-            self.log.info("Stopping %s", p.name)
-            p.terminate()
-            p.join(1)
-            if p.exitcode is None:
-                self.log.warning("%s still running, killing", p.name)
+        if proc.exitcode is None:
+            self.log.info("Stopping %s", proc.name)
+            proc.terminate()
+            proc.join(1)
+            if proc.exitcode is None:
+                self.log.warning("%s still running, killing", proc.name)
                 err += 1
-                os.kill(p.pid, 9)
-                p.join()
+                os.kill(proc.pid, 9)
+                proc.join()
         else:
-            self.log.info("%s has already exited", p.name)
+            self.log.info("%s has already exited", proc.name)
         return err
 
     def terminate_group(self, group):
         err = 0
-        for module_config, timestamps, p, args in group.values():
-            if p:
-                err += self.terminate_module(p)
+        for module_config, timestamps, proc, args in group.values():
+            if proc:
+                err += self.terminate_process(proc)
         return err
 
     def terminate_and_exit(self, err=0):
@@ -114,37 +114,37 @@ class Manager(module.Logger):
     def start_module(self, module_name, module_class, module_config, timestamps, args, message="Starting %s"):
         timestamps.append(module.monotonic_time())
         timestamps = timestamps[-10:]
-        p = module_class(module_name, module_config, *args)
-        self.log.info(message, p.name)
-        p.start()
-        return module_config, timestamps, p, args
+        proc = module_class(module_name, module_config, *args)
+        self.log.info(message, proc.name)
+        proc.start()
+        return module_config, timestamps, proc, args
 
     def healthcheck(self, group):
         err = 0
 
-        for (module_name, module_class), (module_config, timestamps, p, args) in group.items():
-            if p is None:
+        for (module_name, module_class), (module_config, timestamps, proc, args) in group.items():
+            if proc is None:
                 group[(module_name, module_class)] = self.start_module(
                     module_name, module_class, module_config, timestamps, args
                 )
-            elif p.exitcode is not None:
-                p.join()
+            elif proc.exitcode is not None:
+                proc.join()
                 if len(timestamps) > 5:
                     average_time_between_starts = sum(
                         timestamps[i] - timestamps[i - 1] for i in range(1, len(timestamps))
                     ) / (len(timestamps) - 1)
                     if average_time_between_starts < 60:
-                        self.log.critical("%s keeps failing, cannot recover", p.name)
+                        self.log.critical("%s keeps failing, cannot recover", proc.name)
                         err += 1
                         continue
                 if timestamps and (module.monotonic_time() - timestamps[-1]) < 1:
-                    self.log.warning("%s has stopped, too early for restart", p.name)
+                    self.log.warning("%s has stopped, too early for restart", proc.name)
                 else:
                     group[(module_name, module_class)] = self.start_module(
                         module_name, module_class, module_config, timestamps, args, "%s has stopped, restarting"
                     )
             else:
-                self.log.debug("%s is up", p.name)
+                self.log.debug("%s is up", proc.name)
 
         return err
 
@@ -168,6 +168,7 @@ class Manager(module.Logger):
             new_config, src_modules, dst_modules = self.load_config(self.config_file)
         except Exception:
             if ignore_config_errors:
+                self.log.error("Config error, not restarting")
                 return
             raise
         self.log = self.setup_logging(new_config, 'bucky3')
