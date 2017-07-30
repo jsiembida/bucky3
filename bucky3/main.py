@@ -44,8 +44,6 @@ class Manager(module.Logger):
         self.dst_group = {}
 
     def import_module(self, module_package, module_class):
-        if module_package in sys.modules:
-            del sys.modules[module_package]
         m = importlib.import_module(module_package)
         return getattr(m, module_class)
 
@@ -152,40 +150,27 @@ class Manager(module.Logger):
 
         return err
 
-    def prepare_modules(self, src_modules, dst_modules):
-        src_group, dst_group, pipes = {}, {}, []
+    def init(self):
+        new_config, src_modules, dst_modules = self.load_config(self.config_file)
+        self.log = self.setup_logging(new_config, 'bucky3')
+        self.src_group, self.dst_group, pipes = {}, {}, []
 
         for module_name, module_class, module_config in dst_modules:
             send, recv = multiprocessing.Pipe()
-            dst_group[(module_name, module_class)] = module_config, [], None, (recv,)
+            self.dst_group[(module_name, module_class)] = module_config, [], None, (recv,)
             pipes.append(send)
         for module_name, module_class, module_config in src_modules:
-            src_group[(module_name, module_class)] = module_config, [], None, (pipes,)
-
-        return src_group, dst_group
+            self.src_group[(module_name, module_class)] = module_config, [], None, (pipes,)
 
     def termination_handler(self, signal_number, stack_frame):
         self.terminate_and_exit(0)
 
-    def restart_handler(self, signal_number, stack_frame, ignore_config_errors=True):
-        try:
-            new_config, src_modules, dst_modules = self.load_config(self.config_file)
-        except Exception:
-            if ignore_config_errors:
-                self.log.error("Config error, not restarting")
-                return
-            raise
-        self.log = self.setup_logging(new_config, 'bucky3')
-        self.terminate_group(self.src_group)
-        self.terminate_group(self.dst_group)
-        self.src_group, self.dst_group = self.prepare_modules(src_modules, dst_modules)
-
     def run(self):
-        self.restart_handler(None, None, False)
+        self.init()
 
         signal.signal(signal.SIGINT, self.termination_handler)
         signal.signal(signal.SIGTERM, self.termination_handler)
-        signal.signal(signal.SIGHUP, self.restart_handler)
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
         signal.signal(signal.SIGALRM, signal.SIG_IGN)
 
         while True:
