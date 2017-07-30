@@ -44,7 +44,8 @@ class Manager(module.Logger):
         self.dst_group = {}
 
     def import_module(self, module_package, module_class):
-        importlib.invalidate_caches()
+        if module_package in sys.modules:
+            del sys.modules[module_package]
         m = importlib.import_module(module_package)
         return getattr(m, module_class)
 
@@ -61,6 +62,9 @@ class Manager(module.Logger):
             v = new_config[k]
             if not k.startswith('_') and type(v) == dict and 'module_type' in v:
                 module_name, module_type, module_config = k, v['module_type'], new_config.pop(k)
+                if module_config.get('module_inactive', False):
+                    continue
+                module_config['module_inactive'] = False
                 if module_type not in MODULES:
                     raise ValueError("Invalid module type %s", module_type)
                 module_class = self.import_module(*MODULES[module_type])
@@ -182,10 +186,11 @@ class Manager(module.Logger):
         signal.signal(signal.SIGINT, self.termination_handler)
         signal.signal(signal.SIGTERM, self.termination_handler)
         signal.signal(signal.SIGHUP, self.restart_handler)
+        signal.signal(signal.SIGALRM, signal.SIG_IGN)
 
         while True:
             try:
-                err = self.healthcheck(self.src_group) + self.healthcheck(self.dst_group)
+                err = self.healthcheck(self.dst_group) + self.healthcheck(self.src_group)
                 if err:
                     self.terminate_and_exit(err)
                 module.sleep(3)

@@ -23,9 +23,10 @@ linuxstats = dict(
 )
 
 dockerstats = dict(
-    # Uncomment the 'module_type' to enable docker stats.
     # It depends on 'docker' package, i.e. `pip3 install docker`
-    # module_type="docker_stats",
+    module_type="docker_stats",
+    # Remove this line or set to True to activate the module
+    module_inactive=True,
 )
 
 statsd = dict(
@@ -43,7 +44,8 @@ statsd = dict(
 )
 
 carbon = dict(
-    # module_type="carbon_client",
+    module_type="carbon_client",
+    module_inactive=True,
     remote_hosts=(
         "127.0.0.1:2003",
     ),
@@ -54,7 +56,8 @@ carbon = dict(
 )
 
 influxdb = dict(
-    # module_type="influxdb_client",
+    module_type="influxdb_client",
+    module_inactive=True,
     remote_hosts=(
         "127.0.0.1:8086",
     ),

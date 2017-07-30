@@ -82,7 +82,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
 
     def run(self, loop=True):
         def termination_handler(signal_number, stack_frame):
-            self.log.info("Received signal %d", signal_number)
+            self.log.info("Received signal %d, exiting", signal_number)
             sys.exit(0)
 
         # We have to reset signals set up by master process to reasonable defaults
@@ -90,7 +90,6 @@ class MetricsProcess(multiprocessing.Process, Logger):
         signal.signal(signal.SIGINT, termination_handler)
         signal.signal(signal.SIGTERM, termination_handler)
         signal.signal(signal.SIGHUP, termination_handler)
-        signal.signal(signal.SIGCHLD, signal.SIG_IGN)
         signal.signal(signal.SIGALRM, signal.SIG_IGN)
 
         self.init_config()
@@ -124,6 +123,7 @@ class MetricsDstProcess(MetricsProcess):
                 pass
             except EOFError:
                 # This happens when no source is connected up, keep trying for 10s, then give up.
+                self.log.debug("EOF while reading source pipe")
                 err += 1
                 if err > 10:
                     self.log.error("Input not ready, quitting")
