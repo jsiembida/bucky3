@@ -44,7 +44,6 @@ class Manager(module.Logger):
         self.dst_group = {}
 
     def import_module(self, module_package, module_class):
-        importlib.invalidate_caches()
         m = importlib.import_module(module_package)
         return getattr(m, module_class)
 
@@ -61,6 +60,9 @@ class Manager(module.Logger):
             v = new_config[k]
             if not k.startswith('_') and type(v) == dict and 'module_type' in v:
                 module_name, module_type, module_config = k, v['module_type'], new_config.pop(k)
+                if module_config.get('module_inactive', False):
+                    continue
+                module_config['module_inactive'] = False
                 if module_type not in MODULES:
                     raise ValueError("Invalid module type %s", module_type)
                 module_class = self.import_module(*MODULES[module_type])
@@ -84,26 +86,26 @@ class Manager(module.Logger):
 
         return new_config, src_modules, dst_modules
 
-    def terminate_module(self, p):
+    def terminate_process(self, proc):
         err = 0
-        if p.exitcode is None:
-            self.log.info("Stopping %s", p.name)
-            p.terminate()
-            p.join(1)
-            if p.exitcode is None:
-                self.log.warning("%s still running, killing", p.name)
+        if proc.exitcode is None:
+            self.log.info("Stopping %s", proc.name)
+            proc.terminate()
+            proc.join(1)
+            if proc.exitcode is None:
+                self.log.warning("%s still running, killing", proc.name)
                 err += 1
-                os.kill(p.pid, 9)
-                p.join()
+                os.kill(proc.pid, 9)
+                proc.join()
         else:
-            self.log.info("%s has already exited", p.name)
+            self.log.info("%s has already exited", proc.name)
         return err
 
     def terminate_group(self, group):
         err = 0
-        for module_config, timestamps, p, args in group.values():
-            if p:
-                err += self.terminate_module(p)
+        for module_config, timestamps, proc, args in group.values():
+            if proc:
+                err += self.terminate_process(proc)
         return err
 
     def terminate_and_exit(self, err=0):
@@ -114,77 +116,66 @@ class Manager(module.Logger):
     def start_module(self, module_name, module_class, module_config, timestamps, args, message="Starting %s"):
         timestamps.append(module.monotonic_time())
         timestamps = timestamps[-10:]
-        p = module_class(module_name, module_config, *args)
-        self.log.info(message, p.name)
-        p.start()
-        return module_config, timestamps, p, args
+        proc = module_class(module_name, module_config, *args)
+        self.log.info(message, proc.name)
+        proc.start()
+        return module_config, timestamps, proc, args
 
     def healthcheck(self, group):
         err = 0
 
-        for (module_name, module_class), (module_config, timestamps, p, args) in group.items():
-            if p is None:
+        for (module_name, module_class), (module_config, timestamps, proc, args) in group.items():
+            if proc is None:
                 group[(module_name, module_class)] = self.start_module(
                     module_name, module_class, module_config, timestamps, args
                 )
-            elif p.exitcode is not None:
-                p.join()
+            elif proc.exitcode is not None:
+                proc.join()
                 if len(timestamps) > 5:
                     average_time_between_starts = sum(
                         timestamps[i] - timestamps[i - 1] for i in range(1, len(timestamps))
                     ) / (len(timestamps) - 1)
                     if average_time_between_starts < 60:
-                        self.log.critical("%s keeps failing, cannot recover", p.name)
+                        self.log.critical("%s keeps failing, cannot recover", proc.name)
                         err += 1
                         continue
                 if timestamps and (module.monotonic_time() - timestamps[-1]) < 1:
-                    self.log.warning("%s has stopped, too early for restart", p.name)
+                    self.log.warning("%s has stopped, too early for restart", proc.name)
                 else:
                     group[(module_name, module_class)] = self.start_module(
                         module_name, module_class, module_config, timestamps, args, "%s has stopped, restarting"
                     )
             else:
-                self.log.debug("%s is up", p.name)
+                self.log.debug("%s is up", proc.name)
 
         return err
 
-    def prepare_modules(self, src_modules, dst_modules):
-        src_group, dst_group, pipes = {}, {}, []
+    def init(self):
+        new_config, src_modules, dst_modules = self.load_config(self.config_file)
+        self.log = self.setup_logging(new_config, 'bucky3')
+        self.src_group, self.dst_group, pipes = {}, {}, []
 
         for module_name, module_class, module_config in dst_modules:
             send, recv = multiprocessing.Pipe()
-            dst_group[(module_name, module_class)] = module_config, [], None, (recv,)
+            self.dst_group[(module_name, module_class)] = module_config, [], None, (recv,)
             pipes.append(send)
         for module_name, module_class, module_config in src_modules:
-            src_group[(module_name, module_class)] = module_config, [], None, (pipes,)
-
-        return src_group, dst_group
+            self.src_group[(module_name, module_class)] = module_config, [], None, (pipes,)
 
     def termination_handler(self, signal_number, stack_frame):
         self.terminate_and_exit(0)
 
-    def restart_handler(self, signal_number, stack_frame, ignore_config_errors=True):
-        try:
-            new_config, src_modules, dst_modules = self.load_config(self.config_file)
-        except Exception:
-            if ignore_config_errors:
-                return
-            raise
-        self.log = self.setup_logging(new_config, 'bucky3')
-        self.terminate_group(self.src_group)
-        self.terminate_group(self.dst_group)
-        self.src_group, self.dst_group = self.prepare_modules(src_modules, dst_modules)
-
     def run(self):
-        self.restart_handler(None, None, False)
+        self.init()
 
         signal.signal(signal.SIGINT, self.termination_handler)
         signal.signal(signal.SIGTERM, self.termination_handler)
-        signal.signal(signal.SIGHUP, self.restart_handler)
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        signal.signal(signal.SIGALRM, signal.SIG_IGN)
 
         while True:
             try:
-                err = self.healthcheck(self.src_group) + self.healthcheck(self.dst_group)
+                err = self.healthcheck(self.dst_group) + self.healthcheck(self.src_group)
                 if err:
                     self.terminate_and_exit(err)
                 module.sleep(3)

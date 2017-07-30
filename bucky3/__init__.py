@@ -14,5 +14,8 @@
 #
 # Copyright 2011 Cloudant, Inc.
 
+import platform
+assert platform.python_version_tuple() >= ('3', '3')
+
 version_info = (3, 0, 0)
 __version__ = ".".join(map(str, version_info))

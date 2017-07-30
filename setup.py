@@ -14,7 +14,6 @@
 #
 # Copyright 2011 Cloudant, Inc.
 
-import os
 from setuptools import setup
 from bucky3 import __version__
 
@@ -25,12 +24,6 @@ setup(
     version=__version__,
 
     description='Monitoring agent for Linux and Docker with StatsD, Carbon, InfluxDB and Prometheus support',
-    long_description=open(
-        os.path.join(
-            os.path.dirname(__file__),
-            'README.rst'
-        )
-    ).read(),
     author='Jarek Siembida',
     author_email='jarek.siembida@gmail.com',
     license='ASF2.0',

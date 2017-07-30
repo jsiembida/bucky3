@@ -82,7 +82,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
 
     def run(self, loop=True):
         def termination_handler(signal_number, stack_frame):
-            self.log.info("Received signal %d", signal_number)
+            self.log.info("Received signal %d, exiting", signal_number)
             sys.exit(0)
 
         # We have to reset signals set up by master process to reasonable defaults
@@ -90,7 +90,6 @@ class MetricsProcess(multiprocessing.Process, Logger):
         signal.signal(signal.SIGINT, termination_handler)
         signal.signal(signal.SIGTERM, termination_handler)
         signal.signal(signal.SIGHUP, termination_handler)
-        signal.signal(signal.SIGCHLD, signal.SIG_IGN)
         signal.signal(signal.SIGALRM, signal.SIG_IGN)
 
         self.init_config()
@@ -124,6 +123,7 @@ class MetricsDstProcess(MetricsProcess):
                 pass
             except EOFError:
                 # This happens when no source is connected up, keep trying for 10s, then give up.
+                self.log.debug("EOF while reading source pipe")
                 err += 1
                 if err > 10:
                     self.log.error("Input not ready, quitting")
@@ -162,6 +162,7 @@ class MetricsSrcProcess(MetricsProcess):
 
     def flush(self, monotonic_timestamp, system_timestamp):
         if self.buffer:
+            self.log.debug("Flushing %d entries from buffer", len(self.buffer))
             for i in self.dst_pipes:
                 i.send(self.buffer)
             self.buffer = []
@@ -201,6 +202,8 @@ class UDPConnector(HostResolver):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         if bind:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, 'SO_REUSEPORT'):
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             sock.bind((ip, port))
             self.log.info("Bound UDP socket %s:%d", ip, port)
         return sock
@@ -240,10 +243,10 @@ class MetricsPushProcess(MetricsDstProcess):
             self.log.debug("Buffer trimmed from %d to %d entries", buffer_len, len(self.buffer))
 
     def flush(self, monotonic_timestamp, system_timestamp):
-        if len(self.buffer):
+        if self.buffer:
             try:
                 self.push_buffer()
-                self.buffer = []
+                self.buffer.clear()
             except (PermissionError, ConnectionError):
                 self.log.exception("Connection error")
                 self.socket = None  # Python will trigger close() when GCing it.

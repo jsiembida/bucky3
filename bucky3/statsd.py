@@ -252,7 +252,10 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         try:
             if ratestr and ratestr[0] == "@":
                 rate = float(ratestr[1:])
-                val = float(valstr) / rate
+                if rate > 0 and rate <= 1:
+                    val = float(valstr) / rate
+                else:
+                    return
             else:
                 val = float(valstr)
             if key in self.counters:
