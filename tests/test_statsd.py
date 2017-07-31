@@ -7,6 +7,7 @@ import string
 import random
 import unittest
 from unittest.mock import patch, MagicMock
+import itertools
 import bucky3.statsd as statsd
 
 
@@ -26,9 +27,10 @@ def statsd_setup(timestamps, **extra_cfg):
     def run(fun, self):
         with patch('bucky3.module.monotonic_time') as monotonic_time, \
                 patch('bucky3.module.system_time') as system_time:
-            buf = tuple(timestamps)
-            system_time.side_effect = tuple(buf)
-            monotonic_time.side_effect = tuple(buf)
+            if callable(timestamps):
+                system_time.side_effect, monotonic_time.side_effect = itertools.tee((t for t in timestamps()), 2)
+            else:
+                system_time.side_effect, monotonic_time.side_effect = itertools.tee(timestamps, 2)
             cfg = dict(
                 flush_interval=1,
                 timers_timeout=100, timers_bucket="stats_timers",
@@ -62,27 +64,28 @@ class TestStatsDServer(unittest.TestCase):
         mock_pipe = statsd_module.dst_pipes[0]
 
         def test(s):
-            statsd_module.handle_packet((s + entry_type).encode("utf-8"))
+            statsd_module.handle_packet(s.encode("utf-8"))
             statsd_module.tick()
             assert not mock_pipe.called
+            assert not mock_pipe.send.called
             mock_pipe.reset_mock()
 
-        test(":1|")
-        test("g.o.r.m:1|")
-        test("gérm:1|")
-        test("gorm:|")
+        test(":1|" + entry_type)
+        test("g.o.r.m:1|" + entry_type)
+        test("gérm:1|" + entry_type)
+        test("gorm:|" + entry_type)
         if check_numeric:
-            test("gorm:abc|")
+            test("gorm:abc|" + entry_type)
         if check_rate:
-            test("gorm:1|@")
-            test("gorm:1|@0")
-            test("gorm:1|@1.1")
-            test("gorm:1|@-0.3")
+            test("gorm:1|" + entry_type + "|@")
+            test("gorm:1|" + entry_type + "|@0")
+            test("gorm:1|" + entry_type + "|@1.1")
+            test("gorm:1|" + entry_type + "|@-0.3")
 
     def malformed_metadata(self, statsd_module, entry):
         mock_pipe = statsd_module.dst_pipes[0]
         legal_name_chars = string.ascii_letters
-        illegal_name_chars = '''-+@?#./%<>*:;&[], '"'''
+        illegal_name_chars = '''-+@?#./%<>*;&[], '"'''
         legal_value_chars = string.ascii_letters + string.digits + '-+@?#._/%<>*:=;&[]'
         illegal_value_chars = ''', '"'''
 
@@ -99,6 +102,7 @@ class TestStatsDServer(unittest.TestCase):
             statsd_module.handle_line(i, entry + '|#' + name + '=' + value)
             statsd_module.tick()
             assert not mock_pipe.called
+            assert not mock_pipe.send.called
             mock_pipe.reset_mock()
             i += 1
 
@@ -107,8 +111,27 @@ class TestStatsDServer(unittest.TestCase):
             statsd_module.handle_line(i, entry + '|#' + name + '=' + value)
             statsd_module.tick()
             assert not mock_pipe.called
+            assert not mock_pipe.send.called
             mock_pipe.reset_mock()
             i += 1
+
+    def timestamped_metadata(self, statsd_module, entry):
+        mock_pipe = statsd_module.dst_pipes[0]
+
+        def test(condition, s):
+            statsd_module.handle_packet((entry + "|#timestamp=" + s).encode("ascii"))
+            statsd_module.tick()
+            assert not mock_pipe.called
+            assert mock_pipe.send.called == condition
+            mock_pipe.reset_mock()
+
+        test(False, "")
+        test(False, "not-a-timestamp")
+        test(False, "-1")
+        test(False, "0")
+        test(False, "10000000")
+        test(False, "1.1")
+        test(True, "1")
 
     @statsd_setup(counters_timeout=3, timestamps=(2, 4, 6, 8, 10, 12, 14))
     def test_counters(self, statsd_module):
@@ -174,6 +197,10 @@ class TestStatsDServer(unittest.TestCase):
     @statsd_setup(timestamps=range(1, 1000))
     def test_malformed_counters_metadata(self, statsd_module):
         self.malformed_metadata(statsd_module, "gorm:1|c")
+
+    @statsd_setup(timestamps=range(1, 1000))
+    def test_timestamped_counters_metadata(self, statsd_module):
+        self.timestamped_metadata(statsd_module, "gorm:1|c")
 
     @statsd_setup(gauges_timeout=3, timestamps=(1, 2, 3, 4, 5, 6, 7, 8))
     def test_gauges(self, statsd_module):
@@ -245,6 +272,10 @@ class TestStatsDServer(unittest.TestCase):
     def test_malformed_gauges_metadata(self, statsd_module):
         self.malformed_metadata(statsd_module, "gorm:1|g")
 
+    @statsd_setup(timestamps=range(1, 1000))
+    def test_timestamped_gauges_metadata(self, statsd_module):
+        self.timestamped_metadata(statsd_module, "gorm:1|g")
+
     @statsd_setup(sets_timeout=3, timestamps=(1, 2, 3, 4, 5, 6, 7, 8))
     def test_sets(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
@@ -314,6 +345,10 @@ class TestStatsDServer(unittest.TestCase):
     @statsd_setup(timestamps=range(1, 1000))
     def test_malformed_sets_metadata(self, statsd_module):
         self.malformed_metadata(statsd_module, "gorm:x|s")
+
+    @statsd_setup(timestamps=range(1, 1000))
+    def test_timestamped_sets_metadata(self, statsd_module):
+        self.timestamped_metadata(statsd_module, "gorm:x|s")
 
     @statsd_setup(timers_timeout=0.3,
                   flush_interval=0.1,
@@ -486,6 +521,10 @@ class TestStatsDServer(unittest.TestCase):
     @statsd_setup(timestamps=range(1, 1000))
     def test_malformed_timers_metadata(self, statsd_module):
         self.malformed_metadata(statsd_module, "gorm:1|ms")
+
+    @statsd_setup(timestamps=range(1, 1000))
+    def test_timestamped_timers_metadata(self, statsd_module):
+        self.timestamped_metadata(statsd_module, "gorm:1|ms")
 
     def performance_test_set(self, metric_type, set_size, tags_per_sample):
         def rand_str(min_len=3, max_len=10, chars=string.ascii_lowercase):
