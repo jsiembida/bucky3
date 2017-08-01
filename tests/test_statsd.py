@@ -127,11 +127,11 @@ class TestStatsDServer(unittest.TestCase):
 
         test(False, "")
         test(False, "not-a-timestamp")
-        test(False, "-1")
-        test(False, "0")
-        test(False, "10000000")
-        test(False, "1.1")
-        test(True, "1")
+        test(False, "-1000")  # Beyond 10min window
+        test(False, "1000")   # Beyond 10min window
+        test(False, "-123")   # Timeout hit
+        test(True, "123.4")   # Within 10min window
+        test(True, "-23")     # Before the timeout
 
     @statsd_setup(counters_timeout=3, timestamps=(2, 4, 6, 8, 10, 12, 14))
     def test_counters(self, statsd_module):

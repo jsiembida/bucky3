@@ -29,7 +29,7 @@ class PrometheusExporter(module.MetricsDstProcess):
             self.log.info(format, *args)
 
         handler = type('PrometheusHandler', (http.server.BaseHTTPRequestHandler,),
-                       {'do_GET': do_GET, 'log_message': log_message})
+                       {'do_GET': do_GET, 'log_message': log_message, 'timeout': 3})
         http_server = http.server.HTTPServer((host, port), handler)
         http_thread = threading.Thread(target=lambda: http_server.serve_forever())
         http_thread.start()
