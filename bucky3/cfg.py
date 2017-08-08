@@ -15,6 +15,10 @@ linuxstats = dict(
     disk_blacklist={
         "loop0", "loop1", "loop2", "loop3",
         "loop4", "loop5", "loop6", "loop7",
+        "ram0", "ram1", "ram2", "ram3",
+        "ram4", "ram5", "ram6", "ram7",
+        "ram8", "ram9", "ram10", "ram11",
+        "ram12", "ram13", "ram14", "ram15",
         "sr0",
     },
     filesystem_blacklist={
