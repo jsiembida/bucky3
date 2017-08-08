@@ -143,7 +143,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
                 if not tokens or len(tokens) != 14:
                     continue
                 disk_name = tokens[2]
-                if not self.check_lists(disk_name, self.interface_blacklist, self.interface_whitelist):
+                if not self.check_lists(disk_name, self.disk_blacklist, self.disk_whitelist):
                     continue
                 disk_stats = {k: int(v) for k, v in zip(self.DISK_FIELDS, tokens[3:])}
                 disk_stats['read_bytes'] = disk_stats['read_sectors'] * 512
