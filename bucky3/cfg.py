@@ -5,8 +5,6 @@ flush_interval = 10
 
 metadata = dict(
     host="${BUCKY3_HOST}",
-    team="${BUCKY3_TEAM}",
-    app="${BUCKY3_APP}",
 )
 
 linuxstats = dict(
