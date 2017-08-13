@@ -23,7 +23,7 @@ On Linux with Python3 the default configuration should start out of the box:
 
 ```
 git clone https://github.com/jsiembida/bucky3.git
-BUCKY3_HOST="$(hostname)" BUCKY3_TEAM="test-team" BUCKY3_APP="test-app" PYTHONPATH=bucky3 python3 bucky3/bucky3/main.py
+BUCKY3_HOST="$(hostname)" PYTHONPATH=bucky3 python3 bucky3/bucky3/main.py
 ```
 
 After a couple of seconds, you can harvest metrics:
@@ -138,8 +138,6 @@ After=network-online.target
 User=bucky3
 Group=bucky3
 Environment=BUCKY3_HOST=%H
-Environment=BUCKY3_TEAM=test-team
-Environment=BUCKY3_APP=test-app
 ExecStart=/usr/local/bucky3/bin/bucky3 /etc/bucky3.conf
 KillMode=control-group
 Restart=on-failure
