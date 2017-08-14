@@ -24,20 +24,25 @@ class DockerStatsCollector(module.MetricsSrcProcess):
         }
         self.buffer.append(("docker_filesystem", docker_df_stats, timestamp, labels))
 
-    def read_cpu_stats(self, timestamp, labels, stats, cpu_period, cpu_quota):
+    def read_cpu_stats(self, timestamp, labels, stats, host_config):
+        # For some reason, we get an occasional KeyError for percpu_usage, hence the extra check.
         if 'percpu_usage' not in stats:
             return
         cpu_stats = stats['percpu_usage']
-        # Docker reports CPU counters in nanosecs but reports quotas on microsecs
-        cpu_period = cpu_period or 1000000
-        if not cpu_quota:
-            cpu_quota = cpu_period * len(cpu_stats)
-        limit_per_sec = round(1000000000 * cpu_quota / cpu_period)
+        # Docker reports CPU counters in nanosecs but quota/period in microsecs, here we make sure we send out
+        # all CPU metrics in nanosecs - that differs from linuxstats module CPU counters that are in USER_HZ.
+        limit_per_sec = host_config.get('NanoCpus', 0)
+        if not limit_per_sec:
+            cpu_period = host_config.get('CpuPeriod', 0) or 1000000
+            cpu_quota = host_config.get('CpuQuota', 0)
+            if not cpu_quota:
+                cpu_quota = cpu_period * len(cpu_stats)
+            limit_per_sec = round(1000000000 * cpu_quota / cpu_period)
+        self.buffer.append(("docker_cpu", {'limit_per_sec': limit_per_sec}, timestamp, labels.copy()))
         for k, v in enumerate(cpu_stats):
             metadata = labels.copy()
             metadata.update(name=k)
             self.buffer.append(("docker_cpu", {'usage': int(v)}, timestamp, metadata))
-        self.buffer.append(("docker_cpu", {'limit_per_sec': limit_per_sec}, timestamp, labels.copy()))
 
     def read_interface_stats(self, timestamp, labels, stats):
         keys = (
@@ -68,13 +73,10 @@ class DockerStatsCollector(module.MetricsSrcProcess):
                 if 'docker_name' not in labels and container.get('Names'):
                     labels['docker_name'] = container['Names'][0]
                 inspect_info = self.docker_client.api.inspect_container(container_id)
-                host_info = inspect_info['HostConfig']
+                host_config = inspect_info['HostConfig']
                 stats_info = self.docker_client.api.stats(container_id, decode=True, stream=False)
-                self.read_df_stats(system_timestamp, labels,
-                                   int(container['SizeRootFs']), int(container.get('SizeRw', 0)))
-                self.read_cpu_stats(system_timestamp, labels,
-                                    stats_info['cpu_stats']['cpu_usage'],
-                                    host_info.get('CpuPeriod', 0), host_info.get('CpuQuota', 0))
+                self.read_df_stats(system_timestamp, labels, int(container['SizeRootFs']), int(container.get('SizeRw', 0)))
+                self.read_cpu_stats(system_timestamp, labels, stats_info['cpu_stats']['cpu_usage'], host_config)
                 self.read_memory_stats(system_timestamp, labels, stats_info['memory_stats'])
                 self.read_interface_stats(system_timestamp, labels, stats_info['networks'])
             return super().flush(monotonic_timestamp, system_timestamp)
