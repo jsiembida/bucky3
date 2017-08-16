@@ -59,6 +59,9 @@ class PrometheusExporter(module.MetricsDstProcess):
             chunk = buffer[chunk_start:chunk_start + chunk_size]
             yield ''.join(chunk)
 
+    def get_page(self):
+        return ''.join(self.get_chunks())
+
     def loop(self):
         host = self.cfg.get("local_host", "127.0.0.1")
         port = self.cfg.get("local_port", 9090)
