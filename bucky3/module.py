@@ -167,8 +167,11 @@ class MetricsSrcProcess(MetricsProcess):
     def flush(self, monotonic_timestamp, system_timestamp):
         if self.buffer:
             self.log.debug("Flushing %d entries from buffer", len(self.buffer))
-            for i in self.dst_pipes:
-                i.send(self.buffer)
+            chunk_size = 100
+            for chunk_start in range(0, len(self.buffer), chunk_size):
+                chunk = self.buffer[chunk_start:chunk_start + chunk_size]
+                for dst in self.dst_pipes:
+                    dst.send(chunk)
             self.buffer = []
         return True
 
