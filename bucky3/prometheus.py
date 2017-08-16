@@ -23,7 +23,9 @@ class PrometheusExporter(module.MetricsDstProcess):
                 req.send_response(200)
                 req.send_header("Content-Type", "text/plain; version=0.0.4")
                 req.end_headers()
-                req.wfile.write(self.get_page().encode("ascii"))
+                for chunk in self.get_chunks():
+                    req.wfile.write(chunk.encode("ascii"))
+                    req.wfile.flush()
 
         def log_message(req, format, *args):
             self.log.info(format, *args)
@@ -50,8 +52,15 @@ class PrometheusExporter(module.MetricsDstProcess):
             self.buffer[k] = timestamp, value, line
         return line
 
+    def get_chunks(self):
+        buffer = list(self.get_line(k) for k in self.buffer.keys())
+        chunk_size = 300
+        for chunk_start in range(0, len(buffer), chunk_size):
+            chunk = buffer[chunk_start:chunk_start + chunk_size]
+            yield ''.join(chunk)
+
     def get_page(self):
-        return ''.join(self.get_line(k) for k in self.buffer.keys())
+        return ''.join(self.get_chunks())
 
     def loop(self):
         host = self.cfg.get("local_host", "127.0.0.1")
