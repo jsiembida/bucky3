@@ -72,6 +72,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
 
     def init_config(self):
         self.log = self.setup_logging(self.cfg, self.name)
+        self.randomize_startup = self.cfg.get('randomize_startup', True)
         self.buffer = []
         self.buffer_limit = self.cfg.get('buffer_limit', 10000)
         self.tick_interval = self.cfg.get('flush_interval', None) or None
@@ -93,6 +94,9 @@ class MetricsProcess(multiprocessing.Process, Logger):
         signal.signal(signal.SIGALRM, signal.SIG_IGN)
 
         self.init_config()
+        if self.randomize_startup and self.tick_interval > 3:
+            # If randomization is configured (it's default) do it asap, before singal handler gets set up
+            sleep(random.randint(0, self.tick_interval - 1))
         self.setup_tick()
         self.log.info("Set up")
 
