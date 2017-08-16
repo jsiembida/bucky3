@@ -96,7 +96,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.init_config()
         if self.randomize_startup and self.tick_interval > 3:
             # If randomization is configured (it's default) do it asap, before singal handler gets set up
-            sleep(random.randint(0, self.tick_interval - 1))
+            sleep(random.randint(0, min(self.tick_interval - 1, 15)))
         self.setup_tick()
         self.log.info("Set up")
 
