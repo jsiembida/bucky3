@@ -133,6 +133,28 @@ class TestStatsDServer(unittest.TestCase):
         test(True, "123.4")   # Within 10min window
         test(True, "-23")     # Before the timeout
 
+    def bucketed_metadata(self, statsd_module, entry):
+        mock_pipe = statsd_module.dst_pipes[0]
+
+        def test(condition, s):
+            statsd_module.handle_packet((entry + "|#hello=world,bucket=" + s).encode("ascii"))
+            statsd_module.tick()
+            assert not mock_pipe.called
+            assert mock_pipe.send.called == condition
+            if condition:
+                args, kwargs = mock_pipe.send.call_args
+                assert len(args) == 1
+                payload = args[0]
+                assert len(payload) == 1
+                payload = payload[0]
+                assert payload[0] == s
+                assert len(payload[3]) == 2
+            mock_pipe.reset_mock()
+
+        test(False, "")
+        test(False, "not-a-bucket-name")
+        test(True, "valid_bucket_name")
+
     @statsd_setup(counters_timeout=3, timestamps=(2, 4, 6, 8, 10, 12, 14))
     def test_counters(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
@@ -201,6 +223,10 @@ class TestStatsDServer(unittest.TestCase):
     @statsd_setup(timestamps=range(1, 1000))
     def test_timestamped_counters_metadata(self, statsd_module):
         self.timestamped_metadata(statsd_module, "gorm:1|c")
+
+    @statsd_setup(timestamps=range(1, 1000))
+    def test_bucketed_counters_metadata(self, statsd_module):
+        self.bucketed_metadata(statsd_module, "gorm:1|c")
 
     @statsd_setup(gauges_timeout=3, timestamps=(1, 2, 3, 4, 5, 6, 7, 8))
     def test_gauges(self, statsd_module):
@@ -276,6 +302,10 @@ class TestStatsDServer(unittest.TestCase):
     def test_timestamped_gauges_metadata(self, statsd_module):
         self.timestamped_metadata(statsd_module, "gorm:1|g")
 
+    @statsd_setup(timestamps=range(1, 1000))
+    def test_bucketed_gauges_metadata(self, statsd_module):
+        self.bucketed_metadata(statsd_module, "gorm:1|g")
+
     @statsd_setup(sets_timeout=3, timestamps=(1, 2, 3, 4, 5, 6, 7, 8))
     def test_sets(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
@@ -349,6 +379,10 @@ class TestStatsDServer(unittest.TestCase):
     @statsd_setup(timestamps=range(1, 1000))
     def test_timestamped_sets_metadata(self, statsd_module):
         self.timestamped_metadata(statsd_module, "gorm:x|s")
+
+    @statsd_setup(timestamps=range(1, 1000))
+    def test_bucketed_sets_metadata(self, statsd_module):
+        self.bucketed_metadata(statsd_module, "gorm:x|s")
 
     @statsd_setup(timers_timeout=0.3,
                   flush_interval=0.1,
@@ -525,6 +559,10 @@ class TestStatsDServer(unittest.TestCase):
     @statsd_setup(timestamps=range(1, 1000))
     def test_timestamped_timers_metadata(self, statsd_module):
         self.timestamped_metadata(statsd_module, "gorm:1|ms")
+
+    @statsd_setup(timestamps=range(1, 1000))
+    def test_bucketed_timers_metadata(self, statsd_module):
+        self.bucketed_metadata(statsd_module, "gorm:1|ms")
 
     def performance_test_set(self, metric_type, set_size, tags_per_sample):
         def rand_str(min_len=3, max_len=10, chars=string.ascii_lowercase):
