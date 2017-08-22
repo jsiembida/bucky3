@@ -38,7 +38,10 @@ class PrometheusExporter(module.MetricsDstProcess):
         self.log.info("Started server at http://%s:%d/%s", host, port, path)
 
     def get_line(self, k):
-        timestamp, value, line = self.buffer[k]
+        tmp = self.buffer.get(k)
+        if not tmp:
+            return ''
+        timestamp, value, line = tmp
         if not line:
             # https://prometheus.io/docs/instrumenting/exposition_formats/
             bucket, metadata = k[0], k[1:]
@@ -53,7 +56,7 @@ class PrometheusExporter(module.MetricsDstProcess):
         return line
 
     def get_chunks(self):
-        buffer = list(self.get_line(k) for k in self.buffer.keys())
+        buffer = tuple(self.get_line(k) for k in tuple(self.buffer.keys()))
         chunk_size = 300
         for chunk_start in range(0, len(buffer), chunk_size):
             chunk = buffer[chunk_start:chunk_start + chunk_size]

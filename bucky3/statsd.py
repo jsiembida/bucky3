@@ -52,9 +52,16 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             except InterruptedError:
                 pass
 
+    def enqueue(self, bucket, stats, timestamp, metadata):
+        if 'bucket' in metadata:
+            bucket = metadata['bucket']
+            del metadata['bucket']
+        self.buffer.append((bucket, stats, timestamp, metadata))
+
     def enqueue_timers(self, system_timestamp):
         interval = self.current_timestamp - self.last_timestamp
         timeout = self.cfg['timers_timeout']
+        bucket = self.cfg['timers_bucket']
         for k, (recv_timestamp, cust_timestamp, v) in tuple(self.timers.items()):
             if system_timestamp - recv_timestamp > timeout:
                 del self.timers[k]
@@ -112,45 +119,40 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 timer_stats["std"] = float(stddev)
 
             if timer_stats:
-                self.buffer.append(
-                    (self.cfg['timers_bucket'], timer_stats, cust_timestamp or system_timestamp, dict(k))
-                )
+                self.enqueue(bucket, timer_stats, cust_timestamp or system_timestamp, dict(k))
 
             self.timers[k] = recv_timestamp, cust_timestamp, []
 
     def enqueue_sets(self, system_timestamp):
         timeout = self.cfg['sets_timeout']
+        bucket = self.cfg['sets_bucket']
         for k, (recv_timestamp, cust_timestamp, v) in tuple(self.sets.items()):
             if system_timestamp - recv_timestamp <= timeout:
-                self.buffer.append(
-                    (self.cfg['sets_bucket'], {"count": float(len(v))}, cust_timestamp or system_timestamp, dict(k))
-                )
+                self.enqueue(bucket, {"count": float(len(v))}, cust_timestamp or system_timestamp, dict(k))
                 self.sets[k] = recv_timestamp, cust_timestamp, set()
             else:
                 del self.sets[k]
 
     def enqueue_gauges(self, system_timestamp):
         timeout = self.cfg['gauges_timeout']
+        bucket = self.cfg['gauges_bucket']
         for k, (recv_timestamp, cust_timestamp, v) in tuple(self.gauges.items()):
             if system_timestamp - recv_timestamp <= timeout:
-                self.buffer.append(
-                    (self.cfg['gauges_bucket'], float(v), cust_timestamp or system_timestamp, dict(k))
-                )
+                self.enqueue(bucket, float(v), cust_timestamp or system_timestamp, dict(k))
             else:
                 del self.gauges[k]
 
     def enqueue_counters(self, system_timestamp):
         interval = self.current_timestamp - self.last_timestamp
         timeout = self.cfg['counters_timeout']
+        bucket = self.cfg['counters_bucket']
         for k, (recv_timestamp, cust_timestamp, v) in tuple(self.counters.items()):
             if system_timestamp - recv_timestamp <= timeout:
                 stats = {
                     'rate': float(v) / interval,
                     'count': float(v)
                 }
-                self.buffer.append(
-                    (self.cfg['counters_bucket'], stats, cust_timestamp or system_timestamp, dict(k))
-                )
+                self.enqueue(bucket, stats, cust_timestamp or system_timestamp, dict(k))
                 self.counters[k] = recv_timestamp, cust_timestamp, 0
             else:
                 del self.counters[k]
@@ -222,7 +224,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             # DataDog docs / examples use key:value, we also handle key=value.
             m = self.metadata_regex.match(i)
             if not m:
-                return None, None
+                return None, None, None, None
             k, v = m.group(1), m.group(2)
             if k == 'timestamp':
                 cust_timestamp = float(v)
@@ -232,6 +234,10 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 if cust_timestamp < recv_timestamp - 600 or cust_timestamp > recv_timestamp + 600:
                     raise ValueError()
                 cust_timestamp = round(cust_timestamp, 3)
+            elif k == 'bucket':
+                if not v.isidentifier():
+                    raise ValueError()
+                metadata[k] = v
             else:
                 metadata[k] = v
         return cust_timestamp or recv_timestamp, cust_timestamp, bits[0], metadata
