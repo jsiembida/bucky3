@@ -222,7 +222,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             # DataDog docs / examples use key:value, we also handle key=value.
             m = self.metadata_regex.match(i)
             if not m:
-                return None, None
+                return None, None, None, None
             k, v = m.group(1), m.group(2)
             if k == 'timestamp':
                 cust_timestamp = float(v)
