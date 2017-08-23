@@ -13,7 +13,8 @@ has been retained, Graphite naming style is built as a mapping on top of the und
 * Python 3.3+ only.
 * [MetricsD](https://github.com/mojodna/metricsd) protocol has been dropped in favor
 of [extended StatsD protocol.](https://docs.datadoghq.com/guides/dogstatsd/#datagram-format)
-* [CollectD](https://collectd.org) protocol has been dropped in favor of dedicated modules and integration via StatsD protocol.
+* [CollectD](https://collectd.org) protocol has been dropped in favor of dedicated modules and integration
+via StatsD protocol.
 
 
 
@@ -50,10 +51,10 @@ curl -s http://127.0.0.1:9103/metrics | grep foobar
 
 ##### Configuration
 
-There is only one, optional, command line argument. A path to configuration file. If not provided,
-the default configuration is used (see `cfg.py`). First, env variables in the file are interpolated,
+There is only one, optional, command line argument. A path to configuration file. If not provided, the default
+configuration is used (see `cfg.py`). First, environment variables in the configuration file are interpolated,
 then it is `exec`'ed as Python code. Python syntax therefore applies, in particular, indentation matters.
-Configuration must define at least one active source module and at least one active destination module.
+Configuration file must define at least one active source module and at least one active destination module.
 Module definition is a dictionary with `module_type` defined. An optional `module_inactive` can be used
 to (de)activate a given module definition, it defaults to `False`.
 Everything else in the configuration file is assumed to be global parameters that are inherited
@@ -70,8 +71,10 @@ metadata = dict(
 
 my_linux = dict(
     # A dictionary with module_type is a module configuration.
-    # This module inherits log_level, flush_interval and metadata
+    # This module inherits log_level, flush_interval
     module_type="linux_stats",
+    # And extends the globally configured metadata
+    metadata=dict(**metadata, some_id="whf-qwe-dak")
 )
 
 my_containers = dict(
@@ -91,12 +94,12 @@ my_influxdb = dict(
 
 ##### Modules
 
-Bucky3 consists of a main process, source modules and destination modules. During startup the main process loads
+Bucky3 consists of the main process, source modules and destination modules. During startup the main process loads
 configuration, dynamically imports configured modules and runs them in dedicated subprocesses. Destination modules
-are launched first, then source modules. Data flow is many-to-many, one or more source modules (subprocesses)
-produce metrics and send them to one or more destination modules (subprocesses). There is no configuration
-limit regarding a number of modules of the same type that should be launched simultaneously, although this
-feature can be of use only in specific scenarios. The following modules are available:
+are launched first, then source modules. Data flow is many-to-many, one or more source modules (subprocesses) produce
+metrics and send them to one or more destination modules (subprocesses). There is no configuration limit regarding
+the number of modules of the same type that could be launched simultaneously, although this feature is of use only
+in specific scenarios. The following modules are available:
 
 * `module_type="statsd_server"` - source module that collects metrics via extended StatsD protocol.
 * `module_type="linux_stats"` - source module that collects Linux metrics via `/proc` filesystem.
@@ -151,7 +154,8 @@ Alias=bucky3.service
 
 When the main process receives `SIGTERM` or `SIGINT`, it sends `SIGTERM` to all modules, waits for them to finish
 and exits. The exit code in this case is zero. If any module had to be forcibly terminated with `SIGKILL`, the exit
-code is non-zero. The main process ignores `SIGHUP`, if needed, reload should be done be stopping / restarting.
+code is non-zero. The main process ignores `SIGHUP`, use a full stop / start sequence if you need to reload it.
 
 When a module (subprocess) receives `SIGTERM`, `SIGINT` or `SIGHUP` it exits. Then the main process restarts it.
-Note that the module is not being reimported, the originally loaded module is just being restarted. 
+Note that the module is not being reimported, the originally loaded module is just being restarted. Use a full
+stop / start sequence if you need to reload modules from disk.
