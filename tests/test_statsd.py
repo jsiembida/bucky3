@@ -129,9 +129,8 @@ class TestStatsDServer(unittest.TestCase):
         test(False, "not-a-timestamp")
         test(False, "-1000")  # Beyond 10min window
         test(False, "1000")   # Beyond 10min window
-        test(False, "-123")   # Timeout hit
+        test(True, "-123")    # Within 10min window
         test(True, "123.4")   # Within 10min window
-        test(True, "-23")     # Before the timeout
 
     def bucketed_metadata(self, statsd_module, entry):
         mock_pipe = statsd_module.dst_pipes[0]

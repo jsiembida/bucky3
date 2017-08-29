@@ -219,7 +219,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         bits = line.split("|#", 1)  # We allow '#' in tag values, too
         cust_timestamp, metadata = None, {}
         if len(bits) < 2:
-            return recv_timestamp, None, line, metadata
+            return recv_timestamp, cust_timestamp, line, metadata
         for i in bits[1].split(","):
             # DataDog docs / examples use key:value, we also handle key=value.
             m = self.metadata_regex.match(i)
@@ -240,7 +240,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 metadata[k] = v
             else:
                 metadata[k] = v
-        return cust_timestamp or recv_timestamp, cust_timestamp, bits[0], metadata
+        return recv_timestamp, cust_timestamp, bits[0], metadata
 
     def handle_key(self, name, metadata):
         metadata.update(name=name)
