@@ -8,6 +8,7 @@ import signal
 import random
 import logging
 import multiprocessing
+import multiprocessing.connection
 
 
 monotonic_time = time.monotonic
@@ -112,26 +113,29 @@ class MetricsProcess(multiprocessing.Process, Logger):
 
 
 class MetricsDstProcess(MetricsProcess):
-    def __init__(self, module_name, module_config, src_pipe):
+    def __init__(self, module_name, module_config, src_pipes):
         super().__init__(module_name, module_config)
-        self.src_pipe = src_pipe
+        self.src_pipes = src_pipes
 
     def loop(self):
         err = 0
         while True:
-            try:
-                batch = self.src_pipe.recv()
-                self.process_batch(batch)
-                err = 0
-            except InterruptedError:
-                pass
-            except EOFError:
-                # This happens when no source is connected up, keep trying for 10s, then give up.
-                self.log.debug("EOF while reading source pipe")
-                err += 1
-                if err > 10:
-                    self.log.error("Input not ready, quitting")
-                    return
+            tmp = False
+            for pipe in multiprocessing.connection.wait(self.src_pipes):
+                try:
+                    batch = pipe.recv()
+                    self.process_batch(batch)
+                except InterruptedError:
+                    pass
+                except EOFError:
+                    # This happens when no source is connected up, keep trying for 10s, then give up.
+                    self.log.debug("EOF while reading source pipe")
+                    tmp = True
+            err = err + 1 if tmp else 0
+            if err > 10:
+                self.log.error("Input not ready, quitting")
+                return
+            elif err:
                 sleep(1)
 
     def process_batch(self, batch):
@@ -167,7 +171,7 @@ class MetricsSrcProcess(MetricsProcess):
     def flush(self, monotonic_timestamp, system_timestamp):
         if self.buffer:
             self.log.debug("Flushing %d entries from buffer", len(self.buffer))
-            chunk_size = 100
+            chunk_size = 300
             for chunk_start in range(0, len(self.buffer), chunk_size):
                 chunk = self.buffer[chunk_start:chunk_start + chunk_size]
                 for dst in self.dst_pipes:
