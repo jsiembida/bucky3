@@ -155,12 +155,16 @@ class Manager(module.Logger):
         self.log = self.setup_logging(new_config, 'bucky3')
         self.src_group, self.dst_group, pipes = {}, {}, []
 
+        # Using shared pipes leads to data from multiple source modules being occasionally interleaved
+        # which means the receiving end tries to unpickle the corrupted stream. So we use N x M pipes.
         for module_name, module_class, module_config in dst_modules:
-            send, recv = multiprocessing.Pipe()
-            self.dst_group[(module_name, module_class)] = module_config, [], None, (recv,)
-            pipes.append(send)
-        for module_name, module_class, module_config in src_modules:
-            self.src_group[(module_name, module_class)] = module_config, [], None, (pipes,)
+            tmp = [multiprocessing.Pipe(duplex=False) for i in range(len(src_modules))]
+            recv_ends, send_ends = tuple(i[0] for i in tmp), tuple(i[1] for i in tmp)
+            self.dst_group[(module_name, module_class)] = module_config, [], None, (recv_ends,)
+            pipes.append(send_ends)
+        for i, (module_name, module_class, module_config) in enumerate(src_modules):
+            send_ends = [j[i] for j in pipes]
+            self.src_group[(module_name, module_class)] = module_config, [], None, (send_ends,)
 
     def termination_handler(self, signal_number, stack_frame):
         self.terminate_and_exit(0)
