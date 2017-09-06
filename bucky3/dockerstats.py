@@ -64,21 +64,20 @@ class DockerStatsCollector(module.MetricsSrcProcess):
     def flush(self, monotonic_timestamp, system_timestamp):
         try:
             for i, container in enumerate(self.docker_client.api.containers(size=True)):
-                if container['State'] != 'running':
-                    continue
-                container_id = container['Id']
-                labels = dict(container['Labels'])
-                if 'docker_id' not in labels:
-                    labels['docker_id'] = container_id[:12]
-                if 'docker_name' not in labels and container.get('Names'):
-                    labels['docker_name'] = container['Names'][0]
-                inspect_info = self.docker_client.api.inspect_container(container_id)
-                host_config = inspect_info['HostConfig']
-                stats_info = self.docker_client.api.stats(container_id, decode=True, stream=False)
-                self.read_df_stats(system_timestamp, labels, int(container['SizeRootFs']), int(container.get('SizeRw', 0)))
-                self.read_cpu_stats(system_timestamp, labels, stats_info['cpu_stats']['cpu_usage'], host_config)
-                self.read_memory_stats(system_timestamp, labels, stats_info['memory_stats'])
-                self.read_interface_stats(system_timestamp, labels, stats_info['networks'])
+                if container.get('State') == 'running' or container.get('Status', '').startswith('Up'):
+                    container_id = container['Id']
+                    labels = dict(container['Labels'])
+                    if 'docker_id' not in labels:
+                        labels['docker_id'] = container_id[:12]
+                    if 'docker_name' not in labels and container.get('Names'):
+                        labels['docker_name'] = container['Names'][0]
+                    inspect_info = self.docker_client.api.inspect_container(container_id)
+                    host_config = inspect_info['HostConfig']
+                    stats_info = self.docker_client.api.stats(container_id, decode=True, stream=False)
+                    self.read_df_stats(system_timestamp, labels, int(container['SizeRootFs']), int(container.get('SizeRw', 0)))
+                    self.read_cpu_stats(system_timestamp, labels, stats_info['cpu_stats']['cpu_usage'], host_config)
+                    self.read_memory_stats(system_timestamp, labels, stats_info['memory_stats'])
+                    self.read_interface_stats(system_timestamp, labels, stats_info['networks'])
             return super().flush(monotonic_timestamp, system_timestamp)
         except requests.exceptions.ConnectionError:
             self.log.info("Docker connection error, is docker running?")
