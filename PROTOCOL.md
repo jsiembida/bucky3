@@ -15,12 +15,12 @@ to ignore the "service check" and "event" message types.
 ### Message Format
 
 The StatsD messages are sent as UDP datagrams with ASCII encoded
-payloads. The protocol is line-based, and each measurement (data point)
-must adhere to one of the the following formats:
+payloads. All other encodings are considered malformed data.
+
+The protocol is line-based, and each measurement (data point)
+must adhere to the following format:
 
     <measurement name>:<value>|<type>|#<tag name>=<tag value>[,<tag name>=<tag value>[,...]]<newline>
-
-    <measurement name>:1|c|#<tag name>=<tag value>[,<tag name>=<tag value[,...]]<newline>
 
 * `measurement name` is an arbitrary string
 * `value` is the recorded measurement, if type is other than `c`
@@ -34,11 +34,26 @@ must adhere to one of the the following formats:
 * `tag value` is an arbitrary categorisation
 * `newline` is a literal newline
 
+For `value`, bucky3 accepts floats. Some StatsD implementations limit
+`value`s to integers, but we believe that only encourages users to come
+up with their own scaling factors to work around the limitation.
+
 A message can contain zero or more tags, but usually you want to provide
 at least one to assign the measurement context.
 
 The tags are commonly used for grouping when viewing the generated
 time-series graphs, as well as for specifying alert rules.
+
+Note: timer (`ms`) and histogram (`h`) are aliases for one another, and
+are indeed treated as identical payloads. This follows a design decision
+from DogStatsD, but also allows bucky3 to consume both "vanilla" StatsD
+and DogStatsD message formats. For clients it still makes sense to
+expose both message types separately. If for nothing else, reducing the
+amount of confusion in code reviews and refactors.
+
+Note: bucky3 supports both '=' and ':' as tag/value separator, but for
+clarity we recommend sticking with '='.
+
 
 ### Examples
 
@@ -67,19 +82,29 @@ Of course, if a login was unsuccesful, the message could instead be:
   - `status:401|h|#service=login,team=myteam,route=/user/login\n`
 
 Another team maintains a service with persistent real-time connections.
-In addition to response status codes, they care roundtrip times and the
-number of connected clients. Every couple of seconds, they record the
-number of currently open client connections, and at a particular moment
-they had 473 connections. The message payload could then be:
+In addition to response status codes, they care about roundtrip times
+and the number of connected clients. Every couple of seconds, they
+record the number of currently open client connections, and at a
+particular moment they had 473 connections. The message payload could
+then be:
 
   - `connections:473|g|#service=ourstream,team=otherteam\n`
 
 In addition, every time they serve a request, they record both the
 response status and the roundtrip time. So on every succesful response
-they could send the following two messages:
+they could either send the following two messages:
 
 - `status:200|h|#service=ourstream,team=otherteam,action=something\n`
 - `duration:2.9|ms|#service=ourstream,team=otherteam,action=something\n`
+
+or they could combine the values into a single message:
+
+- `duration:2.9|ms|#service=ourstream,team=otherteam,action=something,status=200\n`
+
+Both approaches are equally valid. Embedding a value in the message tags
+makes sense when the set of possible values is small (such as HTTP codes). If the
+space of possible values is large, then a separate histogram probably
+makes more sense.
 
 ### The Edge Case
 
