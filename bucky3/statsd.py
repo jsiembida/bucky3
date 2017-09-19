@@ -16,7 +16,6 @@
 
 
 import re
-import math
 import bucky3.module as module
 
 
@@ -40,6 +39,11 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.enqueue_gauges(system_timestamp)
         self.enqueue_sets(system_timestamp)
         return super().flush(monotonic_timestamp, system_timestamp)
+
+    def init_config(self):
+        super().init_config()
+        percentile_thresholds = self.cfg.get('percentile_thresholds', ())
+        self.percentile_thresholds = sorted(set(round(float(t), 2) for t in percentile_thresholds if t > 0 and t <= 100))
 
     def run(self):
         super().run(loop=False)
@@ -67,61 +71,43 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 del self.timers[k]
                 continue
 
-            timer_stats = {}
+            self.timers[k] = recv_timestamp, cust_timestamp, []
 
             if not v:
                 # Skip timers that haven't collected any values
-                timer_stats['count'] = 0.0
-                timer_stats['count_ps'] = 0.0
-            else:
-                v.sort()
-                count = len(v)
-                vmin, vmax = v[0], v[-1]
+                self.enqueue(bucket, dict(count=0.0, count_ps=0.0), cust_timestamp or system_timestamp, dict(k))
+                continue
 
-                cumulative_values = [vmin]
-                cumulative_squares = [vmin * vmin]
-                for i, value in enumerate(v):
-                    if i == 0:
-                        continue
-                    cumulative_values.append(value + cumulative_values[i - 1])
-                    cumulative_squares.append(value * value + cumulative_squares[i - 1])
+            v.sort()
+            count = len(v)
+            thresholds = ((count if t == 100 else (t * count) // 100, t) for t in self.percentile_thresholds)
 
-                for t in self.cfg.get('percentile_thresholds', ()):
-                    t_index = int(math.floor(t / 100.0 * count))
-                    if t_index == 0:
-                        continue
-                    vsum = cumulative_values[t_index - 1]
-                    t_suffix = "_" + str(int(t))
-                    mean = vsum / float(t_index)
-                    timer_stats["mean" + t_suffix] = float(mean)
-                    vthresh = v[t_index - 1]
-                    timer_stats["upper" + t_suffix] = float(vthresh)
-                    timer_stats["count" + t_suffix] = float(t_index)
-                    timer_stats["sum" + t_suffix] = float(vsum)
-                    vsum_squares = cumulative_squares[t_index - 1]
-                    timer_stats["sum_squares" + t_suffix] = float(vsum_squares)
-
-                vsum = cumulative_values[count - 1]
-                mean = vsum / float(count)
-                timer_stats["mean"] = float(mean)
-                timer_stats["upper"] = float(vmax)
-                timer_stats["lower"] = float(vmin)
-                timer_stats["count"] = float(count)
-                timer_stats["count_ps"] = float(count) / interval
-                mid = int(count / 2)
-                median = (v[mid - 1] + v[mid]) / 2.0 if count % 2 == 0 else v[mid]
-                timer_stats["median"] = float(median)
-                timer_stats["sum"] = float(vsum)
-                vsum_squares = cumulative_squares[count - 1]
-                timer_stats["sum_squares"] = float(vsum_squares)
-                sum_of_diffs = sum(((value - mean) ** 2 for value in v))
-                stddev = math.sqrt(sum_of_diffs / count)
-                timer_stats["std"] = float(stddev)
-
-            if timer_stats:
-                self.enqueue(bucket, timer_stats, cust_timestamp or system_timestamp, dict(k))
-
-            self.timers[k] = recv_timestamp, cust_timestamp, []
+            try:
+                next_i, next_t = next(thresholds)
+                vlen = vsum = vsum_squares = 0
+                for i, x in enumerate(v):
+                    vlen += 1
+                    vsum += x
+                    vsum_squares += x * x
+                    while i >= next_i - 1:
+                        mean = vsum / vlen
+                        stats = dict(
+                            percentile=next_t,
+                            count=vlen,
+                            count_ps=vlen/interval,
+                            lower=v[0],
+                            upper=x,
+                            sum=vsum,
+                            sum_squares=vsum_squares,
+                            mean=mean
+                        )
+                        if vlen > 1:
+                            var = (vsum_squares - 2 * mean * vsum + vlen * mean * mean) / (vlen - 1)
+                            stats['stdev'] = var ** 0.5
+                        self.enqueue(bucket, stats, cust_timestamp or system_timestamp, dict(k))
+                        next_i, next_t = next(thresholds)
+            except StopIteration:
+                pass
 
     def enqueue_sets(self, system_timestamp):
         timeout = self.cfg['sets_timeout']

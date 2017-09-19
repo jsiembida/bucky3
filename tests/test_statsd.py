@@ -391,15 +391,14 @@ class TestStatsDServer(unittest.TestCase):
         mock_pipe = statsd_module.dst_pipes[0]
         statsd_module.handle_line(0, "gorm:100|ms")
         expected_value = {
-            "mean": 100,
-            "upper": 100,
-            "lower": 100,
+            "percentile": 90.0,
+            "mean": 100.0,
+            "upper": 100.0,
+            "lower": 100.0,
             "count": 1,
-            "count_ps": 10,
-            "median": 100,
-            "sum": 100,
-            "sum_squares": 10000,
-            "std": 0
+            "count_ps": 10.0,
+            "sum": 100.0,
+            "sum_squares": 10000.0,
         }
         statsd_module.tick()
         statsd_verify(mock_pipe, [
@@ -427,20 +426,15 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(0, "gorm:200|ms|@0.2")
         statsd_module.handle_line(0, "gorm:300|ms")  # Out of the 90% threshold
         expected_value = {
-            "mean_90": 150,
-            "upper_90": 200,
-            "count_90": 2,
-            "sum_90": 300,
-            "sum_squares_90": 50000,
-            "mean": 200,
-            "upper": 300,
+            "percentile": 90,
+            "mean": 150,
             "lower": 100,
-            "count": 3,
-            "count_ps": 30,
-            "median": 200,
-            "sum": 600,
-            "sum_squares": 140000,
-            "std": 81.64965809277261
+            "upper": 200,
+            "count": 2,
+            "count_ps": 20,
+            "sum": 300,
+            "sum_squares": 50000,
+            "stdev": 70.71067811865476
         }
         statsd_module.tick()
         statsd_verify(mock_pipe, [
@@ -456,20 +450,15 @@ class TestStatsDServer(unittest.TestCase):
             statsd_module.handle_line(0, "gorm:1|ms")
         statsd_module.handle_line(0, "gorm:2|ms")  # Out of the 90% threshold
         expected_value = {
-            "mean_90": 1,
-            "upper_90": 1,
-            "count_90": 9,
-            "sum_90": 9,
-            "sum_squares_90": 9,
-            "mean": 1.1,
-            "upper": 2,
+            "percentile": 90,
+            "mean": 1,
             "lower": 1,
-            "count": 10,
-            "count_ps": 20.0,
-            "median": 1,
-            "sum": 11,
-            "sum_squares": 13,
-            "std": 0.3
+            "upper": 1,
+            "count": 9,
+            "count_ps": 18.0,
+            "sum": 9,
+            "sum_squares": 9,
+            "stdev": 0.0
         }
         statsd_module.tick()
         statsd_verify(mock_pipe, [
@@ -486,42 +475,36 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(0, "gorm:7|ms")  # Out of the 90% threshold
         statsd_module.handle_line(0, "gorm:3|ms")
         expected_value = {
-            "mean_90": 10 / 3.0,
-            "upper_90": 5,
-            "count_90": 3,
-            "sum_90": 10,
-            "sum_squares_90": 38,
-            "mean": 17 / 4.0,
-            "upper": 7,
+            "percentile": 90,
+            "mean": 10 / 3.0,
             "lower": 2,
-            "count": 4,
-            "count_ps": 8,
-            "median": 4,
-            "sum": 17,
-            "sum_squares": 87,
-            "std": 1.920286436967152
+            "upper": 5,
+            "count": 3,
+            "count_ps": 6,
+            "sum": 10,
+            "sum_squares": 38,
+            "stdev": 1.5275252316519463
         }
         statsd_module.tick()
         statsd_verify(mock_pipe, [
             ('stats_timers', expected_value, 0.5, dict(name='gorm'))
         ])
 
-    @statsd_setup(timers_timeout=2, timestamps=range(1, 100))
+    @statsd_setup(timers_timeout=2, timestamps=range(1, 100), percentile_thresholds=(100,))
     def test_timers_metadata(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
         expected_value = {
-            "mean": 100,
-            "upper": 100,
-            "lower": 100,
+            "percentile": 100.0,
+            "mean": 100.0,
+            "upper": 100.0,
+            "lower": 100.0,
             "count": 1,
-            "count_ps": 1,
-            "median": 100,
-            "sum": 100,
-            "sum_squares": 10000,
-            "std": 0
+            "count_ps": 1.0,
+            "sum": 100.0,
+            "sum_squares": 10000.0,
         }
         expected_value2 = expected_value.copy()
-        expected_value2.update(count=2, count_ps=2, sum=200, sum_squares=20000)
+        expected_value2.update(count=2, count_ps=2.0, sum=200.0, sum_squares=20000.0, stdev=0.0)
         statsd_module.handle_line(0, "gorm:100|ms")
         statsd_module.handle_line(0, "gorm:100|ms|#a=b")
         statsd_module.handle_line(0, "gorm:100|ms|#a:b,c=5")
@@ -555,11 +538,11 @@ class TestStatsDServer(unittest.TestCase):
     def test_malformed_timers_metadata(self, statsd_module):
         self.malformed_metadata(statsd_module, "gorm:1|ms")
 
-    @statsd_setup(timestamps=range(1, 1000))
+    @statsd_setup(timestamps=range(1, 1000), percentile_thresholds=(100,))
     def test_timestamped_timers_metadata(self, statsd_module):
         self.timestamped_metadata(statsd_module, "gorm:1|ms")
 
-    @statsd_setup(timestamps=range(1, 1000))
+    @statsd_setup(timestamps=range(1, 1000), percentile_thresholds=(100,))
     def test_bucketed_timers_metadata(self, statsd_module):
         self.bucketed_metadata(statsd_module, "gorm:1|ms")
 
