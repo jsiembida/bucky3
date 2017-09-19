@@ -563,20 +563,36 @@ class TestStatsDServer(unittest.TestCase):
     def test_bucketed_timers_metadata(self, statsd_module):
         self.bucketed_metadata(statsd_module, "gorm:1|ms")
 
+    def is_performance_test_needed(self):
+        flag = os.environ.get('TEST_PERFORMANCE', 'no').lower()
+        test_requested = flag == 'yes' or flag == 'true' or flag == '1'
+        if not test_requested:
+            self.skipTest("Performance test not requested")
+
+    def rand_str(self, min_len=3, max_len=10, chars=string.ascii_lowercase):
+        return ''.join(random.choice(chars) for i in range(random.randint(min_len, max_len)))
+
+    def rand_num(self, min_len=1, max_len=3):
+        return self.rand_str(min_len, max_len, string.digits)
+
+    def rand_val(self, mean=None):
+        if mean is None:
+            mean = 10
+        return round(min(max(0, random.gauss(mean, mean / 10)), 2 * mean), 3)
+
+    def rand_vec(self, length=None, mean=None):
+        if length is None:
+            length = random.randint(10, 100)
+        return list(self.rand_val(mean) for i in range(length))
+
     def performance_test_set(self, metric_type, set_size, tags_per_sample):
-        def rand_str(min_len=3, max_len=10, chars=string.ascii_lowercase):
-            return ''.join(random.choice(chars) for i in range(random.randint(min_len, max_len)))
-
-        def rand_num(min_len=1, max_len=3):
-            return rand_str(min_len, max_len, string.digits)
-
         buf = set()
         while len(buf) < set_size:
             if tags_per_sample > 0:
-                tags_str = ','.join(rand_str() + '=' + rand_str() for i in range(tags_per_sample))
+                tags_str = ','.join(self.rand_str() + '=' + self.rand_str() for i in range(tags_per_sample))
             else:
                 tags_str = ''
-            l = rand_str() + ':' + rand_num() + '|' + metric_type
+            l = self.rand_str() + ':' + self.rand_num() + '|' + metric_type
             if random.random() > 0.5:
                 l = l + '|@{:.1f}'.format(random.random())
             if tags_str:
@@ -586,10 +602,7 @@ class TestStatsDServer(unittest.TestCase):
         return buf
 
     def performance_test(self, statsd_module, prefix, metric_type, N, M, set_size, tags_per_sample):
-        flag = os.environ.get('TEST_PERFORMANCE', 'no').lower()
-        test_requested = flag == 'yes' or flag == 'true' or flag == '1'
-        if not test_requested:
-            self.skipTest("Performance test not requested")
+        self.is_performance_test_needed()
 
         mock_pipe = statsd_module.dst_pipes[0]
         test_sample_set = self.performance_test_set(metric_type, set_size, tags_per_sample)
@@ -632,6 +645,55 @@ class TestStatsDServer(unittest.TestCase):
         self.performance_test(statsd_module, "timers without tags", 'ms', 100, 10, 1000, 0)
         self.performance_test(statsd_module, "timers with 3 tags", 'ms', 100, 10, 1000, 3)
         self.performance_test(statsd_module, "timers with 10 tags", 'ms', 100, 10, 1000, 10)
+
+    def percentile_test_set(self, length, N=1):
+        buf = []
+        for i in range(N):
+            name = ('name', self.rand_str(min_len=10, max_len=10))
+            vector = self.rand_vec(length=length)
+            buf.append((tuple((name,),), vector))
+        return buf
+
+    def percentiles_performance(self, statsd_module, prefix, vector_len, N, M):
+        self.is_performance_test_needed()
+
+        total_time, test_set = 0, self.percentile_test_set(vector_len, N)
+        for i in range(M):
+            statsd_module.enqueue = lambda bucket, stats, timestamp, metadata: None
+            statsd_module.timers.clear()
+            statsd_module.timers.update((k, (8, 8, v)) for k, v in test_set)
+            statsd_module.last_timestamp = 0
+            statsd_module.current_timestamp = 10
+            start_time = time.process_time()
+            statsd_module.enqueue_timers(10)
+            time_delta = time.process_time() - start_time
+            total_time += time_delta
+        total_samples = N * M * vector_len
+        us_per_sample = 1000000 * total_time / total_samples
+        print('\n{prefix}: {total_samples:d} samples in {time_delta:.2f}s -> {us_per_sample:.1f}us/sample'.format(
+            prefix=prefix, total_samples=total_samples, time_delta=time_delta, us_per_sample=us_per_sample
+        ), flush=True, file=sys.stderr)
+
+    @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(90,))
+    def test_1percentile1_performance(self, statsd_module):
+        self.percentiles_performance(statsd_module, "1 percentile, 10000 vectors of 10 samples", 10, 10000, 10)
+        self.percentiles_performance(statsd_module, "1 percentile, 1000 vectors of 100 samples", 100, 1000, 10)
+        self.percentiles_performance(statsd_module, "1 percentile, 100 vectors of 1000 samples", 1000, 100, 10)
+        self.percentiles_performance(statsd_module, "1 percentile, 10 vectors of 10000 samples", 10000, 10, 10)
+
+    @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(50, 90, 99))
+    def test_3percentiles_performance(self, statsd_module):
+        self.percentiles_performance(statsd_module, "3 percentiles, 10000 vectors of 10 samples", 10, 10000, 10)
+        self.percentiles_performance(statsd_module, "3 percentiles, 1000 vectors of 100 samples", 100, 1000, 10)
+        self.percentiles_performance(statsd_module, "3 percentiles, 100 vectors of 1000 samples", 1000, 100, 10)
+        self.percentiles_performance(statsd_module, "3 percentiles, 10 vectors of 10000 samples", 10000, 10, 10)
+
+    @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(10, 20, 30, 40, 50, 60, 70, 80, 90, 100))
+    def test_10percentiles_performance(self, statsd_module):
+        self.percentiles_performance(statsd_module, "10 percentiles, 10000 vectors of 10 samples", 10, 10000, 10)
+        self.percentiles_performance(statsd_module, "10 percentiles, 1000 vectors of 100 samples", 100, 1000, 10)
+        self.percentiles_performance(statsd_module, "10 percentiles, 100 vectors of 1000 samples", 1000, 100, 10)
+        self.percentiles_performance(statsd_module, "10 percentiles, 10 vectors of 10000 samples", 10000, 10, 10)
 
 
 if __name__ == '__main__':
