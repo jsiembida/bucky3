@@ -92,7 +92,6 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                     while i >= next_i - 1:
                         mean = vsum / vlen
                         stats = dict(
-                            percentile=next_t,
                             count=vlen,
                             count_ps=vlen/interval,
                             lower=v[0],
@@ -104,7 +103,9 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                         if vlen > 1:
                             var = (vsum_squares - 2 * mean * vsum + vlen * mean * mean) / (vlen - 1)
                             stats['stdev'] = var ** 0.5
-                        self.enqueue(bucket, stats, cust_timestamp or system_timestamp, dict(k))
+                        metadata = dict(percentile=str(next_t))
+                        metadata.update(k)
+                        self.enqueue(bucket, stats, cust_timestamp or system_timestamp, metadata)
                         next_i, next_t = next(thresholds)
             except StopIteration:
                 pass

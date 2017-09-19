@@ -132,7 +132,7 @@ class TestStatsDServer(unittest.TestCase):
         test(True, "-123")    # Within 10min window
         test(True, "123.4")   # Within 10min window
 
-    def bucketed_metadata(self, statsd_module, entry):
+    def bucketed_metadata(self, statsd_module, entry, expected_metadata_size=2):
         mock_pipe = statsd_module.dst_pipes[0]
 
         def test(condition, s):
@@ -147,7 +147,7 @@ class TestStatsDServer(unittest.TestCase):
                 assert len(payload) == 1
                 payload = payload[0]
                 assert payload[0] == s
-                assert len(payload[3]) == 2
+                assert len(payload[3]) == expected_metadata_size
             mock_pipe.reset_mock()
 
         test(False, "")
@@ -391,7 +391,6 @@ class TestStatsDServer(unittest.TestCase):
         mock_pipe = statsd_module.dst_pipes[0]
         statsd_module.handle_line(0, "gorm:100|ms")
         expected_value = {
-            "percentile": 90.0,
             "mean": 100.0,
             "upper": 100.0,
             "lower": 100.0,
@@ -402,12 +401,12 @@ class TestStatsDServer(unittest.TestCase):
         }
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_timers', expected_value, 0.1, dict(name='gorm'))
+            ('stats_timers', expected_value, 0.1, dict(name='gorm', percentile='90.0'))
         ])
         statsd_module.handle_line(0.1, "gorm:100|ms")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_timers', expected_value, 0.2, dict(name='gorm'))
+            ('stats_timers', expected_value, 0.2, dict(name='gorm', percentile='90.0'))
         ])
         statsd_module.tick()
         statsd_verify(mock_pipe, [
@@ -426,7 +425,6 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(0, "gorm:200|ms|@0.2")
         statsd_module.handle_line(0, "gorm:300|ms")  # Out of the 90% threshold
         expected_value = {
-            "percentile": 90,
             "mean": 150,
             "lower": 100,
             "upper": 200,
@@ -438,7 +436,7 @@ class TestStatsDServer(unittest.TestCase):
         }
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_timers', expected_value, 0.1, dict(name='gorm'))
+            ('stats_timers', expected_value, 0.1, dict(name='gorm', percentile='90.0'))
         ])
 
     @statsd_setup(timers_timeout=1,
@@ -450,7 +448,6 @@ class TestStatsDServer(unittest.TestCase):
             statsd_module.handle_line(0, "gorm:1|ms")
         statsd_module.handle_line(0, "gorm:2|ms")  # Out of the 90% threshold
         expected_value = {
-            "percentile": 90,
             "mean": 1,
             "lower": 1,
             "upper": 1,
@@ -462,7 +459,7 @@ class TestStatsDServer(unittest.TestCase):
         }
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_timers', expected_value, 0.5, dict(name='gorm'))
+            ('stats_timers', expected_value, 0.5, dict(name='gorm', percentile='90.0'))
         ])
 
     @statsd_setup(timers_timeout=1,
@@ -475,7 +472,6 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(0, "gorm:7|ms")  # Out of the 90% threshold
         statsd_module.handle_line(0, "gorm:3|ms")
         expected_value = {
-            "percentile": 90,
             "mean": 10 / 3.0,
             "lower": 2,
             "upper": 5,
@@ -487,14 +483,13 @@ class TestStatsDServer(unittest.TestCase):
         }
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_timers', expected_value, 0.5, dict(name='gorm'))
+            ('stats_timers', expected_value, 0.5, dict(name='gorm', percentile='90.0'))
         ])
 
     @statsd_setup(timers_timeout=2, timestamps=range(1, 100), percentile_thresholds=(100,))
     def test_timers_metadata(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
         expected_value = {
-            "percentile": 100.0,
             "mean": 100.0,
             "upper": 100.0,
             "lower": 100.0,
@@ -512,17 +507,17 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(0, "gorm:100|ms|#c:5,a=b")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_timers', expected_value, 1, dict(name='gorm')),
-            ('stats_timers', expected_value, 1, dict(name='gorm', a='b')),
-            ('stats_timers', expected_value2, 1, dict(name='gorm', a='b', c='5')),
-            ('stats_timers', expected_value, 1, dict(name='gorm', a='z', c='5')),
+            ('stats_timers', expected_value, 1, dict(name='gorm', percentile='100.0')),
+            ('stats_timers', expected_value, 1, dict(name='gorm', a='b', percentile='100.0')),
+            ('stats_timers', expected_value2, 1, dict(name='gorm', a='b', c='5', percentile='100.0')),
+            ('stats_timers', expected_value, 1, dict(name='gorm', a='z', c='5', percentile='100.0')),
         ])
         statsd_module.handle_line(1, "gorm:100|ms|#a:b,c=5")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
             ('stats_timers', dict(count=0, count_ps=0), 2, dict(name='gorm')),
             ('stats_timers', dict(count=0, count_ps=0), 2, dict(name='gorm', a='b')),
-            ('stats_timers', expected_value, 2, dict(name='gorm', a='b', c='5')),
+            ('stats_timers', expected_value, 2, dict(name='gorm', a='b', c='5', percentile='100.0')),
             ('stats_timers', dict(count=0, count_ps=0), 2, dict(name='gorm', a='z', c='5')),
         ])
         statsd_module.tick()
@@ -544,7 +539,7 @@ class TestStatsDServer(unittest.TestCase):
 
     @statsd_setup(timestamps=range(1, 1000), percentile_thresholds=(100,))
     def test_bucketed_timers_metadata(self, statsd_module):
-        self.bucketed_metadata(statsd_module, "gorm:1|ms")
+        self.bucketed_metadata(statsd_module, "gorm:1|ms", expected_metadata_size=3)
 
     def is_performance_test_needed(self):
         flag = os.environ.get('TEST_PERFORMANCE', 'no').lower()
