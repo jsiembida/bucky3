@@ -8,6 +8,7 @@ import random
 import unittest
 from unittest.mock import patch, MagicMock
 import itertools
+import statistics
 import bucky3.statsd as statsd
 
 
@@ -132,7 +133,7 @@ class TestStatsDServer(unittest.TestCase):
         test(True, "-123")    # Within 10min window
         test(True, "123.4")   # Within 10min window
 
-    def bucketed_metadata(self, statsd_module, entry):
+    def bucketed_metadata(self, statsd_module, entry, expected_metadata_size=2):
         mock_pipe = statsd_module.dst_pipes[0]
 
         def test(condition, s):
@@ -147,7 +148,7 @@ class TestStatsDServer(unittest.TestCase):
                 assert len(payload) == 1
                 payload = payload[0]
                 assert payload[0] == s
-                assert len(payload[3]) == 2
+                assert len(payload[3]) == expected_metadata_size
             mock_pipe.reset_mock()
 
         test(False, "")
@@ -391,24 +392,22 @@ class TestStatsDServer(unittest.TestCase):
         mock_pipe = statsd_module.dst_pipes[0]
         statsd_module.handle_line(0, "gorm:100|ms")
         expected_value = {
-            "mean": 100,
-            "upper": 100,
-            "lower": 100,
+            "mean": 100.0,
+            "upper": 100.0,
+            "lower": 100.0,
             "count": 1,
-            "count_ps": 10,
-            "median": 100,
-            "sum": 100,
-            "sum_squares": 10000,
-            "std": 0
+            "count_ps": 10.0,
+            "sum": 100.0,
+            "sum_squares": 10000.0,
         }
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_timers', expected_value, 0.1, dict(name='gorm'))
+            ('stats_timers', expected_value, 0.1, dict(name='gorm', percentile='90.0'))
         ])
         statsd_module.handle_line(0.1, "gorm:100|ms")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_timers', expected_value, 0.2, dict(name='gorm'))
+            ('stats_timers', expected_value, 0.2, dict(name='gorm', percentile='90.0'))
         ])
         statsd_module.tick()
         statsd_verify(mock_pipe, [
@@ -427,24 +426,18 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(0, "gorm:200|ms|@0.2")
         statsd_module.handle_line(0, "gorm:300|ms")  # Out of the 90% threshold
         expected_value = {
-            "mean_90": 150,
-            "upper_90": 200,
-            "count_90": 2,
-            "sum_90": 300,
-            "sum_squares_90": 50000,
-            "mean": 200,
-            "upper": 300,
+            "mean": 150,
             "lower": 100,
-            "count": 3,
-            "count_ps": 30,
-            "median": 200,
-            "sum": 600,
-            "sum_squares": 140000,
-            "std": 81.64965809277261
+            "upper": 200,
+            "count": 2,
+            "count_ps": 20,
+            "sum": 300,
+            "sum_squares": 50000,
+            "stdev": 70.71067811865476
         }
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_timers', expected_value, 0.1, dict(name='gorm'))
+            ('stats_timers', expected_value, 0.1, dict(name='gorm', percentile='90.0'))
         ])
 
     @statsd_setup(timers_timeout=1,
@@ -456,24 +449,18 @@ class TestStatsDServer(unittest.TestCase):
             statsd_module.handle_line(0, "gorm:1|ms")
         statsd_module.handle_line(0, "gorm:2|ms")  # Out of the 90% threshold
         expected_value = {
-            "mean_90": 1,
-            "upper_90": 1,
-            "count_90": 9,
-            "sum_90": 9,
-            "sum_squares_90": 9,
-            "mean": 1.1,
-            "upper": 2,
+            "mean": 1,
             "lower": 1,
-            "count": 10,
-            "count_ps": 20.0,
-            "median": 1,
-            "sum": 11,
-            "sum_squares": 13,
-            "std": 0.3
+            "upper": 1,
+            "count": 9,
+            "count_ps": 18.0,
+            "sum": 9,
+            "sum_squares": 9,
+            "stdev": 0.0
         }
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_timers', expected_value, 0.5, dict(name='gorm'))
+            ('stats_timers', expected_value, 0.5, dict(name='gorm', percentile='90.0'))
         ])
 
     @statsd_setup(timers_timeout=1,
@@ -486,42 +473,68 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(0, "gorm:7|ms")  # Out of the 90% threshold
         statsd_module.handle_line(0, "gorm:3|ms")
         expected_value = {
-            "mean_90": 10 / 3.0,
-            "upper_90": 5,
-            "count_90": 3,
-            "sum_90": 10,
-            "sum_squares_90": 38,
-            "mean": 17 / 4.0,
-            "upper": 7,
+            "mean": 10 / 3.0,
             "lower": 2,
-            "count": 4,
-            "count_ps": 8,
-            "median": 4,
-            "sum": 17,
-            "sum_squares": 87,
-            "std": 1.920286436967152
+            "upper": 5,
+            "count": 3,
+            "count_ps": 6,
+            "sum": 10,
+            "sum_squares": 38,
+            "stdev": 1.5275252316519463
         }
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_timers', expected_value, 0.5, dict(name='gorm'))
+            ('stats_timers', expected_value, 0.5, dict(name='gorm', percentile='90.0'))
         ])
 
-    @statsd_setup(timers_timeout=2, timestamps=range(1, 100))
+    _percentile_thresholds = (10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 97, 98, 99, 99.9, 100)
+
+    @statsd_setup(timers_timeout=100, timestamps=range(1, 100), percentile_thresholds=_percentile_thresholds)
+    def test_timer_large_series(self, statsd_module):
+        class RoughFloat(float):
+            def __eq__(self, other):
+                if not isinstance(other, float):
+                    return super().__eq__(other)
+                return round(self, 2) == round(other, 2)
+
+        test_name = 'gorm'
+        test_vector = self.rand_vec(length=3000)
+        for sample in test_vector:
+            statsd_module.handle_line(0, test_name + ":" + str(sample) + "|ms")
+        statsd_module.tick()
+        test_vector.sort()
+        expected_values = []
+        for threshold_v in self._percentile_thresholds:
+            threshold_i = len(test_vector) if threshold_v == 100 else (threshold_v * len(test_vector)) // 100
+            threshold_slice = test_vector[:int(threshold_i)]
+            expected_value = {
+                "mean": RoughFloat(statistics.mean(threshold_slice)),
+                "upper": RoughFloat(max(threshold_slice)),
+                "lower": RoughFloat(min(threshold_slice)),
+                "count": len(threshold_slice),
+                "count_ps": len(threshold_slice),
+                "sum": RoughFloat(sum(threshold_slice)),
+                "sum_squares": RoughFloat(sum(i * i for i in threshold_slice)),
+                "stdev": RoughFloat(statistics.stdev(threshold_slice))
+            }
+            expected_values.append(('stats_timers', expected_value, 1,
+                                    dict(name=test_name, percentile=str(float(threshold_v)))))
+        statsd_verify(statsd_module.dst_pipes[0], expected_values)
+
+    @statsd_setup(timers_timeout=2, timestamps=range(1, 100), percentile_thresholds=(100,))
     def test_timers_metadata(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
         expected_value = {
-            "mean": 100,
-            "upper": 100,
-            "lower": 100,
+            "mean": 100.0,
+            "upper": 100.0,
+            "lower": 100.0,
             "count": 1,
-            "count_ps": 1,
-            "median": 100,
-            "sum": 100,
-            "sum_squares": 10000,
-            "std": 0
+            "count_ps": 1.0,
+            "sum": 100.0,
+            "sum_squares": 10000.0,
         }
         expected_value2 = expected_value.copy()
-        expected_value2.update(count=2, count_ps=2, sum=200, sum_squares=20000)
+        expected_value2.update(count=2, count_ps=2.0, sum=200.0, sum_squares=20000.0, stdev=0.0)
         statsd_module.handle_line(0, "gorm:100|ms")
         statsd_module.handle_line(0, "gorm:100|ms|#a=b")
         statsd_module.handle_line(0, "gorm:100|ms|#a:b,c=5")
@@ -529,17 +542,17 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(0, "gorm:100|ms|#c:5,a=b")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_timers', expected_value, 1, dict(name='gorm')),
-            ('stats_timers', expected_value, 1, dict(name='gorm', a='b')),
-            ('stats_timers', expected_value2, 1, dict(name='gorm', a='b', c='5')),
-            ('stats_timers', expected_value, 1, dict(name='gorm', a='z', c='5')),
+            ('stats_timers', expected_value, 1, dict(name='gorm', percentile='100.0')),
+            ('stats_timers', expected_value, 1, dict(name='gorm', a='b', percentile='100.0')),
+            ('stats_timers', expected_value2, 1, dict(name='gorm', a='b', c='5', percentile='100.0')),
+            ('stats_timers', expected_value, 1, dict(name='gorm', a='z', c='5', percentile='100.0')),
         ])
         statsd_module.handle_line(1, "gorm:100|ms|#a:b,c=5")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
             ('stats_timers', dict(count=0, count_ps=0), 2, dict(name='gorm')),
             ('stats_timers', dict(count=0, count_ps=0), 2, dict(name='gorm', a='b')),
-            ('stats_timers', expected_value, 2, dict(name='gorm', a='b', c='5')),
+            ('stats_timers', expected_value, 2, dict(name='gorm', a='b', c='5', percentile='100.0')),
             ('stats_timers', dict(count=0, count_ps=0), 2, dict(name='gorm', a='z', c='5')),
         ])
         statsd_module.tick()
@@ -555,28 +568,44 @@ class TestStatsDServer(unittest.TestCase):
     def test_malformed_timers_metadata(self, statsd_module):
         self.malformed_metadata(statsd_module, "gorm:1|ms")
 
-    @statsd_setup(timestamps=range(1, 1000))
+    @statsd_setup(timestamps=range(1, 1000), percentile_thresholds=(100,))
     def test_timestamped_timers_metadata(self, statsd_module):
         self.timestamped_metadata(statsd_module, "gorm:1|ms")
 
-    @statsd_setup(timestamps=range(1, 1000))
+    @statsd_setup(timestamps=range(1, 1000), percentile_thresholds=(100,))
     def test_bucketed_timers_metadata(self, statsd_module):
-        self.bucketed_metadata(statsd_module, "gorm:1|ms")
+        self.bucketed_metadata(statsd_module, "gorm:1|ms", expected_metadata_size=3)
+
+    def is_performance_test_needed(self):
+        flag = os.environ.get('TEST_PERFORMANCE', 'no').lower()
+        test_requested = flag == 'yes' or flag == 'true' or flag == '1'
+        if not test_requested:
+            self.skipTest("Performance test not requested")
+
+    def rand_str(self, min_len=3, max_len=10, chars=string.ascii_lowercase):
+        return ''.join(random.choice(chars) for i in range(random.randint(min_len, max_len)))
+
+    def rand_num(self, min_len=1, max_len=3):
+        return self.rand_str(min_len, max_len, string.digits)
+
+    def rand_val(self, mean=None):
+        if mean is None:
+            mean = 10
+        return round(min(max(0, random.gauss(mean, mean / 10)), 2 * mean), 3)
+
+    def rand_vec(self, length=None, mean=None):
+        if length is None:
+            length = random.randint(10, 100)
+        return list(self.rand_val(mean) for i in range(length))
 
     def performance_test_set(self, metric_type, set_size, tags_per_sample):
-        def rand_str(min_len=3, max_len=10, chars=string.ascii_lowercase):
-            return ''.join(random.choice(chars) for i in range(random.randint(min_len, max_len)))
-
-        def rand_num(min_len=1, max_len=3):
-            return rand_str(min_len, max_len, string.digits)
-
         buf = set()
         while len(buf) < set_size:
             if tags_per_sample > 0:
-                tags_str = ','.join(rand_str() + '=' + rand_str() for i in range(tags_per_sample))
+                tags_str = ','.join(self.rand_str() + '=' + self.rand_str() for i in range(tags_per_sample))
             else:
                 tags_str = ''
-            l = rand_str() + ':' + rand_num() + '|' + metric_type
+            l = self.rand_str() + ':' + self.rand_num() + '|' + metric_type
             if random.random() > 0.5:
                 l = l + '|@{:.1f}'.format(random.random())
             if tags_str:
@@ -586,10 +615,7 @@ class TestStatsDServer(unittest.TestCase):
         return buf
 
     def performance_test(self, statsd_module, prefix, metric_type, N, M, set_size, tags_per_sample):
-        flag = os.environ.get('TEST_PERFORMANCE', 'no').lower()
-        test_requested = flag == 'yes' or flag == 'true' or flag == '1'
-        if not test_requested:
-            self.skipTest("Performance test not requested")
+        self.is_performance_test_needed()
 
         mock_pipe = statsd_module.dst_pipes[0]
         test_sample_set = self.performance_test_set(metric_type, set_size, tags_per_sample)
@@ -632,6 +658,55 @@ class TestStatsDServer(unittest.TestCase):
         self.performance_test(statsd_module, "timers without tags", 'ms', 100, 10, 1000, 0)
         self.performance_test(statsd_module, "timers with 3 tags", 'ms', 100, 10, 1000, 3)
         self.performance_test(statsd_module, "timers with 10 tags", 'ms', 100, 10, 1000, 10)
+
+    def percentile_test_set(self, length, N=1):
+        buf = []
+        for i in range(N):
+            name = ('name', self.rand_str(min_len=10, max_len=10))
+            vector = self.rand_vec(length=length)
+            buf.append((tuple((name,),), vector))
+        return buf
+
+    def percentiles_performance(self, statsd_module, prefix, vector_len, N, M):
+        self.is_performance_test_needed()
+
+        total_time, test_set = 0, self.percentile_test_set(vector_len, N)
+        for i in range(M):
+            statsd_module.enqueue = lambda bucket, stats, timestamp, metadata: None
+            statsd_module.timers.clear()
+            statsd_module.timers.update((k, (8, 8, v)) for k, v in test_set)
+            statsd_module.last_timestamp = 0
+            statsd_module.current_timestamp = 10
+            start_time = time.process_time()
+            statsd_module.enqueue_timers(10)
+            time_delta = time.process_time() - start_time
+            total_time += time_delta
+        total_samples = N * M * vector_len
+        us_per_sample = 1000000 * total_time / total_samples
+        print('\n{prefix}: {total_samples:d} samples in {time_delta:.2f}s -> {us_per_sample:.1f}us/sample'.format(
+            prefix=prefix, total_samples=total_samples, time_delta=time_delta, us_per_sample=us_per_sample
+        ), flush=True, file=sys.stderr)
+
+    @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(90,))
+    def test_1percentile1_performance(self, statsd_module):
+        self.percentiles_performance(statsd_module, "1 percentile, 10000 vectors of 10 samples", 10, 10000, 10)
+        self.percentiles_performance(statsd_module, "1 percentile, 1000 vectors of 100 samples", 100, 1000, 10)
+        self.percentiles_performance(statsd_module, "1 percentile, 100 vectors of 1000 samples", 1000, 100, 10)
+        self.percentiles_performance(statsd_module, "1 percentile, 10 vectors of 10000 samples", 10000, 10, 10)
+
+    @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(50, 90, 99))
+    def test_3percentiles_performance(self, statsd_module):
+        self.percentiles_performance(statsd_module, "3 percentiles, 10000 vectors of 10 samples", 10, 10000, 10)
+        self.percentiles_performance(statsd_module, "3 percentiles, 1000 vectors of 100 samples", 100, 1000, 10)
+        self.percentiles_performance(statsd_module, "3 percentiles, 100 vectors of 1000 samples", 1000, 100, 10)
+        self.percentiles_performance(statsd_module, "3 percentiles, 10 vectors of 10000 samples", 10000, 10, 10)
+
+    @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(10, 20, 30, 40, 50, 60, 70, 80, 90, 100))
+    def test_10percentiles_performance(self, statsd_module):
+        self.percentiles_performance(statsd_module, "10 percentiles, 10000 vectors of 10 samples", 10, 10000, 10)
+        self.percentiles_performance(statsd_module, "10 percentiles, 1000 vectors of 100 samples", 100, 1000, 10)
+        self.percentiles_performance(statsd_module, "10 percentiles, 100 vectors of 1000 samples", 1000, 100, 10)
+        self.percentiles_performance(statsd_module, "10 percentiles, 10 vectors of 10000 samples", 10000, 10, 10)
 
 
 if __name__ == '__main__':

@@ -42,7 +42,7 @@ statsd = dict(
     sets_timeout=60,
     gauges_timeout=300,
     counters_timeout=60,
-    percentile_thresholds=(90, 99),
+    percentile_thresholds=(50, 90, 99, 100),
 )
 
 carbon = dict(
