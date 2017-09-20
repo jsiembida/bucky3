@@ -8,6 +8,7 @@ import random
 import unittest
 from unittest.mock import patch, MagicMock
 import itertools
+import statistics
 import bucky3.statsd as statsd
 
 
@@ -485,6 +486,40 @@ class TestStatsDServer(unittest.TestCase):
         statsd_verify(mock_pipe, [
             ('stats_timers', expected_value, 0.5, dict(name='gorm', percentile='90.0'))
         ])
+
+    _percentile_thresholds = (10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 97, 98, 99, 99.9, 100)
+
+    @statsd_setup(timers_timeout=100, timestamps=range(1, 100), percentile_thresholds=_percentile_thresholds)
+    def test_timer_large_series(self, statsd_module):
+        class RoughFloat(float):
+            def __eq__(self, other):
+                if not isinstance(other, float):
+                    return super().__eq__(other)
+                return round(self, 2) == round(other, 2)
+
+        test_name = 'gorm'
+        test_vector = self.rand_vec(length=3000)
+        for sample in test_vector:
+            statsd_module.handle_line(0, test_name + ":" + str(sample) + "|ms")
+        statsd_module.tick()
+        test_vector.sort()
+        expected_values = []
+        for threshold_v in self._percentile_thresholds:
+            threshold_i = len(test_vector) if threshold_v == 100 else (threshold_v * len(test_vector)) // 100
+            threshold_slice = test_vector[:int(threshold_i)]
+            expected_value = {
+                "mean": RoughFloat(statistics.mean(threshold_slice)),
+                "upper": RoughFloat(max(threshold_slice)),
+                "lower": RoughFloat(min(threshold_slice)),
+                "count": len(threshold_slice),
+                "count_ps": len(threshold_slice),
+                "sum": RoughFloat(sum(threshold_slice)),
+                "sum_squares": RoughFloat(sum(i * i for i in threshold_slice)),
+                "stdev": RoughFloat(statistics.stdev(threshold_slice))
+            }
+            expected_values.append(('stats_timers', expected_value, 1,
+                                    dict(name=test_name, percentile=str(float(threshold_v)))))
+        statsd_verify(statsd_module.dst_pipes[0], expected_values)
 
     @statsd_setup(timers_timeout=2, timestamps=range(1, 100), percentile_thresholds=(100,))
     def test_timers_metadata(self, statsd_module):

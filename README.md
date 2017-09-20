@@ -10,7 +10,7 @@ is a rework of [Bucky](https://github.com/trbs/bucky). Major differences include
 difference between Bucky3 and original Bucky.
 * Consequently, while support of [Carbon protocol](http://graphite.readthedocs.io/en/latest/feeding-carbon.html)
 has been retained, Graphite naming style is built as a mapping on top of the underlying metadata.
-* Python 3.3+ only.
+* Python 3.4+ only.
 * [MetricsD](https://github.com/mojodna/metricsd) protocol has been dropped in favor
 of [extended StatsD protocol.](https://docs.datadoghq.com/guides/dogstatsd/#datagram-format)
 * [CollectD](https://collectd.org) protocol has been dropped in favor of dedicated modules and integration
