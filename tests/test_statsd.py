@@ -35,6 +35,7 @@ def statsd_setup(timestamps, **extra_cfg):
             cfg = dict(
                 flush_interval=1,
                 timers_timeout=100, timers_bucket="stats_timers",
+                histograms_timeout=100, histograms_bucket="stats_histograms",
                 sets_timeout=100, sets_bucket="stats_sets",
                 gauges_timeout=100, gauges_bucket="stats_gauges",
                 counters_timeout=100, counters_bucket="stats_counters",
