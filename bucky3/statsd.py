@@ -200,7 +200,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         name = bits.pop(0)
         if not name.isidentifier():
             return
-        key = self.handle_key(name, metadata)
+        key, metadata = self.handle_key(name, metadata)
         if not key:
             return
 
@@ -219,15 +219,15 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             ratestr = fields[2] if len(fields) > 2 else None
             try:
                 if typestr == "ms":
-                    self.handle_timer(recv_timestamp, cust_timestamp, key, valstr, ratestr)
+                    self.handle_timer(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
                 elif typestr == "h":
-                    self.handle_histogram(recv_timestamp, cust_timestamp, key, valstr, ratestr)
+                    self.handle_histogram(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
                 elif typestr == "g":
-                    self.handle_gauge(recv_timestamp, cust_timestamp, key, valstr, ratestr)
+                    self.handle_gauge(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
                 elif typestr == "s":
-                    self.handle_set(recv_timestamp, cust_timestamp, key, valstr, ratestr)
+                    self.handle_set(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
                 else:
-                    self.handle_counter(recv_timestamp, cust_timestamp, key, valstr, ratestr)
+                    self.handle_counter(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
             except ValueError:
                 pass
 
@@ -262,9 +262,9 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def handle_key(self, name, metadata):
         metadata.update(name=name)
         key = tuple((k, metadata[k]) for k in sorted(metadata.keys()))
-        return key
+        return key, metadata
 
-    def handle_timer(self, recv_timestamp, cust_timestamp, key, valstr, ratestr):
+    def handle_timer(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)
         if key in self.timers:
             buf = self.timers[key][2]
@@ -273,14 +273,14 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         else:
             self.timers[key] = recv_timestamp, cust_timestamp, [val]
 
-    def handle_histogram(self, recv_timestamp, cust_timestamp, key, valstr, ratestr):
+    def handle_histogram(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
         if self.histogram_selector is None:
             return
         val = float(valstr)
         histogram = self.histograms.get(key)
         if histogram is None:
-            selector = self.histogram_selector(key)
-            if not selector:
+            selector = self.histogram_selector(metadata)
+            if selector is None:
                 return
             buckets = {}
         else:
@@ -299,7 +299,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 self.histograms[key] = recv_timestamp, cust_timestamp, selector, buckets
                 return
 
-    def handle_gauge(self, recv_timestamp, cust_timestamp, key, valstr, ratestr):
+    def handle_gauge(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)
         delta = valstr[0] in "+-"
         if delta and key in self.gauges:
@@ -307,7 +307,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         else:
             self.gauges[key] = recv_timestamp, cust_timestamp, val
 
-    def handle_set(self, recv_timestamp, cust_timestamp, key, valstr, ratestr):
+    def handle_set(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
         if key in self.sets:
             buf = self.sets[key][2]
             buf.add(valstr)
@@ -315,7 +315,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         else:
             self.sets[key] = recv_timestamp, cust_timestamp, {valstr}
 
-    def handle_counter(self, recv_timestamp, cust_timestamp, key, valstr, ratestr):
+    def handle_counter(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
         if ratestr and ratestr[0] == "@":
             rate = float(ratestr[1:])
             if rate > 0 and rate <= 1:
