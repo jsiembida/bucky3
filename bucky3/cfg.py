@@ -28,7 +28,8 @@ linuxstats = dict(
     filesystem_blacklist={
         "tmpfs", "devtmpfs", "rootfs",
     },
-    module_inactive=True,
+    # For non-Linux, set to True
+    module_inactive=False,
 )
 
 dockerstats = dict(
@@ -49,9 +50,9 @@ statsd = dict(
     timers_timeout=60,
     histograms_timeout=60,
     sets_timeout=60,
-    gauges_timeout=300,
+    gauges_timeout=60,
     counters_timeout=60,
-    percentile_thresholds=(50, 90, 99, 100),
+    percentile_thresholds=(50, 90, 100),
     histogram_selector=lambda key: myapp_response_histogram
 )
 
