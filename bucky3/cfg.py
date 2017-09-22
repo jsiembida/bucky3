@@ -7,6 +7,12 @@ metadata = dict(
     host="${BUCKY3_HOST}",
 )
 
+myapp_response_histogram = (
+    ('under_100ms', lambda x: x < 100),
+    ('under_300ms', lambda x: x < 300),
+    ('over_300ms', lambda x: True),
+)
+
 linuxstats = dict(
     # Linux specific, comment out the 'module_type' line to disable it
     module_type="linux_stats",
@@ -22,6 +28,8 @@ linuxstats = dict(
     filesystem_blacklist={
         "tmpfs", "devtmpfs", "rootfs",
     },
+    # For non-Linux, set to True
+    module_inactive=False,
 )
 
 dockerstats = dict(
@@ -35,14 +43,17 @@ statsd = dict(
     module_type="statsd_server",
     local_port=8125,
     timers_bucket="stats_timers",
+    histograms_bucket="stats_histograms",
     sets_bucket="stats_sets",
     gauges_bucket="stats_gauges",
     counters_bucket="stats_counters",
     timers_timeout=60,
+    histograms_timeout=60,
     sets_timeout=60,
-    gauges_timeout=300,
+    gauges_timeout=60,
     counters_timeout=60,
-    percentile_thresholds=(50, 90, 99, 100),
+    percentile_thresholds=(50, 90, 100),
+    histogram_selector=lambda key: myapp_response_histogram
 )
 
 carbon = dict(

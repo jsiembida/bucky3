@@ -1,3 +1,6 @@
+
+
+
 ### StatsD Protocol
 
 The StatsD interface on bucky3 understands most of the "DogStatsD
@@ -12,6 +15,8 @@ should consider the format in bucky3 a distinct variant. To keep the
 protocol implementation focused on measurement data only, we have chosen
 to ignore the "service check" and "event" message types.
 
+
+
 ### Message Format
 
 The StatsD messages are sent as UDP datagrams with ASCII encoded
@@ -20,7 +25,7 @@ payloads. All other encodings are considered malformed data.
 The protocol is line-based, and each measurement (data point)
 must adhere to the following format:
 
-    <measurement name>:<value>|<type>|#<tag name>=<tag value>[,<tag name>=<tag value>[,...]]<newline>
+    <measurement name>:<value>|<type>[|@<rate>][|#<tag name>=<tag value>[,<tag name>=<tag value>]*]<newline>
 
 * `measurement name` is an arbitrary string
 * `value` is the recorded measurement, if type is other than `c`
@@ -30,6 +35,7 @@ must adhere to the following format:
   * `h` - histogram; distribution of (often discrete) values
   * `s` - set; collection of distinct keys
   * `c` - counter; an automatically increasing count of occurrences
+* `rate` is a float number between `0 < rate <= 1` that defaults to `1`
 * `tag name` is an arbitrary label or tag for the value
 * `tag value` is an arbitrary categorisation
 * `newline` is a literal newline
@@ -39,20 +45,18 @@ For `value`, bucky3 accepts floats. Some StatsD implementations limit
 up with their own scaling factors to work around the limitation.
 
 A message can contain zero or more tags, but usually you want to provide
-at least one to assign the measurement context.
+at least one to assign the measurement context. The tags are commonly used
+for grouping when viewing the generated time-series graphs, as well as
+for specifying alert rules.
 
-The tags are commonly used for grouping when viewing the generated
-time-series graphs, as well as for specifying alert rules.
-
-Note: timer (`ms`) and histogram (`h`) are aliases for one another, and
-are indeed treated as identical payloads. This follows a design decision
-from DogStatsD, but also allows bucky3 to consume both "vanilla" StatsD
-and DogStatsD message formats. For clients it still makes sense to
-expose both message types separately. If for nothing else, reducing the
-amount of confusion in code reviews and refactors.
+Note: unlike in DogStatsD, timer (`ms`) and histogram (`h`) are not aliases
+for one another. While bucky3 consumes vanilla StatsD and DogStatsD
+timer messages, it implements proper histograms with customizable bins
+instead of redirecting histogram messages to the timer code path.
 
 Note: bucky3 supports both '=' and ':' as tag/value separator, but for
 clarity we recommend sticking with '='.
+
 
 
 ### Examples
@@ -91,7 +95,7 @@ then be:
   - `connections:473|g|#service=ourstream,team=otherteam\n`
 
 In addition, every time they serve a request, they record both the
-response status and the roundtrip time. So on every succesful response
+response status and the roundtrip time. So on every successful response
 they could either send the following two messages:
 
 - `status:200|h|#service=ourstream,team=otherteam,action=something\n`
@@ -106,6 +110,8 @@ makes sense when the set of possible values is small (such as HTTP codes). If th
 space of possible values is large, then a separate histogram probably
 makes more sense.
 
+
+
 ### The Edge Case
 
 So far the message format has been very easy to follow, but of course
@@ -118,7 +124,7 @@ maintained by bucky3, and gets reset on every measurement window change.
 A counter increase simply raises the current value by 1. A message to
 increase a counter would look something like:
 
-  - `requests:1|c|#service=myservice,team=someteam,route=/some/path\n`
+- `requests:1|c|#service=myservice,team=someteam,route=/some/path\n`
 
 The counter values are most often used as sums over a time window for
 measuring requests per second (RPS) or requests per minute (RPM).
@@ -136,17 +142,21 @@ counter-increase messages has the potential to degrade monitoring
 performance.)
 
 
-### Python example
 
-The following trivial example illustrates how to send a single UDP
-datagram to bucky3 listening on localhost:
+### Python3 example
+
+The following example illustrates how to send a metric to bucky3 listening
+on localhost:
 
     import socket
-    def send_to_bucky3_statsd(msg):
-        msg = msg.encode('ascii')
+    
+    def send_to_bucky3_statsd(n, v, t='c', **tags):
+        msg = str(n) + ':' + str(v) + '|' + str(t)
+        if tags:
+            msg += '|#' + ','.join(str(k) + '=' + str(v) for k, v in tags.items())
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(2)    # Not strictly necessary but a good idea
-        sock.sendto(msg, ('127.0.0.1', 8125))
+        sock.sendto(msg.encode('ascii'), ('127.0.0.1', 8125))
 
-In practice a client library would maintain a persistent socket to prevent
-the constant re-creation overhead.
+You can however use available statsd libraries i.e. DataDog Python library:
+https://github.com/DataDog/datadogpy

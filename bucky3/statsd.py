@@ -24,6 +24,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         super().__init__(*args)
         self.socket = None
         self.timers = {}
+        self.histograms = {}
         self.gauges = {}
         self.counters = {}
         self.sets = {}
@@ -35,6 +36,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.last_timestamp = self.current_timestamp
         self.current_timestamp = monotonic_timestamp
         self.enqueue_timers(system_timestamp)
+        self.enqueue_histograms(system_timestamp)
         self.enqueue_counters(system_timestamp)
         self.enqueue_gauges(system_timestamp)
         self.enqueue_sets(system_timestamp)
@@ -44,6 +46,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         super().init_config()
         percentile_thresholds = self.cfg.get('percentile_thresholds', ())
         self.percentile_thresholds = sorted(set(round(float(t), 2) for t in percentile_thresholds if t > 0 and t <= 100))
+        self.histogram_selector = self.cfg.get('histogram_selector')
 
     def run(self):
         super().run(loop=False)
@@ -110,6 +113,31 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             except StopIteration:
                 pass
 
+    def enqueue_histograms(self, system_timestamp):
+        interval = self.current_timestamp - self.last_timestamp
+        timeout = self.cfg['histograms_timeout']
+        bucket = self.cfg['histograms_bucket']
+        for k, (recv_timestamp, cust_timestamp, selector, buckets) in tuple(self.histograms.items()):
+            if system_timestamp - recv_timestamp > timeout:
+                del self.histograms[k]
+                continue
+            for histogram_bucket, (vlen, vsum, vsum_squares, vmin, vmax) in tuple(buckets.items()):
+                stats = dict(count=vlen, count_ps=vlen / interval)
+                if vlen > 0:
+                    mean = vsum / vlen
+                    stats['lower'] = vmin
+                    stats['upper'] = vmax
+                    stats['sum'] = vsum
+                    stats['sum_squares'] = vsum_squares
+                    stats['mean'] = mean
+                    if vlen > 1:
+                        var = (vsum_squares - 2 * mean * vsum + vlen * mean * mean) / (vlen - 1)
+                        stats['stdev'] = var ** 0.5
+                metadata = dict(histogram=str(histogram_bucket))
+                metadata.update(k)
+                self.enqueue(bucket, stats, cust_timestamp or system_timestamp, metadata)
+                buckets[histogram_bucket] = 0, 0, 0, None, None
+
     def enqueue_sets(self, system_timestamp):
         timeout = self.cfg['sets_timeout']
         bucket = self.cfg['sets_bucket']
@@ -172,7 +200,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         name = bits.pop(0)
         if not name.isidentifier():
             return
-        key = self.handle_key(name, metadata)
+        key, metadata = self.handle_key(name, metadata)
         if not key:
             return
 
@@ -190,14 +218,16 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             typestr = fields[1]
             ratestr = fields[2] if len(fields) > 2 else None
             try:
-                if typestr == "ms" or typestr == "h":
-                    self.handle_timer(recv_timestamp, cust_timestamp, key, valstr, ratestr)
+                if typestr == "ms":
+                    self.handle_timer(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
+                elif typestr == "h":
+                    self.handle_histogram(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
                 elif typestr == "g":
-                    self.handle_gauge(recv_timestamp, cust_timestamp, key, valstr, ratestr)
+                    self.handle_gauge(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
                 elif typestr == "s":
-                    self.handle_set(recv_timestamp, cust_timestamp, key, valstr, ratestr)
+                    self.handle_set(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
                 else:
-                    self.handle_counter(recv_timestamp, cust_timestamp, key, valstr, ratestr)
+                    self.handle_counter(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
             except ValueError:
                 pass
 
@@ -232,9 +262,9 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def handle_key(self, name, metadata):
         metadata.update(name=name)
         key = tuple((k, metadata[k]) for k in sorted(metadata.keys()))
-        return key
+        return key, metadata
 
-    def handle_timer(self, recv_timestamp, cust_timestamp, key, valstr, ratestr):
+    def handle_timer(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)
         if key in self.timers:
             buf = self.timers[key][2]
@@ -243,7 +273,33 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         else:
             self.timers[key] = recv_timestamp, cust_timestamp, [val]
 
-    def handle_gauge(self, recv_timestamp, cust_timestamp, key, valstr, ratestr):
+    def handle_histogram(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
+        if self.histogram_selector is None:
+            return
+        val = float(valstr)
+        histogram = self.histograms.get(key)
+        if histogram is None:
+            selector = self.histogram_selector(metadata)
+            if selector is None:
+                return
+            buckets = {}
+        else:
+            selector = histogram[2]
+            buckets = histogram[3]
+        for k, f in selector:
+            if f(val):
+                vlen, vsum, vsum_squares, vmin, vmax = buckets.get(k, (0, 0, 0, None, None))
+                if vmin is None:
+                    vmin = val
+                if vmax is None:
+                    vmax = val
+                buckets[k] = (
+                    vlen + 1, vsum + val, vsum_squares + val * val, min(val, vmin), max(val, vmax)
+                )
+                self.histograms[key] = recv_timestamp, cust_timestamp, selector, buckets
+                return
+
+    def handle_gauge(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)
         delta = valstr[0] in "+-"
         if delta and key in self.gauges:
@@ -251,7 +307,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         else:
             self.gauges[key] = recv_timestamp, cust_timestamp, val
 
-    def handle_set(self, recv_timestamp, cust_timestamp, key, valstr, ratestr):
+    def handle_set(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
         if key in self.sets:
             buf = self.sets[key][2]
             buf.add(valstr)
@@ -259,7 +315,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         else:
             self.sets[key] = recv_timestamp, cust_timestamp, {valstr}
 
-    def handle_counter(self, recv_timestamp, cust_timestamp, key, valstr, ratestr):
+    def handle_counter(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
         if ratestr and ratestr[0] == "@":
             rate = float(ratestr[1:])
             if rate > 0 and rate <= 1:
