@@ -12,10 +12,7 @@ class DockerStatsCollector(module.MetricsSrcProcess):
     def init_config(self):
         super().init_config()
         api_version = self.cfg.get('api_version', None)
-        if api_version:
-            self.docker_client = docker.client.from_env(version=api_version)
-        else:
-            self.docker_client = docker.client.from_env()
+        self.docker_client = docker.client.from_env(version=api_version)
 
     def read_df_stats(self, timestamp, labels, total_size, rw_size):
         docker_df_stats = {

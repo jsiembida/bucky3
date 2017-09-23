@@ -26,7 +26,9 @@ class Logger:
             root.removeHandler(h)
         root.setLevel(cfg.get('log_level', 'INFO'))
         handler = logging.StreamHandler()
-        formatter = logging.Formatter("[%(asctime)-15s][%(levelname)s] %(name)s(%(process)d) - %(message)s")
+        formatter = logging.Formatter(
+            cfg.get('log_format', "[%(asctime)-15s][%(levelname)s] %(name)s(%(process)d) - %(message)s")
+        )
         handler.setFormatter(formatter)
         root.addHandler(handler)
         return logging.getLogger(module_name)
@@ -57,7 +59,6 @@ class MetricsProcess(multiprocessing.Process, Logger):
     def tick(self):
         now = monotonic_time()
         if now < self.next_flush:
-            # self.log.debug("Flush held back, now is %f, should be at least %f", now, self.next_flush)
             return
         if self.flush(now, round(system_time(), 3)):
             self.flush_interval = self.tick_interval or 1
@@ -75,12 +76,13 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.log = self.setup_logging(self.cfg, self.name)
         self.randomize_startup = self.cfg.get('randomize_startup', True)
         self.buffer = []
-        self.buffer_limit = self.cfg.get('buffer_limit', 10000)
-        self.tick_interval = self.cfg.get('flush_interval', None) or None
+        self.buffer_limit = max(self.cfg.get('buffer_limit', 10000), 100)
+        self.chunk_size = max(self.cfg.get('chunk_size', 300), 1)
+        self.tick_interval = self.cfg.get('flush_interval') or None
         self.next_tick = None
         self.flush_interval = self.tick_interval or 1
         self.next_flush = 0
-        self.metadata = self.cfg.get('metadata', None)
+        self.metadata = self.cfg.get('metadata')
 
     def run(self, loop=True):
         def termination_handler(signal_number, stack_frame):
@@ -133,7 +135,7 @@ class MetricsDstProcess(MetricsProcess):
                     tmp = True
             err = err + 1 if tmp else 0
             if err > 10:
-                self.log.error("Input not ready, quitting")
+                self.log.error("Input(s) not ready, quitting")
                 return
             elif err:
                 sleep(1)
@@ -171,9 +173,8 @@ class MetricsSrcProcess(MetricsProcess):
     def flush(self, monotonic_timestamp, system_timestamp):
         if self.buffer:
             self.log.debug("Flushing %d entries from buffer", len(self.buffer))
-            chunk_size = 300
-            for chunk_start in range(0, len(self.buffer), chunk_size):
-                chunk = self.buffer[chunk_start:chunk_start + chunk_size]
+            for chunk_start in range(0, len(self.buffer), self.chunk_size):
+                chunk = self.buffer[chunk_start:chunk_start + self.chunk_size]
                 for dst in self.dst_pipes:
                     dst.send(chunk)
             self.buffer = []
@@ -194,6 +195,8 @@ class HostResolver:
 
     def resolve_hosts(self):
         now = monotonic_time()
+        # DNS resolution interval could be parametrized, but it seems a bit involved to get it plugged
+        # efficiently into the mixin. The hardcoded 180s on the other hand seems to be reasonable.
         if self.resolved_hosts is None or (now - self.resolved_hosts_timestamp) > 180:
             resolved_hosts = set()
             for host in self.cfg['remote_hosts']:
@@ -260,6 +263,6 @@ class MetricsPushProcess(MetricsDstProcess):
                 self.buffer.clear()
             except (PermissionError, ConnectionError):
                 self.log.exception("Connection error")
-                self.socket = None  # Python will trigger close() when GCing it.
+                self.socket = None  # CPython will trigger close() when GCing it.
                 return False
         return True

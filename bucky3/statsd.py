@@ -47,6 +47,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         percentile_thresholds = self.cfg.get('percentile_thresholds', ())
         self.percentile_thresholds = sorted(set(round(float(t), 2) for t in percentile_thresholds if t > 0 and t <= 100))
         self.histogram_selector = self.cfg.get('histogram_selector')
+        self.timestamp_window = self.cfg.get('timestamp_window', 600)
 
     def run(self):
         super().run(loop=False)
@@ -248,7 +249,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 # 2524608000 = secs from epoch to 1 Jan 2050
                 if cust_timestamp > 2524608000:
                     cust_timestamp /= 1000
-                if cust_timestamp < recv_timestamp - 600 or cust_timestamp > recv_timestamp + 600:
+                if abs(recv_timestamp - cust_timestamp) > self.timestamp_window:
                     raise ValueError()
                 cust_timestamp = round(cust_timestamp, 3)
             elif k == 'bucket':

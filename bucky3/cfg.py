@@ -14,8 +14,9 @@ myapp_response_histogram = (
 )
 
 linuxstats = dict(
-    # Linux specific, comment out the 'module_type' line to disable it
     module_type="linux_stats",
+    # For non-Linux, set to True
+    module_inactive=True,
     disk_blacklist={
         "loop0", "loop1", "loop2", "loop3",
         "loop4", "loop5", "loop6", "loop7",
@@ -28,8 +29,6 @@ linuxstats = dict(
     filesystem_blacklist={
         "tmpfs", "devtmpfs", "rootfs",
     },
-    # For non-Linux, set to True
-    module_inactive=False,
 )
 
 dockerstats = dict(
@@ -53,7 +52,7 @@ statsd = dict(
     gauges_timeout=60,
     counters_timeout=60,
     percentile_thresholds=(50, 90, 100),
-    histogram_selector=lambda key: myapp_response_histogram
+    histogram_selector=lambda key: myapp_response_histogram,
 )
 
 carbon = dict(
@@ -65,7 +64,7 @@ carbon = dict(
     name_mapping=(
         "bucket", "team", "app", "host", "name", "value",
     ),
-    flush_interval=1
+    flush_interval=1,
 )
 
 influxdb = dict(
@@ -74,14 +73,15 @@ influxdb = dict(
     remote_hosts=(
         "127.0.0.1:8086",
     ),
-    flush_interval=1
+    flush_interval=1,
+    chunk_size=10,
 )
 
 prometheus = dict(
     module_type="prometheus_exporter",
-    local_port=9103,
     local_host="0.0.0.0",
     http_path="metrics",
     values_timeout=300,
-    flush_interval=60
+    flush_interval=60,
+    randomize_startup=False,
 )
