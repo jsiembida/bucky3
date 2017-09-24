@@ -1,14 +1,17 @@
 
 
 import os
+import io
 import sys
 import time
 import string
 import random
+import pstats
 import unittest
-from unittest.mock import patch, MagicMock
+import cProfile
 import itertools
 import statistics
+from unittest.mock import patch, MagicMock
 import bucky3.statsd as statsd
 
 
@@ -720,11 +723,22 @@ class TestStatsDServer(unittest.TestCase):
     def test_bucketed_histograms_metadata(self, statsd_module):
         self.bucketed_metadata(statsd_module, "gorm:1|h", expected_metadata_size=3)
 
-    def is_performance_test_needed(self):
+    def prepare_performance_test(self):
         flag = os.environ.get('TEST_PERFORMANCE', 'no').lower()
-        test_requested = flag == 'yes' or flag == 'true' or flag == '1'
+        test_requested = flag in ('yes', 'true', '1')
         if not test_requested:
             self.skipTest("Performance test not requested")
+            return None
+        flag = os.environ.get('PROFILE_PERFORMANCE', 'no').lower()
+        profiler_requested = flag in ('yes', 'true', '1')
+        return cProfile.Profile() if profiler_requested else None
+
+    def close_performance_test(self, profiler):
+        if profiler:
+            buf = io.StringIO()
+            stats = pstats.Stats(profiler, stream=buf).sort_stats('cumulative')
+            stats.print_stats(0.1)
+            print(buf.getvalue())
 
     def rand_str(self, min_len=3, max_len=10, chars=string.ascii_lowercase):
         return ''.join(random.choice(chars) for i in range(random.randint(min_len, max_len)))
@@ -742,7 +756,7 @@ class TestStatsDServer(unittest.TestCase):
             length = random.randint(10, 100)
         return list(self.rand_val(mean) for i in range(length))
 
-    def performance_test_set(self, metric_type, set_size, tags_per_sample):
+    def metadata_test_set(self, metric_type, set_size, tags_per_sample):
         buf = set()
         while len(buf) < set_size:
             if tags_per_sample > 0:
@@ -758,18 +772,24 @@ class TestStatsDServer(unittest.TestCase):
 
         return buf
 
-    def performance_test(self, statsd_module, prefix, metric_type, N, M, set_size, tags_per_sample):
-        self.is_performance_test_needed()
-
+    def metadata_performance(self, statsd_module, prefix, metric_type, N, M, set_size, tags_per_sample, profiler=None):
         mock_pipe = statsd_module.dst_pipes[0]
-        test_sample_set = self.performance_test_set(metric_type, set_size, tags_per_sample)
+        test_sample_set = self.metadata_test_set(metric_type, set_size, tags_per_sample)
         start_time = time.process_time()
         t = 0
         for i in range(N):
             for j in range(M):
                 for sample in test_sample_set:
+                    if profiler:
+                        profiler.enable()
                     statsd_module.handle_line(t, sample)
+                    if profiler:
+                        profiler.disable()
+            if profiler:
+                profiler.enable()
             statsd_module.tick()
+            if profiler:
+                profiler.disable()
             t += 1
             mock_pipe.reset_mock()
         time_delta = time.process_time() - start_time
@@ -781,45 +801,59 @@ class TestStatsDServer(unittest.TestCase):
 
     @statsd_setup(timestamps=range(1, 10000000))
     def test_counters_performance(self, statsd_module):
-        self.performance_test(statsd_module, "counters without tags", 'c', 100, 10, 1000, 0)
-        self.performance_test(statsd_module, "counters with 3 tags", 'c', 100, 10, 1000, 3)
-        self.performance_test(statsd_module, "counters with 10 tags", 'c', 100, 10, 1000, 10)
+        prof = self.prepare_performance_test()
+        self.metadata_performance(statsd_module, "counters without tags", 'c', 100, 10, 1000, 0, prof)
+        self.metadata_performance(statsd_module, "counters with 3 tags", 'c', 100, 10, 1000, 3, prof)
+        self.metadata_performance(statsd_module, "counters with 10 tags", 'c', 100, 10, 1000, 10, prof)
+        self.close_performance_test(prof)
 
     @statsd_setup(timestamps=range(1, 10000000))
     def test_gauges_performance(self, statsd_module):
-        self.performance_test(statsd_module, "gauges without tags", 'g', 100, 10, 1000, 0)
-        self.performance_test(statsd_module, "gauges with 3 tags", 'g', 100, 10, 1000, 3)
-        self.performance_test(statsd_module, "gauges with 10 tags", 'g', 100, 10, 1000, 10)
+        prof = self.prepare_performance_test()
+        self.metadata_performance(statsd_module, "gauges without tags", 'g', 100, 10, 1000, 0, prof)
+        self.metadata_performance(statsd_module, "gauges with 3 tags", 'g', 100, 10, 1000, 3, prof)
+        self.metadata_performance(statsd_module, "gauges with 10 tags", 'g', 100, 10, 1000, 10, prof)
+        self.close_performance_test(prof)
 
     @statsd_setup(timestamps=range(1, 10000000))
     def test_sets_performance(self, statsd_module):
-        self.performance_test(statsd_module, "sets without tags", 's', 100, 10, 1000, 0)
-        self.performance_test(statsd_module, "sets with 3 tags", 's', 100, 10, 1000, 3)
-        self.performance_test(statsd_module, "sets with 10 tags", 's', 100, 10, 1000, 10)
+        prof = self.prepare_performance_test()
+        self.metadata_performance(statsd_module, "sets without tags", 's', 100, 10, 1000, 0, prof)
+        self.metadata_performance(statsd_module, "sets with 3 tags", 's', 100, 10, 1000, 3, prof)
+        self.metadata_performance(statsd_module, "sets with 10 tags", 's', 100, 10, 1000, 10, prof)
+        self.close_performance_test(prof)
 
     @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(90, 99))
     def test_timers_performance(self, statsd_module):
-        self.performance_test(statsd_module, "timers without tags", 'ms', 100, 10, 1000, 0)
-        self.performance_test(statsd_module, "timers with 3 tags", 'ms', 100, 10, 1000, 3)
-        self.performance_test(statsd_module, "timers with 10 tags", 'ms', 100, 10, 1000, 10)
+        prof = self.prepare_performance_test()
+        self.metadata_performance(statsd_module, "timers without tags", 'ms', 100, 10, 1000, 0, prof)
+        self.metadata_performance(statsd_module, "timers with 3 tags", 'ms', 100, 10, 1000, 3, prof)
+        self.metadata_performance(statsd_module, "timers with 10 tags", 'ms', 100, 10, 1000, 10, prof)
+        self.close_performance_test(prof)
 
     @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(90, 99),
                   histogram_selector=single_histogram_1_bucket)
     def test_histograms_performance1(self, statsd_module):
-        self.performance_test(statsd_module, "histogram with 1 bucket, no tags", 'h', 100, 10, 1000, 0)
-        self.performance_test(statsd_module, "histogram with 1 bucket, 10 tags", 'h', 100, 10, 1000, 10)
+        prof = self.prepare_performance_test()
+        self.metadata_performance(statsd_module, "histogram with 1 bucket, no tags", 'h', 100, 10, 1000, 0, prof)
+        self.metadata_performance(statsd_module, "histogram with 1 bucket, 10 tags", 'h', 100, 10, 1000, 10, prof)
+        self.close_performance_test(prof)
 
     @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(90, 99),
                   histogram_selector=single_histogram_3_buckets)
     def test_histograms_performance3(self, statsd_module):
-        self.performance_test(statsd_module, "histogram with 3 buckets, no tags", 'h', 100, 10, 1000, 0)
-        self.performance_test(statsd_module, "histogram with 3 buckets, 10 tags", 'h', 100, 10, 1000, 10)
+        prof = self.prepare_performance_test()
+        self.metadata_performance(statsd_module, "histogram with 3 buckets, no tags", 'h', 100, 10, 1000, 0, prof)
+        self.metadata_performance(statsd_module, "histogram with 3 buckets, 10 tags", 'h', 100, 10, 1000, 10, prof)
+        self.close_performance_test(prof)
 
     @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(90, 99),
                   histogram_selector=single_histogram_10_buckets)
     def test_histograms_performance10(self, statsd_module):
-        self.performance_test(statsd_module, "histogram with 10 buckets, no tags", 'h', 100, 10, 1000, 0)
-        self.performance_test(statsd_module, "histogram with 10 buckets, 10 tags", 'h', 100, 10, 1000, 10)
+        prof = self.prepare_performance_test()
+        self.metadata_performance(statsd_module, "histogram with 10 buckets, no tags", 'h', 100, 10, 1000, 0, prof)
+        self.metadata_performance(statsd_module, "histogram with 10 buckets, 10 tags", 'h', 100, 10, 1000, 10, prof)
+        self.close_performance_test(prof)
 
     def percentile_test_set(self, length, N=1):
         buf = []
@@ -829,9 +863,7 @@ class TestStatsDServer(unittest.TestCase):
             buf.append((tuple((name,),), vector))
         return buf
 
-    def percentiles_performance(self, statsd_module, prefix, vector_len, N, M):
-        self.is_performance_test_needed()
-
+    def percentiles_performance(self, statsd_module, prefix, vector_len, N, M, profiler=None):
         total_time, test_set = 0, self.percentile_test_set(vector_len, N)
         for i in range(M):
             statsd_module.enqueue = lambda bucket, stats, timestamp, metadata: None
@@ -840,7 +872,11 @@ class TestStatsDServer(unittest.TestCase):
             statsd_module.last_timestamp = 0
             statsd_module.current_timestamp = 10
             start_time = time.process_time()
+            if profiler:
+                profiler.enable()
             statsd_module.enqueue_timers(10)
+            if profiler:
+                profiler.disable()
             time_delta = time.process_time() - start_time
             total_time += time_delta
         total_samples = N * M * vector_len
@@ -851,24 +887,30 @@ class TestStatsDServer(unittest.TestCase):
 
     @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(90,))
     def test_1percentile1_performance(self, statsd_module):
-        self.percentiles_performance(statsd_module, "1 percentile, 10000 vectors of 10 samples", 10, 10000, 10)
-        self.percentiles_performance(statsd_module, "1 percentile, 1000 vectors of 100 samples", 100, 1000, 10)
-        self.percentiles_performance(statsd_module, "1 percentile, 100 vectors of 1000 samples", 1000, 100, 10)
-        self.percentiles_performance(statsd_module, "1 percentile, 10 vectors of 10000 samples", 10000, 10, 10)
+        prof = self.prepare_performance_test()
+        self.percentiles_performance(statsd_module, "1 percentile, 10000 vectors of 10 samples", 10, 10000, 10, prof)
+        self.percentiles_performance(statsd_module, "1 percentile, 1000 vectors of 100 samples", 100, 1000, 10, prof)
+        self.percentiles_performance(statsd_module, "1 percentile, 100 vectors of 1000 samples", 1000, 100, 10, prof)
+        self.percentiles_performance(statsd_module, "1 percentile, 10 vectors of 10000 samples", 10000, 10, 10, prof)
+        self.close_performance_test(prof)
 
     @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(50, 90, 99))
     def test_3percentiles_performance(self, statsd_module):
-        self.percentiles_performance(statsd_module, "3 percentiles, 10000 vectors of 10 samples", 10, 10000, 10)
-        self.percentiles_performance(statsd_module, "3 percentiles, 1000 vectors of 100 samples", 100, 1000, 10)
-        self.percentiles_performance(statsd_module, "3 percentiles, 100 vectors of 1000 samples", 1000, 100, 10)
-        self.percentiles_performance(statsd_module, "3 percentiles, 10 vectors of 10000 samples", 10000, 10, 10)
+        prof = self.prepare_performance_test()
+        self.percentiles_performance(statsd_module, "3 percentiles, 10000 vectors of 10 samples", 10, 10000, 10, prof)
+        self.percentiles_performance(statsd_module, "3 percentiles, 1000 vectors of 100 samples", 100, 1000, 10, prof)
+        self.percentiles_performance(statsd_module, "3 percentiles, 100 vectors of 1000 samples", 1000, 100, 10, prof)
+        self.percentiles_performance(statsd_module, "3 percentiles, 10 vectors of 10000 samples", 10000, 10, 10, prof)
+        self.close_performance_test(prof)
 
     @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(10, 20, 30, 40, 50, 60, 70, 80, 90, 100))
     def test_10percentiles_performance(self, statsd_module):
-        self.percentiles_performance(statsd_module, "10 percentiles, 10000 vectors of 10 samples", 10, 10000, 10)
-        self.percentiles_performance(statsd_module, "10 percentiles, 1000 vectors of 100 samples", 100, 1000, 10)
-        self.percentiles_performance(statsd_module, "10 percentiles, 100 vectors of 1000 samples", 1000, 100, 10)
-        self.percentiles_performance(statsd_module, "10 percentiles, 10 vectors of 10000 samples", 10000, 10, 10)
+        prof = self.prepare_performance_test()
+        self.percentiles_performance(statsd_module, "10 percentiles, 10000 vectors of 10 samples", 10, 10000, 10, prof)
+        self.percentiles_performance(statsd_module, "10 percentiles, 1000 vectors of 100 samples", 100, 1000, 10, prof)
+        self.percentiles_performance(statsd_module, "10 percentiles, 100 vectors of 1000 samples", 1000, 100, 10, prof)
+        self.percentiles_performance(statsd_module, "10 percentiles, 10 vectors of 10000 samples", 10000, 10, 10, prof)
+        self.close_performance_test(prof)
 
 
 if __name__ == '__main__':

@@ -36,13 +36,31 @@ curl -s http://127.0.0.1:9103/metrics | grep system_cpu
 You can also feed metrics via StatsD protocol:
 
 ```
-echo "foobar:123|c" | nc -w 1 -u 127.0.0.1 8125
+echo "foobar:123|g" | nc -w 1 -u 127.0.0.1 8125
 ```
 
 And harvest them, too:
 
 ```
 curl -s http://127.0.0.1:9103/metrics | grep foobar
+```
+
+From within the project directory, you can run tests:
+
+```
+python3 -m unittest tests/test_*.py
+```
+
+With extra performance tests:
+
+```
+TEST_PERFORMANCE=yes python3 -m unittest tests/test_*.py
+```
+
+And with extra profiling information included:
+
+```
+PROFILE_PERFORMANCE=yes TEST_PERFORMANCE=yes python3 -m unittest tests/test_*.py
 ```
 
 
