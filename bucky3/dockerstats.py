@@ -45,6 +45,9 @@ class DockerStatsCollector(module.MetricsSrcProcess):
             self.buffer.append(("docker_cpu", {'usage': int(v)}, timestamp, metadata))
 
     def read_interface_stats(self, timestamp, labels, stats):
+        if not stats:
+            # This can happen if i.e. the container was started with --network="host"
+            return
         keys = (
             'rx_bytes', 'rx_packets', 'rx_errors', 'rx_dropped',
             'tx_bytes', 'tx_packets', 'tx_errors', 'tx_dropped'
@@ -77,7 +80,7 @@ class DockerStatsCollector(module.MetricsSrcProcess):
                     self.read_df_stats(system_timestamp, labels, int(container['SizeRootFs']), int(container.get('SizeRw', 0)))
                     self.read_cpu_stats(system_timestamp, labels, stats_info['cpu_stats']['cpu_usage'], host_config)
                     self.read_memory_stats(system_timestamp, labels, stats_info['memory_stats'])
-                    self.read_interface_stats(system_timestamp, labels, stats_info['networks'])
+                    self.read_interface_stats(system_timestamp, labels, stats_info.get('networks'))
             return super().flush(monotonic_timestamp, system_timestamp)
         except requests.exceptions.ConnectionError:
             self.log.info("Docker connection error, is docker running?")
