@@ -47,6 +47,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         percentile_thresholds = self.cfg.get('percentile_thresholds', ())
         self.percentile_thresholds = sorted(set(round(float(t), 2) for t in percentile_thresholds if t > 0 and t <= 100))
         self.histogram_selector = self.cfg.get('histogram_selector')
+        self.timestamp_window = self.cfg.get('timestamp_window', 600)
 
     def run(self):
         super().run(loop=False)
@@ -218,10 +219,8 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             typestr = fields[1]
             ratestr = fields[2] if len(fields) > 2 else None
             try:
-                if typestr == "ms":
+                if typestr == "ms" or typestr == "h":
                     self.handle_timer(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
-                elif typestr == "h":
-                    self.handle_histogram(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
                 elif typestr == "g":
                     self.handle_gauge(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
                 elif typestr == "s":
@@ -248,7 +247,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 # 2524608000 = secs from epoch to 1 Jan 2050
                 if cust_timestamp > 2524608000:
                     cust_timestamp /= 1000
-                if cust_timestamp < recv_timestamp - 600 or cust_timestamp > recv_timestamp + 600:
+                if abs(recv_timestamp - cust_timestamp) > self.timestamp_window:
                     raise ValueError()
                 cust_timestamp = round(cust_timestamp, 3)
             elif k == 'bucket':
@@ -266,6 +265,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
 
     def handle_timer(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)
+
         if key in self.timers:
             buf = self.timers[key][2]
             buf.append(val)
@@ -273,10 +273,9 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         else:
             self.timers[key] = recv_timestamp, cust_timestamp, [val]
 
-    def handle_histogram(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
         if self.histogram_selector is None:
             return
-        val = float(valstr)
+
         histogram = self.histograms.get(key)
         if histogram is None:
             selector = self.histogram_selector(metadata)
@@ -286,18 +285,18 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         else:
             selector = histogram[2]
             buckets = histogram[3]
-        for k, f in selector:
-            if f(val):
-                vlen, vsum, vsum_squares, vmin, vmax = buckets.get(k, (0, 0, 0, None, None))
-                if vmin is None:
-                    vmin = val
-                if vmax is None:
-                    vmax = val
-                buckets[k] = (
-                    vlen + 1, vsum + val, vsum_squares + val * val, min(val, vmin), max(val, vmax)
-                )
-                self.histograms[key] = recv_timestamp, cust_timestamp, selector, buckets
-                return
+        bucket_name = selector(val)
+        if bucket_name:
+            vlen, vsum, vsum_squares, vmin, vmax = buckets.get(bucket_name, (0, 0, 0, None, None))
+            if vmin is None:
+                vmin = val
+            if vmax is None:
+                vmax = val
+            buckets[bucket_name] = (
+                vlen + 1, vsum + val, vsum_squares + val * val, min(val, vmin), max(val, vmax)
+            )
+            self.histograms[key] = recv_timestamp, cust_timestamp, selector, buckets
+            return
 
     def handle_gauge(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)

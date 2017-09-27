@@ -69,8 +69,8 @@ compile native code. It's been therefore removed in favor of simplicity.
 * Inspired by DataDog agent, StatsD protocol has been extended to support metadata.
 The goal is to provide an integration mechanism that is simple yet powerful.
 * StatsD protocol has been further extended to properly handle histograms (typically,
-StatsD implementations alias histograms to timers, which is not quite correct).
-The StatsD implementation in Bucky3 also allows the client to override `timestamp`
+StatsD implementations just alias histograms to timers, which is not quite correct).
+* The StatsD implementation in Bucky3 also allows the client to override `timestamp`
 and `bucket` of the metrics.
 * Bucky can be configured partially with command line options and a configuration file.
 This duality is gone, Bucky3 only takes a configuration file. Configuration syntax is
@@ -97,4 +97,4 @@ everywhere, more efficient and conceptually closer to its data model.
 * Bucky imports modules at source level, Bucky3 does it dynamically. This is to avoid
 dependencies in the main process. Moreover, to improve isolation, Bucky3 delays modules
 initialization (i.e. socket / file operations) until after fork.
-* Codebase has got reduced from `~2700 loc` to `~1300 loc`
+* Codebase has got reduced from `~2600 loc` to `~1300 loc`

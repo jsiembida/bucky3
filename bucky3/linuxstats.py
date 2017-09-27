@@ -46,7 +46,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
     def read_activity_stats(self, timestamp):
         activity_stats = {}
         with open('/proc/stat') as f:
-            for l in f.readlines():
+            for l in f:
                 tokens = l.strip().split(maxsplit=20)
                 if not tokens:
                     continue
@@ -67,7 +67,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
                     cpu_stats = {k: int(v) for k, v in zip(self.CPU_FIELDS, tokens)}
                     self.buffer.append(("system_cpu", cpu_stats, timestamp, dict(name=cpu_suffix)))
         with open('/proc/loadavg') as f:
-            for l in f.readlines():
+            for l in f:
                 tokens = l.strip().split()
                 if not tokens or len(tokens) != 5:
                     continue
@@ -79,7 +79,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
 
     def read_filesystem_stats(self, timestamp):
         with open('/proc/mounts') as f:
-            for l in f.readlines():
+            for l in f:
                 tokens = l.strip().split()
                 if not tokens or len(tokens) != 6:
                     continue
@@ -108,7 +108,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
 
     def read_interface_stats(self, timestamp):
         with open('/proc/net/dev') as f:
-            for l in f.readlines():
+            for l in f:
                 tokens = l.strip().split()
                 if not tokens or len(tokens) != 17:
                     continue
@@ -123,7 +123,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
     def read_memory_stats(self, timestamp):
         with open('/proc/meminfo') as f:
             memory_stats = {}
-            for l in f.readlines():
+            for l in f:
                 tokens = l.strip().split()
                 if not tokens or len(tokens) != 3 or tokens[2].lower() != 'kb':
                     continue
@@ -138,7 +138,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
 
     def read_disk_stats(self, timestamp):
         with open('/proc/diskstats') as f:
-            for l in f.readlines():
+            for l in f:
                 tokens = l.strip().split()
                 if not tokens or len(tokens) != 14:
                     continue

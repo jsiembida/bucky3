@@ -36,13 +36,19 @@ curl -s http://127.0.0.1:9103/metrics | grep system_cpu
 You can also feed metrics via StatsD protocol:
 
 ```
-echo "foobar:123|c" | nc -w 1 -u 127.0.0.1 8125
+echo "foobar:123|g" | nc -w 1 -u 127.0.0.1 8125
 ```
 
 And harvest them, too:
 
 ```
 curl -s http://127.0.0.1:9103/metrics | grep foobar
+```
+
+From within the project directory, you can run tests:
+
+```
+python3 -m unittest tests/test_*.py
 ```
 
 
@@ -52,68 +58,28 @@ curl -s http://127.0.0.1:9103/metrics | grep foobar
 ##### Configuration
 
 There is only one, optional, command line argument. A path to configuration file. If not provided, the default
-configuration is used (see `cfg.py`). First, environment variables in the configuration file are interpolated,
-then it is `exec`'ed as Python code. Python syntax therefore applies, in particular, indentation matters.
-Configuration file must define at least one active source module and at least one active destination module.
-Module definition is a dictionary with `module_type` defined. An optional `module_inactive` can be used
-to (de)activate a given module definition, it defaults to `False`.
-Everything else in the configuration file is assumed to be global parameters that are inherited
-by all module definitions, but they can be overridden. Example:
-
-```
-# log_level, flush_interval and metadata are global params
-log_level = "INFO"
-flush_interval = 10
-metadata = dict(
-    server_name="unnamed",
-    server_location="placebury",
-)
-
-my_linux = dict(
-    # A dictionary with module_type is a module configuration.
-    # This module inherits log_level, flush_interval
-    module_type="linux_stats",
-    # And extends the globally configured metadata
-    metadata=dict(**metadata, some_id="whf-qwe-dak")
-)
-
-my_containers = dict(
-    # This is NOT an active module configuration.
-    module_type="docker_stats",
-    module_inactive=True,
-)
-
-my_influxdb = dict(
-    # This module inherits log_level and metadata but overrides flush_interval.
-    module_type="influxdb_client",
-    # INFLUX_HOST env variable is used, if undefined, the configuration will fail.
-    remote_hosts=( "${INFLUX_HOST}:8086", ),
-    flush_interval=1,
-)
-```
+configuration is used. Please see `bucky3/cfg.py` for a detailed discussion of Bucky3 configuration.
 
 ##### Modules
 
 Bucky3 consists of the main process, source modules and destination modules. During startup the main process loads
-configuration, dynamically imports configured modules and runs them in dedicated subprocesses. Destination modules
-are launched first, then source modules. Data flow is many-to-many, one or more source modules (subprocesses) produce
-metrics and send them to one or more destination modules (subprocesses). There is no configuration limit regarding
-the number of modules of the same type that could be launched simultaneously, although this feature is of use only
-in specific scenarios. The following modules are available:
+configuration, dynamically imports configured modules and runs them in dedicated subprocesses. Data flow is
+many-to-many, one or more source modules (subprocesses) produce metrics and send them to one or more destination
+modules (subprocesses). The following modules are available:
 
-* `module_type="statsd_server"` - source module that collects metrics via extended StatsD protocol.
-* `module_type="linux_stats"` - source module that collects Linux metrics via `/proc` filesystem.
+* `statsd_server` - source module that collects metrics via extended StatsD protocol.
+* `linux_stats` - source module that collects Linux metrics via `/proc` filesystem.
 Including CPUs, system load, memory usage, filesystem usage, block devices and network interfaces activity.
-* `module_type="docker_stats"` - source module that collects metrics from running docker containers. It requires
+* `docker_stats` - source module that collects metrics from running docker containers. It requires
 [the docker library](https://docker-py.readthedocs.io/en/stable/) but since the module is not activated by default,
 the dependency is deliberately missing in `requirements.txt`. If you want to use it, you'll need to `pip install docker`
 or provide it otherwise.
-* `module_type="influxdb_client"` - destination module that sends metrics to InfluxDB via
+* `influxdb_client` - destination module that sends metrics to InfluxDB via
 [UDP line protocol.](https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_reference/)
 It can fan out metrics to multiple hosts and automatically detect DNS changes.
-* `module_type="prometheus_exporter"` - destination module that exposes metrics via 
+* `prometheus_exporter` - destination module that exposes metrics via 
 [Prometheus text exposition format.](https://prometheus.io/docs/instrumenting/exposition_formats/)
-* `module_type="carbon_client"` - destination module that sends data to Graphite via TCP.
+* `carbon_client` - destination module that sends data to Graphite via TCP.
 
 ##### Installation
 
