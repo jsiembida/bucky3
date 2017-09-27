@@ -77,7 +77,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.buffer = []
         self.buffer_limit = max(self.cfg.get('buffer_limit', 10000), 100)
         self.chunk_size = max(self.cfg.get('chunk_size', 300), 1)
-        self.tick_interval = max(self.cfg['flush_interval'], 1)
+        self.tick_interval = max(self.cfg['flush_interval'], 0.1)
         self.flush_interval = self.tick_interval
         self.next_tick = None
         self.next_flush = 0

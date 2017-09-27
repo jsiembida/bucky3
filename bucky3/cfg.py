@@ -75,7 +75,7 @@ log_level = "INFO"
 #   In "prometheus_exporter" it defines the frequency of housekeeping wherein old metrics
 #   are being found and removed. Note, it is not the maximum age of data kept in prometheus
 #   module (see below for it). The check can be done at low freqs, i.e. every 60-180 secs.
-#   In any case, flush_interval is enforced to be at least 1 sec.
+#   In any case, flush_interval is enforced to be at least 0.1 sec.
 flush_interval = 10
 
 
