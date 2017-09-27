@@ -10,7 +10,7 @@ loaded, the main module spawns the requested modules passing them the config
 in the parsed form. That way, syntactic errors in the config make Bucky3 fail
 fast. Non syntactic errors are not validated. Config processing goes as follows:
 
-1. Environment variables in the form of ${VAR} are interpolated. A variable can
+1. Environment variables in the form of $${VAR} are interpolated. A variable can
    be empty. A missing variable however, will trigger the main init failure.
 2. After the variable interpolation, the file is loaded as Python code into its
    own context (Python "exec" function). Most importantly, this means:
