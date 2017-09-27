@@ -285,18 +285,18 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         else:
             selector = histogram[2]
             buckets = histogram[3]
-        for k, f in selector:
-            if f(val):
-                vlen, vsum, vsum_squares, vmin, vmax = buckets.get(k, (0, 0, 0, None, None))
-                if vmin is None:
-                    vmin = val
-                if vmax is None:
-                    vmax = val
-                buckets[k] = (
-                    vlen + 1, vsum + val, vsum_squares + val * val, min(val, vmin), max(val, vmax)
-                )
-                self.histograms[key] = recv_timestamp, cust_timestamp, selector, buckets
-                return
+        bucket_name = selector(val)
+        if bucket_name:
+            vlen, vsum, vsum_squares, vmin, vmax = buckets.get(bucket_name, (0, 0, 0, None, None))
+            if vmin is None:
+                vmin = val
+            if vmax is None:
+                vmax = val
+            buckets[bucket_name] = (
+                vlen + 1, vsum + val, vsum_squares + val * val, min(val, vmin), max(val, vmax)
+            )
+            self.histograms[key] = recv_timestamp, cust_timestamp, selector, buckets
+            return
 
     def handle_gauge(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)

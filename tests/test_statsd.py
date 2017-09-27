@@ -71,47 +71,41 @@ def statsd_setup(timestamps, **extra_cfg):
         return wrapper
 
 
-def single_histogram_1_bucket(key):
-    return (
-        ('under_300', lambda x: x < 300),
-    )
+def single_histogram_1_bucket(x):
+    if x < 300: return 'under_300'
 
 
-def single_histogram_3_buckets(key):
-    return (
-        ('under_100', lambda x: x < 100),
-        ('under_300', lambda x: x < 300),
-        ('over_300', lambda x: True),
-    )
+def single_histogram_3_buckets(x):
+    if x < 100: return 'under_100'
+    if x < 300: return 'under_300'
+    return 'over_300'
 
 
-def single_histogram_10_buckets(key):
-    return (
-        ('under_100', lambda x: x < 100),
-        ('under_200', lambda x: x < 200),
-        ('under_300', lambda x: x < 300),
-        ('under_400', lambda x: x < 400),
-        ('under_500', lambda x: x < 500),
-        ('under_600', lambda x: x < 600),
-        ('under_700', lambda x: x < 700),
-        ('under_800', lambda x: x < 800),
-        ('under_900', lambda x: x < 900),
-        ('over_900', lambda x: True),
-    )
+def single_histogram_10_buckets(x):
+    if x < 100: return 'under_100'
+    if x < 200: return 'under_200'
+    if x < 300: return 'under_300'
+    if x < 400: return 'under_400'
+    if x < 500: return 'under_500'
+    if x < 600: return 'under_600'
+    if x < 700: return 'under_700'
+    if x < 800: return 'under_800'
+    if x < 900: return 'under_900'
+    return 'over_900'
 
 
 def multiple_histogram_selector(key):
-    if key['name'] == 'gorm':
-        return (
-            ('gorm_under_100', lambda x: x < 100),
-            ('gorm_over_100', lambda x: True),
-        )
-    if key['name'] == 'gurm':
-        return (
-            ('gurm_under_300', lambda x: x < 300),
-            ('gurm_under_1000', lambda x: x < 1000),
-            ('gurm_over_1000', lambda x: True),
-        )
+    def gorm_selector(x):
+        if x < 100: return 'gorm_under_100'
+        return 'gorm_over_100'
+
+    def gurm_selector(x):
+        if x < 300: return 'gurm_under_300'
+        if x < 1000: return 'gurm_under_1000'
+        return 'gurm_over_1000'
+
+    if key['name'] == 'gorm': return gorm_selector
+    if key['name'] == 'gurm': return gurm_selector
 
 
 class TestStatsDServer(unittest.TestCase):
@@ -627,7 +621,7 @@ class TestStatsDServer(unittest.TestCase):
     @statsd_setup(timers_timeout=0.3,
                   flush_interval=0.1,
                   timestamps=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7),
-                  histogram_selector=lambda key: (('test_histogram', lambda x: True,),))
+                  histogram_selector=lambda key: lambda x: 'test_histogram',)
     def test_histogram_samples1(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
         statsd_module.handle_line(0, "gorm:100|h")
@@ -648,7 +642,7 @@ class TestStatsDServer(unittest.TestCase):
     @statsd_setup(timers_timeout=0.3,
                   flush_interval=0.1,
                   timestamps=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7),
-                  histogram_selector=lambda key: (('test_histogram', lambda x: True,),))
+                  histogram_selector=lambda key: lambda x: 'test_histogram', )
     def test_histogram_samples2(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
         statsd_module.handle_line(0, "gorm:100|h")
@@ -680,11 +674,13 @@ class TestStatsDServer(unittest.TestCase):
             name = random.choice(tuple(test_samples.keys()))
             value = random.randint(0, 1500)
             statsd_module.handle_line(0, name + ":" + str(value) + "|h")
-            selectors = multiple_histogram_selector(dict(name=name)) or ()
-            for k, selector in selectors:
-                if selector(value):
-                    test_samples[name].setdefault(k, []).append(value)
-                    break
+            selector = multiple_histogram_selector(dict(name=name))
+            if not selector:
+                continue
+            bucket = selector(value)
+            if bucket:
+                test_samples[name].setdefault(bucket, []).append(value)
+                break
         expected_values = []
         for name, d in test_samples.items():
             for k, v in d.items():
@@ -714,12 +710,12 @@ class TestStatsDServer(unittest.TestCase):
         self.malformed_metadata(statsd_module, "gorm:1|h")
 
     @statsd_setup(timestamps=range(1, 1000), percentile_thresholds=(100,),
-                  histogram_selector=lambda key: (('test_histogram', lambda x: True,),))
+                  histogram_selector=lambda key: lambda x: 'test_histogram',)
     def test_timestamped_histograms_metadata(self, statsd_module):
         self.timestamped_metadata(statsd_module, "gorm:1|h")
 
     @statsd_setup(timestamps=range(1, 1000), percentile_thresholds=(),
-                  histogram_selector=lambda key: (('test_histogram', lambda x: True,),))
+                  histogram_selector=lambda key: lambda x: 'test_histogram',)
     def test_bucketed_histograms_metadata(self, statsd_module):
         self.bucketed_metadata(statsd_module, "gorm:1|h", expected_metadata_size=3)
 
@@ -832,7 +828,7 @@ class TestStatsDServer(unittest.TestCase):
         self.close_performance_test(prof)
 
     @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(90, 99),
-                  histogram_selector=single_histogram_1_bucket)
+                  histogram_selector=lambda key: single_histogram_1_bucket)
     def test_histograms_performance1(self, statsd_module):
         prof = self.prepare_performance_test()
         self.metadata_performance(statsd_module, "histogram with 1 bucket, no tags", 'h', 100, 10, 1000, 0, prof)
@@ -840,7 +836,7 @@ class TestStatsDServer(unittest.TestCase):
         self.close_performance_test(prof)
 
     @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(90, 99),
-                  histogram_selector=single_histogram_3_buckets)
+                  histogram_selector=lambda key: single_histogram_3_buckets)
     def test_histograms_performance3(self, statsd_module):
         prof = self.prepare_performance_test()
         self.metadata_performance(statsd_module, "histogram with 3 buckets, no tags", 'h', 100, 10, 1000, 0, prof)
@@ -848,7 +844,7 @@ class TestStatsDServer(unittest.TestCase):
         self.close_performance_test(prof)
 
     @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(90, 99),
-                  histogram_selector=single_histogram_10_buckets)
+                  histogram_selector=lambda key: single_histogram_10_buckets)
     def test_histograms_performance10(self, statsd_module):
         prof = self.prepare_performance_test()
         self.metadata_performance(statsd_module, "histogram with 10 buckets, no tags", 'h', 100, 10, 1000, 0, prof)

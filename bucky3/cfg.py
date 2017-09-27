@@ -201,12 +201,12 @@ dockerstats = dict(
 )
 
 
-# For clarity this is defined here, see statsd_server below for details.
-myapp_response_histogram = (
-    ('under_100ms', lambda x: x < 100),
-    ('under_300ms', lambda x: x < 300),
-    ('over_300ms', lambda x: True),
-)
+# See statsd_server below for details about histogram selector.
+def myapp_response_histogram(x):
+    if x < 0: return None
+    if x < 100: return 'under_100ms'
+    if x < 300: return 'under_300ms'
+    return 'over_300ms'
 
 
 statsd = dict(
