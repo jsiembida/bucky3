@@ -219,10 +219,8 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             typestr = fields[1]
             ratestr = fields[2] if len(fields) > 2 else None
             try:
-                if typestr == "ms":
+                if typestr == "ms" or typestr == "h":
                     self.handle_timer(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
-                elif typestr == "h":
-                    self.handle_histogram(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
                 elif typestr == "g":
                     self.handle_gauge(recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr)
                 elif typestr == "s":
@@ -267,6 +265,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
 
     def handle_timer(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)
+
         if key in self.timers:
             buf = self.timers[key][2]
             buf.append(val)
@@ -274,10 +273,9 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         else:
             self.timers[key] = recv_timestamp, cust_timestamp, [val]
 
-    def handle_histogram(self, recv_timestamp, cust_timestamp, key, metadata, valstr, ratestr):
         if self.histogram_selector is None:
             return
-        val = float(valstr)
+
         histogram = self.histograms.get(key)
         if histogram is None:
             selector = self.histogram_selector(metadata)

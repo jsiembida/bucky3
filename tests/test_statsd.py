@@ -718,7 +718,7 @@ class TestStatsDServer(unittest.TestCase):
     def test_timestamped_histograms_metadata(self, statsd_module):
         self.timestamped_metadata(statsd_module, "gorm:1|h")
 
-    @statsd_setup(timestamps=range(1, 1000), percentile_thresholds=(100,),
+    @statsd_setup(timestamps=range(1, 1000), percentile_thresholds=(),
                   histogram_selector=lambda key: (('test_histogram', lambda x: True,),))
     def test_bucketed_histograms_metadata(self, statsd_module):
         self.bucketed_metadata(statsd_module, "gorm:1|h", expected_metadata_size=3)

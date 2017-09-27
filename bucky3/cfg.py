@@ -300,14 +300,14 @@ influxdb = dict(
     #   the port, it defaults to 8086.
     # - Example: remote_hosts=("influxdb1", "influxdb2:1234")
     remote_hosts=(
-        "127.0.0.1:8086",
+        "localhost",
     ),
 
     # As describe above, flush_interval should be short for this module and also,
     # flush_interval<=3 implies randomize_startup=False
     flush_interval=1,
     # As describe above, this module should use small chunk_size
-    chunk_size=10,
+    chunk_size=5,
 )
 
 
