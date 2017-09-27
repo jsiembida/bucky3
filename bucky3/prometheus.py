@@ -5,7 +5,7 @@ import http.server
 import bucky3.module as module
 
 
-class PrometheusExporter(module.MetricsDstProcess):
+class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
     def __init__(self, *args):
         super().__init__(*args)
 
@@ -13,7 +13,7 @@ class PrometheusExporter(module.MetricsDstProcess):
         super().init_config()
         self.buffer = {}
 
-    def start_http_server(self, host, port, path):
+    def start_http_server(self, ip, port, path):
         def do_GET(req):
             if req.path.strip('/') != path:
                 req.send_response(404)
@@ -30,12 +30,19 @@ class PrometheusExporter(module.MetricsDstProcess):
         def log_message(req, format, *args):
             self.log.info(format, *args)
 
-        handler = type('PrometheusHandler', (http.server.BaseHTTPRequestHandler,),
-                       {'do_GET': do_GET, 'log_message': log_message, 'timeout': 3})
-        http_server = http.server.HTTPServer((host, port), handler)
+        handler = type(
+            'PrometheusHandler',
+            (http.server.BaseHTTPRequestHandler,),
+            {
+                'do_GET': do_GET,
+                'log_message': log_message,
+                'timeout': 3
+            }
+        )
+        http_server = http.server.HTTPServer((ip, port), handler)
         http_thread = threading.Thread(target=lambda: http_server.serve_forever())
         http_thread.start()
-        self.log.info("Started server at http://%s:%d/%s", host, port, path)
+        self.log.info("Started server at http://%s:%d/%s", ip, port, path)
 
     def get_line(self, k):
         tmp = self.buffer.get(k)
@@ -65,10 +72,9 @@ class PrometheusExporter(module.MetricsDstProcess):
         return ''.join(self.get_chunks())
 
     def loop(self):
-        host = self.cfg.get("local_host", "127.0.0.1")
-        port = self.cfg.get("local_port", 9103)
+        ip, port = self.resolve_local_host(9103)
         path = self.cfg.get("http_path", "metrics")
-        self.start_http_server(host, port, path)
+        self.start_http_server(ip, port, path)
         super().loop()
 
     def flush(self, monotonic_timestamp, system_timestamp):

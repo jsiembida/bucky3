@@ -63,8 +63,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         if self.flush(now, round(system_time(), 3)):
             self.flush_interval = self.tick_interval or 1
         else:
-            self.flush_interval = self.flush_interval + self.flush_interval
-            self.flush_interval = min(self.flush_interval, 600)
+            self.flush_interval = min(self.flush_interval + self.flush_interval, 600)
             self.log.info("Flush error, next in %d secs", int(self.flush_interval))
         # Occasionally, at least on macOS, kernel wakes up the process a few millis earlier
         # then scheduled (most likely scheduling we do here is introducing some small slips),
@@ -78,9 +77,9 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.buffer = []
         self.buffer_limit = max(self.cfg.get('buffer_limit', 10000), 100)
         self.chunk_size = max(self.cfg.get('chunk_size', 300), 1)
-        self.tick_interval = self.cfg.get('flush_interval') or None
+        self.tick_interval = max(self.cfg['flush_interval'], 1)
+        self.flush_interval = self.tick_interval
         self.next_tick = None
-        self.flush_interval = self.tick_interval or 1
         self.next_flush = 0
         self.metadata = self.cfg.get('metadata')
 
@@ -193,17 +192,23 @@ class HostResolver:
         hostname, aliaslist, ipaddrlist = socket.gethostbyname_ex(host)
         return {(ip, port) for ip in ipaddrlist}
 
-    def resolve_hosts(self):
+    def resolve_host(self, host, default_port):
+        for ip, port in self.parse_address(host, default_port):
+            self.log.debug("Resolved %s as %s:%d", host, ip, port)
+            yield ip, port
+
+    def resolve_local_host(self, default_port=0):
+        local_host = self.cfg.get('local_host', '0.0.0.0')
+        return random.choice(tuple(self.resolve_host(local_host, default_port)))
+
+    def resolve_remote_hosts(self):
         now = monotonic_time()
         # DNS resolution interval could be parametrized, but it seems a bit involved to get it plugged
         # efficiently into the mixin. The hardcoded 180s on the other hand seems to be reasonable.
         if self.resolved_hosts is None or (now - self.resolved_hosts_timestamp) > 180:
             resolved_hosts = set()
             for host in self.cfg['remote_hosts']:
-                for ip, port in self.parse_address(host, self.default_port):
-                    self.log.debug("Resolved %s as %s:%d", host, ip, port)
-                    resolved_hosts.add((ip, port))
-            resolved_hosts = tuple(resolved_hosts)
+                resolved_hosts.update(self.resolve_host(host, self.default_port))
             self.resolved_hosts = resolved_hosts
             self.resolved_hosts_timestamp = now
         return self.resolved_hosts
@@ -211,13 +216,12 @@ class HostResolver:
 
 class UDPConnector(HostResolver):
     def get_udp_socket(self, bind=False):
-        ip = self.cfg.get('local_host', '0.0.0.0')
-        port = self.cfg.get('local_port', 0)
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         if bind:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             if hasattr(socket, 'SO_REUSEPORT'):
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            ip, port = self.resolve_local_host()
             sock.bind((ip, port))
             self.log.info("Bound UDP socket %s:%d", ip, port)
         return sock
@@ -225,14 +229,13 @@ class UDPConnector(HostResolver):
 
 class TCPConnector(HostResolver):
     def get_tcp_socket(self, bind=False, connect=False):
-        ip = self.cfg.get('local_host', '0.0.0.0')
-        port = self.cfg.get('local_port', 0)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if bind:
+            ip, port = self.resolve_local_host()
             sock.bind((ip, port))
             self.log.info("Bound TCP socket %s:%d", ip, port)
         if connect:
-            remote_ip, remote_port = random.choice(self.resolve_hosts())
+            remote_ip, remote_port = random.choice(self.resolve_remote_hosts())
             sock.connect((remote_ip, remote_port))
         return sock
 
