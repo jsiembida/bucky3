@@ -91,7 +91,7 @@ flush_interval = 10
 
 
 # metadata
-# - dict, extra metadata injected into metrics
+# - dict of str:str, extra metadata injected into metrics
 # - Optional, default: None
 # - Destination modules add this metadata to the metrics received from the source modules.
 #   A union operation with metrics metadata taking precedence, keys defined here only get
@@ -198,6 +198,20 @@ dockerstats = dict(
     #   The default will auto-negotiate the protocol. You may need to specify this param
     #   when using old Docker installations, see "docker version | grep API"
     # - Example: api_version = "1.22"
+
+    # env_mapping
+    # - dict of str:str
+    # - Optional, default: None
+    # - Bucky3 automatically attaches some metadata to the container metrics.
+    #   One of sources of the metadata can be ENV variables baked into the container, see:
+    #      https://docs.docker.com/engine/reference/builder/#env
+    #   This setting defines the name mappings between the ENV variable names and metadata
+    #   keys injected into metrics. ENV variables not found in this mapping are ignored
+    #   (so by default no ENV variables are being injected). Note, that Bucky3 also uses
+    #   labels baked into the image. All the labels are unconditionally injected and take
+    #   precedence over the ENV variables. See:
+    #      https://docs.docker.com/engine/userguide/labels-custom-metadata/
+    # Example: env_mapping={'TEAM_NAME': 'team'}
 )
 
 
