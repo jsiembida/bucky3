@@ -445,8 +445,6 @@ class TestStatsDServer(unittest.TestCase):
             "lower": 100.0,
             "count": 1,
             "count_ps": 10.0,
-            "sum": 100.0,
-            "sum_squares": 10000.0,
         }
         statsd_module.tick()
         statsd_verify(mock_pipe, [
@@ -479,8 +477,6 @@ class TestStatsDServer(unittest.TestCase):
             "upper": 200,
             "count": 2,
             "count_ps": 20,
-            "sum": 300,
-            "sum_squares": 50000,
             "stdev": 70.71067811865476
         }
         statsd_module.tick()
@@ -502,8 +498,6 @@ class TestStatsDServer(unittest.TestCase):
             "upper": 1,
             "count": 9,
             "count_ps": 18.0,
-            "sum": 9,
-            "sum_squares": 9,
             "stdev": 0.0
         }
         statsd_module.tick()
@@ -526,8 +520,6 @@ class TestStatsDServer(unittest.TestCase):
             "upper": 5,
             "count": 3,
             "count_ps": 6,
-            "sum": 10,
-            "sum_squares": 38,
             "stdev": 1.5275252316519463
         }
         statsd_module.tick()
@@ -555,8 +547,6 @@ class TestStatsDServer(unittest.TestCase):
                 "lower": RoughFloat(min(threshold_slice)),
                 "count": len(threshold_slice),
                 "count_ps": len(threshold_slice),
-                "sum": RoughFloat(sum(threshold_slice)),
-                "sum_squares": RoughFloat(sum(i * i for i in threshold_slice)),
                 "stdev": RoughFloat(statistics.stdev(threshold_slice))
             }
             expected_values.append(('stats_timers', expected_value, 1,
@@ -572,11 +562,9 @@ class TestStatsDServer(unittest.TestCase):
             "lower": 100.0,
             "count": 1,
             "count_ps": 1.0,
-            "sum": 100.0,
-            "sum_squares": 10000.0,
         }
         expected_value2 = expected_value.copy()
-        expected_value2.update(count=2, count_ps=2.0, sum=200.0, sum_squares=20000.0, stdev=0.0)
+        expected_value2.update(count=2, count_ps=2.0, stdev=0.0)
         statsd_module.handle_line(0, "gorm:100|ms")
         statsd_module.handle_line(0, "gorm:100|ms|#a=b")
         statsd_module.handle_line(0, "gorm:100|ms|#a:b,c=5")
@@ -631,8 +619,6 @@ class TestStatsDServer(unittest.TestCase):
             "upper": 100,
             "count": 1,
             "count_ps": 10,
-            "sum": 100,
-            "sum_squares": 100*100
         }
         statsd_module.tick()
         statsd_verify(mock_pipe, [
@@ -654,8 +640,6 @@ class TestStatsDServer(unittest.TestCase):
             "upper": 300,
             "count": 3,
             "count_ps": 30,
-            "sum": 600,
-            "sum_squares": 100*100 + 200*200 + 300*300,
             "stdev": 100.0
         }
         statsd_module.tick()
@@ -690,8 +674,6 @@ class TestStatsDServer(unittest.TestCase):
                     "upper": max(v),
                     "count": len(v),
                     "count_ps": len(v) * 10,
-                    "sum": sum(v),
-                    "sum_squares": RoughFloat(sum(i * i for i in v)),
                 }
                 if len(v) > 1:
                     expected_value['stdev'] = RoughFloat(statistics.stdev(v))
