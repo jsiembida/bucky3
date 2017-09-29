@@ -39,7 +39,7 @@ class DockerStatsCollector(module.MetricsSrcProcess):
             if not cpu_quota:
                 cpu_quota = cpu_period * len(cpu_stats)
             limit_per_sec = round(1000000000 * cpu_quota / cpu_period)
-        self.buffer.append(("docker_cpu", {'limit_per_sec': limit_per_sec}, timestamp, container_metadata.copy()))
+        self.buffer.append(("docker_cpu", {'limit_ps': limit_per_sec}, timestamp, container_metadata.copy()))
         for k, v in enumerate(cpu_stats):
             metadata = container_metadata.copy()
             metadata.update(name=k)
