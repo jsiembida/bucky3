@@ -43,7 +43,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         now = monotonic_time()
         while now + 0.3 >= self.next_tick:
             self.next_tick += self.tick_interval
-        signal.setitimer(signal.ITIMER_REAL, self.next_tick - now)
+        signal.setitimer(signal.ITIMER_REAL, self.next_tick - now, self.tick_interval + self.tick_interval)
 
     def tick_handler(self, signal_number, stack_frame):
         self.log.debug("Tick received")
@@ -54,7 +54,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         if self.tick_interval:
             self.next_tick = monotonic_time() + self.tick_interval
             signal.signal(signal.SIGALRM, self.tick_handler)
-            signal.setitimer(signal.ITIMER_REAL, self.tick_interval)
+            signal.setitimer(signal.ITIMER_REAL, self.tick_interval, self.tick_interval + self.tick_interval)
 
     def tick(self):
         now = monotonic_time()
