@@ -27,4 +27,4 @@
 * Bucky3 could expose some metrics about itself.
 * With `timestamp` and `bucket` special keys in current statsd implementation,
   all other source modules like linux or docker stats could be implemented as statsd
-  clients making the statsd module as a hub. A big but tempting architectural change.
+  clients making the statsd module a hub. A big but tempting architectural change.

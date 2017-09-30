@@ -51,6 +51,7 @@ do the full stop/start sequence.
 # - str
 # - Optional, default: 'INFO'
 # - More here: https://docs.python.org/3/library/logging.html#levels
+#   This option is in global context and will be used by all modules unless overridden.
 log_level = "INFO"
 
 
@@ -129,6 +130,7 @@ metadata = dict(
 
 # This dictionary is a module configuration (see description at the top).
 # The name "linuxstats" doesn't matter so long as it does not start with underscore.
+# The module inherits all options defined in the global context.
 linuxstats = dict(
     # module_type
     # - str, defines the type of module to be started (see description at the top).
@@ -215,6 +217,8 @@ dockerstats = dict(
 )
 
 
+# This is a histogram bin constructor, it receives the metric value
+# and returns a bin name (str), or None if value belongs to no bin.
 # See statsd_server below for details about histogram selector.
 def myapp_response_histogram(x):
     if x < 0: return None
@@ -276,17 +280,18 @@ statsd = dict(
     # - Unlike other implementations, Bucky3 doesn't do any stats unless explicitly told
     #   to do so. The setting below will give you the stats for median, 90th percentile and
     #   the totals (the 100th percentile). For each configured percentile range, the stats
-    #   include: lower, upper, mean, count, count_ps, sum, sum_squares and stdev.
+    #   calculated are: lower, upper, mean, count, count_ps, and stdev.
     percentile_thresholds=(50, 90, 100),
 
-    # histogram_selector
+    # histogram_selector, histogram bins for timers
     # - callable
     # - Optional, default: None
-    # - When provided, this callable has to return a tuple of callables that will be used
-    #   to construct histogram bins, see the myapp_response_histogram above. The selector
-    #   receives the metadata dict which can be used to provide different tuples of callables
-    #   for different metrics received. I.e. for the packet "foo:123|h|#hello=world",
+    # - When provided, this callable has to return a callable that will be used to construct
+    #   histogram bins, see the myapp_response_histogram above. The selector receives
+    #   the metadata dict which can be used to provide different histogram constructors
+    #   depending on metrics metadata. I.e. for the packet "foo:123|h|#hello=world",
     #   the selector will receive dict(name="foo", hello="world")
+    #   For each bin, the stats calculated are: lower, upper, mean, count, count_ps, and stdev.
     histogram_selector=lambda metadata: myapp_response_histogram,
 
     # timestamp_window, acceptable time window (in seconds) for custom timestamps
@@ -309,7 +314,7 @@ influxdb = dict(
     # - tuple of str
     # - Required
     # - This module fans out metrics to all configured endpoints. Also, the remote_hosts are
-    #   resolved every 3min, so DNS changes are automatically  picked up. Like for local_host,
+    #   resolved every 3min, so DNS changes are automatically picked up. Like for local_host,
     #   you can use IPs or hostnames but port number has to be numeric. If you don't specify
     #   the port, it defaults to 8086.
     # - Example: remote_hosts=("influxdb1", "influxdb2:1234")
@@ -317,8 +322,8 @@ influxdb = dict(
         "localhost",
     ),
 
-    # As describe above, flush_interval should be short for this module and also,
-    # flush_interval<=3 implies randomize_startup=False
+    # flush_interval should be short for this module so it overrides the value from
+    # the global context. Also, flush_interval<=3 implies randomize_startup=False
     flush_interval=1,
     # As describe above, this module should use small chunk_size
     chunk_size=5,
@@ -348,7 +353,7 @@ prometheus = dict(
     # - int
     # - Required
     # - Every flush_interval seconds this module runs a housekeeping task. The task
-    #   find all metrics that has not been refreshed (received from source modules)
+    #   finds all metrics that has not been refreshed (received from source modules)
     #   in values_timeout seconds and removes them. It is important that this parameter
     #   is long enough in relation to scraping frequency. Retention 2-3 x longer than
     #   scraping interval seems like a reasonable minimum.

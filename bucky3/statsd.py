@@ -100,8 +100,6 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                             count_ps=vlen/interval,
                             lower=v[0],
                             upper=x,
-                            sum=vsum,
-                            sum_squares=vsum_squares,
                             mean=mean
                         )
                         if vlen > 1:
@@ -128,8 +126,6 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                     mean = vsum / vlen
                     stats['lower'] = vmin
                     stats['upper'] = vmax
-                    stats['sum'] = vsum
-                    stats['sum_squares'] = vsum_squares
                     stats['mean'] = mean
                     if vlen > 1:
                         var = (vsum_squares - 2 * mean * vsum + vlen * mean * mean) / (vlen - 1)
