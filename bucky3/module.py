@@ -61,7 +61,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         if now < self.next_flush:
             return
         if self.flush(now, round(system_time(), 3)):
-            self.flush_interval = self.tick_interval or 1
+            self.flush_interval = self.tick_interval
         else:
             self.flush_interval = min(self.flush_interval + self.flush_interval, 600)
             self.log.info("Flush error, next in %d secs", int(self.flush_interval))
