@@ -14,16 +14,48 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
                    'write_ops', 'write_merged', 'write_sectors', 'write_time',
                    'in_progress', 'io_time', 'weighted_time')
     MEMORY_FIELDS = {
-        'MemTotal': 'total_bytes',
-        'MemFree': 'free_bytes',
-        'MemAvailable': 'available_bytes',
-        'Shmem': 'shared_bytes',
-        'Cached': 'cached_bytes',
-        'Slab': 'slab_bytes',
-        'Mapped': 'mapped_bytes',
-        'SwapTotal': 'swap_total_bytes',
-        'SwapFree': 'swap_free_bytes',
-        'SwapCached': 'swap_cached_bytes',
+        'MemTotal:': 'total_bytes',
+        'MemFree:': 'free_bytes',
+        'MemAvailable:': 'available_bytes',
+        'Shmem:': 'shared_bytes',
+        'Cached:': 'cached_bytes',
+        'Slab:': 'slab_bytes',
+        'Mapped:': 'mapped_bytes',
+        'SwapTotal:': 'swap_total_bytes',
+        'SwapFree:': 'swap_free_bytes',
+        'SwapCached:': 'swap_cached_bytes',
+    }
+    PROTOCOL_FIELDS = {
+        'Ip:InReceives': ('ip', 'rx_packets'),
+        'Ip:InDiscards': ('ip', 'rx_dropped'),
+        'IpExt:InOctets': ('ip', 'rx_bytes'),
+        'Ip:OutRequests': ('ip', 'tx_packets'),
+        'Ip:OutDiscards': ('ip', 'tx_dropped'),
+        'IpExt:OutOctets': ('ip', 'tx_bytes'),
+        'Icmp:InMsgs': ('icmp', 'rx_packets'),
+        'Icmp:InErrors': ('icmp', 'rx_errors'),
+        'Icmp:OutMsgs': ('icmp', 'tx_packets'),
+        'Icmp:OutErrors': ('icmp', 'tx_errors'),
+        'Udp:InDatagrams': ('udp', 'rx_packets'),
+        'Udp:InErrors': ('udp', 'rx_errors'),
+        'Udp:OutDatagrams': ('udp', 'tx_packets'),
+        'Udp:RcvbufErrors': ('udp', 'rcvbuf_errors'),
+        'Udp:SndbufErrors': ('udp', 'sndbuf_errors'),
+        'Tcp:OutSegs': ('tcp', 'tx_packets'),
+        'Tcp:InSegs': ('tcp', 'rx_packets'),
+        'Tcp:RetransSegs': ('tcp', 'retr_packets'),
+        'Tcp:ActiveOpens': ('tcp', 'tx_opens'),
+        'Tcp:PassiveOpens': ('tcp', 'rx_opens'),
+        'Tcp:EstabResets': ('tcp', 'conn_resets'),
+        'Tcp:CurrEstab': ('tcp', 'conn_count'),
+        'Tcp:OutRsts': ('tcp', 'rx_resets'),
+        'TcpExt:ListenOverflows': ('tcp', 'listen_overflows'),
+        'TcpExt:ListenDrops': ('tcp', 'listen_drops'),
+        'TcpExt:TCPTimeouts': ('tcp', 'timeouts'),
+        'TcpExt:TCPBacklogDrop': ('tcp', 'backlog_drops'),
+        'TcpExt:TCPKeepAlive': ('tcp', 'keep_alives'),
+        'TcpExt:SyncookiesRecv': ('tcp', 'rx_syncookies'),
+        'TcpExt:SyncookiesSent': ('tcp', 'tx_syncookies'),
     }
 
     def __init__(self, *args):
@@ -69,11 +101,9 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
         with open('/proc/loadavg') as f:
             for l in f:
                 tokens = l.strip().split()
-                if not tokens or len(tokens) != 5:
-                    continue
-                activity_stats['load_1m'] = float(tokens[0])
-                activity_stats['load_5m'] = float(tokens[1])
-                activity_stats['load_15m'] = float(tokens[2])
+                if tokens and len(tokens) == 5:
+                    activity_stats['load'] = float(tokens[0])
+                    break
         if activity_stats:
             self.buffer.append(("system_activity", activity_stats, timestamp))
 
@@ -128,9 +158,6 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
                 if not tokens or len(tokens) != 3 or tokens[2].lower() != 'kb':
                     continue
                 name = tokens[0]
-                if not name.endswith(":"):
-                    continue
-                name = name[:-1]
                 if name in self.MEMORY_FIELDS:
                     memory_stats[self.MEMORY_FIELDS[name]] = int(tokens[1]) * 1024
             if memory_stats:
@@ -150,10 +177,35 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
                 disk_stats['write_bytes'] = disk_stats['write_sectors'] * 512
                 self.buffer.append(("system_disk", disk_stats, timestamp, dict(name=disk_name)))
 
+    def read_protocol_stats(self, timestamp):
+        # TODO: IPv6? (/proc/net/snmp6 has a different syntax)
+        param_map, proto_stats = {}, {}
+        for p in '/proc/net/snmp', '/proc/net/netstat':
+            with open(p) as f:
+                for l in f:
+                    tokens = l.strip().split()
+                    if not tokens:
+                        continue
+                    name = tokens.pop(0)
+                    if name in param_map:
+                        for k, v in zip(param_map[name], tokens):
+                            k = name + k
+                            if k in self.PROTOCOL_FIELDS:
+                                proto, value = self.PROTOCOL_FIELDS[k]
+                                bucket = proto_stats.get(proto)
+                                if not bucket:
+                                    bucket = proto_stats[proto] = {}
+                                bucket[value] = int(v)
+                    else:
+                        param_map[name] = tokens
+        for k, v in proto_stats.items():
+            self.buffer.append(("system_protocol", v, timestamp, dict(name=k)))
+
     def flush(self, monotonic_timestamp, system_timestamp):
         self.read_activity_stats(system_timestamp)
         self.read_memory_stats(system_timestamp)
         self.read_interface_stats(system_timestamp)
         self.read_filesystem_stats(system_timestamp)
         self.read_disk_stats(system_timestamp)
+        self.read_protocol_stats(system_timestamp)
         return super().flush(monotonic_timestamp, system_timestamp)

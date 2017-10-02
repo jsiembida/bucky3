@@ -59,7 +59,7 @@ and Bucky3 as well highlights of some of Bucky3 features:
 * Python3 is the target platform. 
 * Bucky has logic for custom metrics processor, Bucky3 drops that as redundant,
 backends like InfluxDB / Prometheus offer rich data processing.
-* CollectD protocol has been dropped. Linux metrics are implemented in under 200 lines
+* CollectD protocol has been dropped. Linux metrics are implemented in ~200 lines
 of Python code to provide replacement for some of the lost CollectD functionality.
 * Docker containers' metrics got implemented in under 100 lines of extra code.
 * Bucky uses `setproctitle` to set human friendly names for its processes. This is a nice

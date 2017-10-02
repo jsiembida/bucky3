@@ -9,8 +9,6 @@
 
 ##### Medium priority
 
-* Linux stats module could collect some metrics for network protocols
-  (see `/proc/net/snmp` and `/proc/net/netstat`)
 * Sending massive TCP payloads proved problematic in Prometheus exporter, so it does
   a sequence of smaller writes to the socket instead. Graphite module still does one
   massive write to the socket and most likely may need to do the smaller writes, too.
