@@ -32,14 +32,14 @@ class DockerStatsCollector(module.MetricsSrcProcess):
         cpu_stats = stats['percpu_usage']
         # Docker reports CPU counters in nanosecs but quota/period in microsecs, here we make sure we send out
         # all CPU metrics in nanosecs - that differs from linuxstats module CPU counters that are in USER_HZ.
-        limit_per_sec = host_config.get('NanoCpus', 0)
-        if not limit_per_sec:
+        limit_ps = host_config.get('NanoCpus', 0)
+        if not limit_ps:
             cpu_period = host_config.get('CpuPeriod', 0) or 1000000
             cpu_quota = host_config.get('CpuQuota', 0)
             if not cpu_quota:
                 cpu_quota = cpu_period * len(cpu_stats)
-            limit_per_sec = round(1000000000 * cpu_quota / cpu_period)
-        self.buffer.append(("docker_cpu", {'limit_ps': limit_per_sec}, timestamp, container_metadata.copy()))
+            limit_ps = round(1000000000 * cpu_quota / cpu_period)
+        self.buffer.append(("docker_cpu", {'limit_ps': limit_ps}, timestamp, container_metadata.copy()))
         for k, v in enumerate(cpu_stats):
             metadata = container_metadata.copy()
             metadata.update(name=k)
