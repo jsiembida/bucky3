@@ -7,6 +7,7 @@ import socket
 import signal
 import random
 import logging
+import resource
 import multiprocessing
 import multiprocessing.connection
 
@@ -82,6 +83,8 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.next_tick = None
         self.next_flush = 0
         self.metadata = self.cfg.get('metadata')
+        self.self_metrics_timestamp = 0
+        self.init_time = monotonic_time()
 
     def run(self, loop=True):
         def termination_handler(signal_number, stack_frame):
@@ -112,6 +115,23 @@ class MetricsProcess(multiprocessing.Process, Logger):
             except InterruptedError:
                 pass
 
+    def get_self_metrics(self):
+        now = monotonic_time()
+        if now - self.self_metrics_timestamp >= 59:
+            self.self_metrics_timestamp = now
+            self.log.debug("Collecting self metrics")
+            usage = resource.getrusage(resource.RUSAGE_SELF)
+            return (
+                "bucky3",
+                dict(
+                    cpu=round(usage.ru_utime + usage.ru_stime, 3),
+                    memory=usage.ru_maxrss,
+                    uptime=round(monotonic_time() - self.init_time, 3),
+                ),
+                system_time(),
+                dict(name=self.name),
+            )
+
 
 class MetricsDstProcess(MetricsProcess):
     def __init__(self, module_name, module_config, src_pipes):
@@ -132,7 +152,13 @@ class MetricsDstProcess(MetricsProcess):
                     # This happens when no source is connected up, keep trying for 10s, then give up.
                     self.log.debug("EOF while reading source pipe")
                     tmp = True
-            err = err + 1 if tmp else 0
+            if tmp:
+                err = err + 1
+            else:
+                err = 0
+                self_metrics = self.get_self_metrics()
+                if self_metrics:
+                    self.process_batch([self_metrics])
             if err > 10:
                 self.log.error("Input(s) not ready, quitting")
                 return
@@ -168,6 +194,13 @@ class MetricsSrcProcess(MetricsProcess):
     def __init__(self, module_name, module_config, dst_pipes):
         super().__init__(module_name, module_config)
         self.dst_pipes = dst_pipes
+
+    def tick(self):
+        super().tick()
+        self_metrics = self.get_self_metrics()
+        if self_metrics:
+            self.buffer.append(self_metrics)
+            self.flush(monotonic_time(), round(system_time(), 3))
 
     def flush(self, monotonic_timestamp, system_timestamp):
         if self.buffer:
