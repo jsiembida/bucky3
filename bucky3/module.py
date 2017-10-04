@@ -83,7 +83,8 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.next_tick = None
         self.next_flush = 0
         self.metadata = self.cfg.get('metadata')
-        self.self_metrics_timestamp = 0
+        self.self_report = self.cfg.get('self_report', False)
+        self.self_report_timestamp = 0
         self.init_time = monotonic_time()
 
     def run(self, loop=True):
@@ -115,28 +116,35 @@ class MetricsProcess(multiprocessing.Process, Logger):
             except InterruptedError:
                 pass
 
-    def get_self_metrics(self):
+    def take_self_report(self):
+        if not self.self_report:
+            return None
         now = monotonic_time()
-        if now - self.self_metrics_timestamp >= 59:
-            self.self_metrics_timestamp = now
-            self.log.debug("Collecting self metrics")
+        if now - self.self_report_timestamp >= 59:
+            self.self_report_timestamp = now
             usage = resource.getrusage(resource.RUSAGE_SELF)
-            return (
+            self.process_self_report((
                 "bucky3",
                 dict(
                     cpu=round(usage.ru_utime + usage.ru_stime, 3),
                     memory=usage.ru_maxrss,
                     uptime=round(monotonic_time() - self.init_time, 3),
                 ),
-                system_time(),
+                round(system_time(), 3),
                 dict(name=self.name),
-            )
+            ))
+
+    def process_self_report(self, batch):
+        pass
 
 
 class MetricsDstProcess(MetricsProcess):
     def __init__(self, module_name, module_config, src_pipes):
         super().__init__(module_name, module_config)
         self.src_pipes = src_pipes
+
+    def process_self_report(self, batch):
+        self.process_batch([batch])
 
     def loop(self):
         err = 0
@@ -156,9 +164,7 @@ class MetricsDstProcess(MetricsProcess):
                 err = err + 1
             else:
                 err = 0
-                self_metrics = self.get_self_metrics()
-                if self_metrics:
-                    self.process_batch([self_metrics])
+                self.take_self_report()
             if err > 10:
                 self.log.error("Input(s) not ready, quitting")
                 return
@@ -197,10 +203,11 @@ class MetricsSrcProcess(MetricsProcess):
 
     def tick(self):
         super().tick()
-        self_metrics = self.get_self_metrics()
-        if self_metrics:
-            self.buffer.append(self_metrics)
-            self.flush(monotonic_time(), round(system_time(), 3))
+        self.take_self_report()
+
+    def process_self_report(self, batch):
+        self.buffer.append(batch)
+        self.flush(monotonic_time(), round(system_time(), 3))
 
     def flush(self, monotonic_timestamp, system_timestamp):
         if self.buffer:
