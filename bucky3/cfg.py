@@ -128,6 +128,12 @@ metadata = dict(
 # - Example: chunk_size = 10
 
 
+# self_report
+# - bool, if modules should produce metrics about themselves
+# - Optional, default: False
+# - Example: self_report = True
+
+
 # This dictionary is a module configuration (see description at the top).
 # The name "linuxstats" doesn't matter so long as it does not start with underscore.
 # The module inherits all options defined in the global context.

@@ -39,9 +39,14 @@ def statsd_setup(timestamps, **extra_cfg):
         with patch('bucky3.module.monotonic_time') as monotonic_time, \
                 patch('bucky3.module.system_time') as system_time:
             if callable(timestamps):
-                system_time.side_effect, monotonic_time.side_effect = itertools.tee((t for t in timestamps()), 2)
+                system_time_mock, monotonic_time_mock = itertools.tee((t for t in timestamps()), 2)
             else:
-                system_time.side_effect, monotonic_time.side_effect = itertools.tee(timestamps, 2)
+                system_time_mock, monotonic_time_mock = itertools.tee(timestamps, 2)
+            system_time_mock, monotonic_time_mock = iter(system_time_mock), iter(monotonic_time_mock)
+            monotonic_time0 = next(monotonic_time_mock)
+            # Statsd module consumes one monotonic tick for self.init_time, we need to inject it
+            monotonic_time_mock = itertools.chain(iter([monotonic_time0]), iter([monotonic_time0]), monotonic_time_mock)
+            system_time.side_effect, monotonic_time.side_effect = system_time_mock, monotonic_time_mock
             cfg = dict(
                 flush_interval=1,
                 timers_timeout=100, timers_bucket="stats_timers",

@@ -7,6 +7,7 @@ import socket
 import signal
 import random
 import logging
+import resource
 import multiprocessing
 import multiprocessing.connection
 
@@ -82,6 +83,9 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.next_tick = None
         self.next_flush = 0
         self.metadata = self.cfg.get('metadata')
+        self.self_report = self.cfg.get('self_report', False)
+        self.self_report_timestamp = 0
+        self.init_time = monotonic_time()
 
     def run(self, loop=True):
         def termination_handler(signal_number, stack_frame):
@@ -112,11 +116,35 @@ class MetricsProcess(multiprocessing.Process, Logger):
             except InterruptedError:
                 pass
 
+    def take_self_report(self):
+        if not self.self_report:
+            return None
+        now = monotonic_time()
+        if now - self.self_report_timestamp >= 59:
+            self.self_report_timestamp = now
+            usage = resource.getrusage(resource.RUSAGE_SELF)
+            self.process_self_report((
+                "bucky3",
+                dict(
+                    cpu=round(usage.ru_utime + usage.ru_stime, 3),
+                    memory=usage.ru_maxrss,
+                    uptime=round(monotonic_time() - self.init_time, 3),
+                ),
+                round(system_time(), 3),
+                dict(name=self.name),
+            ))
+
+    def process_self_report(self, batch):
+        pass
+
 
 class MetricsDstProcess(MetricsProcess):
     def __init__(self, module_name, module_config, src_pipes):
         super().__init__(module_name, module_config)
         self.src_pipes = src_pipes
+
+    def process_self_report(self, batch):
+        self.process_batch([batch])
 
     def loop(self):
         err = 0
@@ -132,7 +160,11 @@ class MetricsDstProcess(MetricsProcess):
                     # This happens when no source is connected up, keep trying for 10s, then give up.
                     self.log.debug("EOF while reading source pipe")
                     tmp = True
-            err = err + 1 if tmp else 0
+            if tmp:
+                err = err + 1
+            else:
+                err = 0
+                self.take_self_report()
             if err > 10:
                 self.log.error("Input(s) not ready, quitting")
                 return
@@ -168,6 +200,14 @@ class MetricsSrcProcess(MetricsProcess):
     def __init__(self, module_name, module_config, dst_pipes):
         super().__init__(module_name, module_config)
         self.dst_pipes = dst_pipes
+
+    def tick(self):
+        super().tick()
+        self.take_self_report()
+
+    def process_self_report(self, batch):
+        self.buffer.append(batch)
+        self.flush(monotonic_time(), round(system_time(), 3))
 
     def flush(self, monotonic_timestamp, system_timestamp):
         if self.buffer:
