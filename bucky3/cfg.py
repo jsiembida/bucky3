@@ -261,25 +261,6 @@ statsd = dict(
     gauges_bucket="stats_gauges",
     counters_bucket="stats_counters",
 
-    # timers_timeout
-    # - int, data expiry in seconds
-    # - Required
-    # - statsd_server module periodically (see flush_interval) aggregates the received metrics
-    #   and while doing it, the metrics that were not "refreshed" within the given number of
-    #   seconds will be dropped. The "refresh" is defined as the UDP packet arrival.
-    #   This value should be longer than flush_interval, otherwise the metrics will not get
-    #   propagated to the destination module(s).
-    timers_timeout=60,
-
-    # histograms_timeout, sets_timeout, gauges_timeout, counters_timeout
-    # - int, data expiry in seconds
-    # - Required
-    # - See the timers_timeout above
-    histograms_timeout=60,
-    sets_timeout=60,
-    gauges_timeout=60,
-    counters_timeout=60,
-
     # percentile_thresholds, percentile ranges for timers
     # - tuple of float
     # - Optional, default: ()

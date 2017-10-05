@@ -150,7 +150,7 @@ class MetricsDstProcess(MetricsProcess):
         err = 0
         while True:
             tmp = False
-            for pipe in multiprocessing.connection.wait(self.src_pipes):
+            for pipe in multiprocessing.connection.wait(self.src_pipes, min(self.tick_interval, 60)):
                 try:
                     batch = pipe.recv()
                     self.process_batch(batch)
