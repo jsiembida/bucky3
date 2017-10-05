@@ -12,10 +12,12 @@ difference between Bucky3 and original Bucky.
 has been retained, Graphite naming style is built as a mapping on top of the underlying metadata.
 * Python 3.4+ only.
 * [MetricsD](https://github.com/mojodna/metricsd) protocol has been dropped in favor
-of [extended StatsD protocol.](https://docs.datadoghq.com/guides/dogstatsd/#datagram-format)
+of [extended StatsD protocol.](https://docs.datadoghq.com/guides/dogstatsd/#datagram-format).
+See `PROTOCOL.md` for a comprehensive description of StatsD protocol implementation in Bucky3.
 * [CollectD](https://collectd.org) protocol has been dropped in favor of dedicated modules and integration
 via StatsD protocol.
 
+For a more complete list of differences and design choices, see `DESIGN.md`
 
 
 ### Quick Start
