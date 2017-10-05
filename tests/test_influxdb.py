@@ -17,11 +17,9 @@ def influxdb_verify(influxdb_module, expected_values):
 
 def influxdb_setup(timestamps, **extra_cfg):
     def run(fun, self):
-        with patch('bucky3.module.monotonic_time') as monotonic_time, \
-                patch('bucky3.module.system_time') as system_time:
+        with patch('time.time') as system_time:
             buf = tuple(timestamps)
             system_time.side_effect = tuple(buf)
-            monotonic_time.side_effect = tuple(buf)
             cfg = dict(flush_interval=1)
             cfg.update(**extra_cfg)
             influxdb_module = influxdb.InfluxDBClient('influxdb_test', cfg, None)

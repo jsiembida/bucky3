@@ -77,7 +77,7 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
         self.start_http_server(ip, port, path)
         super().loop()
 
-    def flush(self, monotonic_timestamp, system_timestamp):
+    def flush(self, system_timestamp):
         timeout = self.cfg['values_timeout']
         old_keys = [k for k, (timestamp, v, l) in self.buffer.items() if (system_timestamp - timestamp) > timeout]
         for k in old_keys:

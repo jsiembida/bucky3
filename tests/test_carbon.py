@@ -17,11 +17,9 @@ def carbon_verify(carbon_module, expected_values):
 
 def carbon_setup(timestamps, **extra_cfg):
     def run(fun, self):
-        with patch('bucky3.module.monotonic_time') as monotonic_time, \
-                patch('bucky3.module.system_time') as system_time:
+        with patch('time.time') as system_time:
             buf = tuple(timestamps)
             system_time.side_effect = tuple(buf)
-            monotonic_time.side_effect = tuple(buf)
             cfg = dict(flush_interval=1, name_mapping=('bucket', 'foo', 'value'))
             cfg.update(**extra_cfg)
             carbon_module = carbon.CarbonClient('carbon_test', cfg, None)

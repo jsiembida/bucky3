@@ -16,6 +16,7 @@
 
 
 import re
+import time
 import bucky3.module as module
 
 
@@ -32,7 +33,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         # Some of those are illegal in Graphite, so Carbon module has to handle them separately.
         self.metadata_regex = re.compile('^([a-zA-Z][a-zA-Z0-9_]*)[:=]([a-zA-Z0-9_:=\-\+\@\?\#\.\/\%\<\>\*\;\&\[\]]+)$', re.ASCII)
 
-    def flush(self, monotonic_timestamp, system_timestamp):
+    def flush(self, system_timestamp):
         self.last_timestamp = self.current_timestamp
         self.current_timestamp = system_timestamp
         self.enqueue_timers(system_timestamp)
@@ -40,7 +41,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.enqueue_counters(system_timestamp)
         self.enqueue_gauges(system_timestamp)
         self.enqueue_sets(system_timestamp)
-        return super().flush(monotonic_timestamp, system_timestamp)
+        return super().flush(system_timestamp)
 
     def init_config(self):
         super().init_config()
@@ -51,7 +52,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
 
     def run(self):
         super().run(loop=False)
-        self.current_timestamp = self.last_timestamp = module.system_time()
+        self.current_timestamp = self.last_timestamp = time.time()
         while True:
             try:
                 self.socket = self.socket or self.get_udp_socket(bind=True)
@@ -136,7 +137,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def handle_packet(self, data, addr=None):
         # Adding a bit of extra sauce so clients can send multiple samples in a single UDP packet.
         try:
-            recv_timestamp, data = round(module.system_time(), 3), data.decode("ascii")
+            recv_timestamp, data = round(time.time(), 3), data.decode("ascii")
         except UnicodeDecodeError:
             return
         for line in data.splitlines():

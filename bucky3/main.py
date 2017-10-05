@@ -17,6 +17,7 @@
 
 import os
 import sys
+import time
 import string
 import signal
 import argparse
@@ -114,7 +115,7 @@ class Manager(module.Logger):
         sys.exit(err != 0)
 
     def start_module(self, module_name, module_class, module_config, timestamps, args, message="Starting %s"):
-        timestamps.append(module.monotonic_time())
+        timestamps.append(time.monotonic())
         timestamps = timestamps[-10:]
         proc = module_class(module_name, module_config, *args)
         self.log.info(message, proc.name)
@@ -139,7 +140,7 @@ class Manager(module.Logger):
                         self.log.critical("%s keeps failing, cannot recover", proc.name)
                         err += 1
                         continue
-                if timestamps and (module.monotonic_time() - timestamps[-1]) < 1:
+                if timestamps and (time.monotonic() - timestamps[-1]) < 1:
                     self.log.warning("%s has stopped, too early for restart", proc.name)
                 else:
                     group[(module_name, module_class)] = self.start_module(
@@ -182,7 +183,7 @@ class Manager(module.Logger):
                 err = self.healthcheck(self.dst_group) + self.healthcheck(self.src_group)
                 if err:
                     self.terminate_and_exit(err)
-                module.sleep(3)
+                time.sleep(3)
             except InterruptedError:
                 pass
 
