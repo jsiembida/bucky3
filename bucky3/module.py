@@ -12,11 +12,6 @@ import multiprocessing
 import multiprocessing.connection
 
 
-monotonic_time = time.monotonic
-system_time = time.time
-sleep = time.sleep
-
-
 class Logger:
     def setup_logging(self, cfg, module_name=None):
         # Reinit those to avoid races on the underlying streams
@@ -41,7 +36,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.cfg = module_config
 
     def schedule_tick(self):
-        now = monotonic_time()
+        now = time.monotonic()
         while now + 0.3 >= self.next_tick:
             self.next_tick += self.tick_interval
         signal.setitimer(signal.ITIMER_REAL, self.next_tick - now, self.tick_interval + self.tick_interval)
@@ -53,15 +48,15 @@ class MetricsProcess(multiprocessing.Process, Logger):
 
     def setup_tick(self):
         if self.tick_interval:
-            self.next_tick = monotonic_time() + self.tick_interval
+            self.next_tick = time.monotonic() + self.tick_interval
             signal.signal(signal.SIGALRM, self.tick_handler)
             signal.setitimer(signal.ITIMER_REAL, self.tick_interval, self.tick_interval + self.tick_interval)
 
     def tick(self):
-        now = monotonic_time()
+        now = time.monotonic()
         if now < self.next_flush:
             return
-        if self.flush(now, round(system_time(), 3)):
+        if self.flush(round(time.time(), 3)):
             self.flush_interval = self.tick_interval
         else:
             self.flush_interval = min(self.flush_interval + self.flush_interval, 600)
@@ -85,7 +80,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.metadata = self.cfg.get('metadata')
         self.self_report = self.cfg.get('self_report', False)
         self.self_report_timestamp = 0
-        self.init_time = monotonic_time()
+        self.init_time = time.monotonic()
 
     def run(self, loop=True):
         def termination_handler(signal_number, stack_frame):
@@ -102,7 +97,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.init_config()
         if self.randomize_startup and self.tick_interval > 3:
             # If randomization is configured (it's default) do it asap, before singal handler gets set up
-            sleep(random.randint(0, min(self.tick_interval - 1, 15)))
+            time.sleep(random.randint(0, min(self.tick_interval - 1, 15)))
         self.setup_tick()
         self.log.info("Set up")
 
@@ -112,14 +107,14 @@ class MetricsProcess(multiprocessing.Process, Logger):
     def loop(self):
         while True:
             try:
-                sleep(60)
+                time.sleep(60)
             except InterruptedError:
                 pass
 
     def take_self_report(self):
         if not self.self_report:
             return None
-        now = monotonic_time()
+        now = time.monotonic()
         if now - self.self_report_timestamp >= 59:
             self.self_report_timestamp = now
             usage = resource.getrusage(resource.RUSAGE_SELF)
@@ -128,9 +123,9 @@ class MetricsProcess(multiprocessing.Process, Logger):
                 dict(
                     cpu=round(usage.ru_utime + usage.ru_stime, 3),
                     memory=usage.ru_maxrss,
-                    uptime=round(monotonic_time() - self.init_time, 3),
+                    uptime=round(time.monotonic() - self.init_time, 3),
                 ),
-                round(system_time(), 3),
+                round(time.time(), 3),
                 dict(name=self.name),
             ))
 
@@ -150,7 +145,7 @@ class MetricsDstProcess(MetricsProcess):
         err = 0
         while True:
             tmp = False
-            for pipe in multiprocessing.connection.wait(self.src_pipes):
+            for pipe in multiprocessing.connection.wait(self.src_pipes, min(self.tick_interval, 60)):
                 try:
                     batch = pipe.recv()
                     self.process_batch(batch)
@@ -169,7 +164,7 @@ class MetricsDstProcess(MetricsProcess):
                 self.log.error("Input(s) not ready, quitting")
                 return
             elif err:
-                sleep(1)
+                time.sleep(1)
 
     def process_batch(self, batch):
         for sample in batch:
@@ -207,9 +202,9 @@ class MetricsSrcProcess(MetricsProcess):
 
     def process_self_report(self, batch):
         self.buffer.append(batch)
-        self.flush(monotonic_time(), round(system_time(), 3))
+        self.flush(round(time.time(), 3))
 
-    def flush(self, monotonic_timestamp, system_timestamp):
+    def flush(self, system_timestamp):
         if self.buffer:
             self.log.debug("Flushing %d entries from buffer", len(self.buffer))
             for chunk_start in range(0, len(self.buffer), self.chunk_size):
@@ -242,7 +237,7 @@ class HostResolver:
         return random.choice(tuple(self.resolve_host(local_host, default_port)))
 
     def resolve_remote_hosts(self):
-        now = monotonic_time()
+        now = time.monotonic()
         # DNS resolution interval could be parametrized, but it seems a bit involved to get it plugged
         # efficiently into the mixin. The hardcoded 180s on the other hand seems to be reasonable.
         if self.resolved_hosts is None or (now - self.resolved_hosts_timestamp) > 180:
@@ -299,7 +294,7 @@ class MetricsPushProcess(MetricsDstProcess):
             self.buffer = self.buffer[-int(self.buffer_limit / 2):]
             self.log.debug("Buffer trimmed from %d to %d entries", buffer_len, len(self.buffer))
 
-    def flush(self, monotonic_timestamp, system_timestamp):
+    def flush(self, system_timestamp):
         if self.buffer:
             try:
                 self.push_buffer()

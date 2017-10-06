@@ -85,7 +85,7 @@ class DockerStatsCollector(module.MetricsSrcProcess):
         container_metadata['docker_id'] = container_id[:12]
         return container_id, container_metadata, host_config
 
-    def flush(self, monotonic_timestamp, system_timestamp):
+    def flush(self, system_timestamp):
         try:
             for i, container in enumerate(self.docker_client.api.containers(size=True)):
                 if container.get('State') == 'running' or container.get('Status', '').startswith('Up'):
@@ -95,12 +95,12 @@ class DockerStatsCollector(module.MetricsSrcProcess):
                     self.read_cpu_stats(system_timestamp, container_metadata, stats_info['cpu_stats']['cpu_usage'], host_config)
                     self.read_memory_stats(system_timestamp, container_metadata, stats_info['memory_stats'])
                     self.read_interface_stats(system_timestamp, container_metadata, stats_info.get('networks'))
-            return super().flush(monotonic_timestamp, system_timestamp)
+            return super().flush(system_timestamp)
         except requests.exceptions.ConnectionError:
             self.log.info("Docker connection error, is docker running?")
-            super().flush(monotonic_timestamp, system_timestamp)
+            super().flush(system_timestamp)
             return False
         except ValueError:
             self.log.exception("Docker error")
-            super().flush(monotonic_timestamp, system_timestamp)
+            super().flush(system_timestamp)
             return False

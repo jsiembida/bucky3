@@ -36,11 +36,9 @@ def prometheus_verify(prometheus_module, expected_values):
 
 def prometheus_setup(timestamps, **extra_cfg):
     def run(fun, self):
-        with patch('bucky3.module.monotonic_time') as monotonic_time, \
-                patch('bucky3.module.system_time') as system_time:
+        with patch('time.time') as system_time:
             buf = tuple(timestamps)
             system_time.side_effect = tuple(buf)
-            monotonic_time.side_effect = tuple(buf)
             cfg = dict(flush_interval=1, values_timeout=10)
             cfg.update(**extra_cfg)
             prometheus_module = prometheus.PrometheusExporter('prometheus_test', cfg, None)
@@ -73,17 +71,17 @@ class TestPrometheusExporter(unittest.TestCase):
             ('val2', {}, 12.3, 1),
             ('val3', {}, 14, 2),
         ])
-        prometheus_module.flush(3, 3)
+        prometheus_module.flush(3)
         prometheus_verify(prometheus_module, [
             ('val1', {}, 13, 1),
             ('val2', {}, 12.3, 1),
             ('val3', {}, 14, 2),
         ])
-        prometheus_module.flush(4, 4)
+        prometheus_module.flush(4)
         prometheus_verify(prometheus_module, [
             ('val3', {}, 14, 2),
         ])
-        prometheus_module.flush(5, 5)
+        prometheus_module.flush(5)
         prometheus_verify(prometheus_module, [])
 
     @prometheus_setup(values_timeout=2, timestamps=range(1, 100))
@@ -97,17 +95,17 @@ class TestPrometheusExporter(unittest.TestCase):
             ('val2', dict(foo='bar'), 11.5, 2),
             ('val2', dict(hello='world'), 13.8, 1),
         ])
-        prometheus_module.flush(3, 3)
+        prometheus_module.flush(3)
         prometheus_verify(prometheus_module, [
             ('val1', dict(a='b', b='123'), 12, 1),
             ('val2', dict(foo='bar'), 11.5, 2),
             ('val2', dict(hello='world'), 13.8, 1),
         ])
-        prometheus_module.flush(4, 4)
+        prometheus_module.flush(4)
         prometheus_verify(prometheus_module, [
             ('val2', dict(foo='bar'), 11.5, 2),
         ])
-        prometheus_module.flush(5, 5)
+        prometheus_module.flush(5)
         prometheus_verify(prometheus_module, [])
 
     @prometheus_setup(values_timeout=2, timestamps=range(1, 100))
@@ -125,7 +123,7 @@ class TestPrometheusExporter(unittest.TestCase):
             ('val2', dict(value='z'), 1000, 1),
             ('val3', dict(value='a'), 0, 1),
         ])
-        prometheus_module.flush(3, 3)
+        prometheus_module.flush(3)
         prometheus_verify(prometheus_module, [
             ('val1', dict(value='x'), 8, 2),
             ('val1', dict(value='y'), 2, 1),
@@ -135,12 +133,12 @@ class TestPrometheusExporter(unittest.TestCase):
             ('val2', dict(value='z'), 1000, 1),
             ('val3', dict(value='a'), 0, 1),
         ])
-        prometheus_module.flush(4, 4)
+        prometheus_module.flush(4)
         prometheus_verify(prometheus_module, [
             ('val1', dict(value='x'), 8, 2),
             ('val1', dict(value='z'), 3.567, 2),
         ])
-        prometheus_module.flush(5, 5)
+        prometheus_module.flush(5)
         prometheus_verify(prometheus_module, [])
 
     @prometheus_setup(values_timeout=2, timestamps=range(1, 100))
@@ -159,7 +157,7 @@ class TestPrometheusExporter(unittest.TestCase):
             ('val3', dict(value='a'), 4, 1),
             ('val3', dict(value='b'), 5, 1),
         ])
-        prometheus_module.flush(3, 3)
+        prometheus_module.flush(3)
         prometheus_verify(prometheus_module, [
             ('val1', dict(value='x', a='b', b='123'), 8.43, 2),
             ('val1', dict(value='y', a='b', b='123'), 2, 1),
@@ -170,12 +168,12 @@ class TestPrometheusExporter(unittest.TestCase):
             ('val3', dict(value='a'), 4, 1),
             ('val3', dict(value='b'), 5, 1),
         ])
-        prometheus_module.flush(4, 4)
+        prometheus_module.flush(4)
         prometheus_verify(prometheus_module, [
             ('val1', dict(value='x', a='b', b='123'), 8.43, 2),
             ('val1', dict(value='z', a='b', b='123'), 3.33, 2),
         ])
-        prometheus_module.flush(5, 5)
+        prometheus_module.flush(5)
         prometheus_verify(prometheus_module, [])
 
 

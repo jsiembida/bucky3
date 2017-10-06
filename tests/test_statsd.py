@@ -36,8 +36,8 @@ def statsd_verify(output_pipe, expected_values):
 
 def statsd_setup(timestamps, **extra_cfg):
     def run(fun, self):
-        with patch('bucky3.module.monotonic_time') as monotonic_time, \
-                patch('bucky3.module.system_time') as system_time:
+        with patch('time.monotonic') as monotonic_time, \
+                patch('time.time') as system_time:
             if callable(timestamps):
                 system_time_mock, monotonic_time_mock = itertools.tee((t for t in timestamps()), 2)
             else:
@@ -46,14 +46,15 @@ def statsd_setup(timestamps, **extra_cfg):
             monotonic_time0 = next(monotonic_time_mock)
             # Statsd module consumes one monotonic tick for self.init_time, we need to inject it
             monotonic_time_mock = itertools.chain(iter([monotonic_time0]), iter([monotonic_time0]), monotonic_time_mock)
-            system_time.side_effect, monotonic_time.side_effect = system_time_mock, monotonic_time_mock
+            system_time.side_effect = system_time_mock
+            monotonic_time.side_effect = monotonic_time_mock
             cfg = dict(
                 flush_interval=1,
-                timers_timeout=100, timers_bucket="stats_timers",
-                histograms_timeout=100, histograms_bucket="stats_histograms",
-                sets_timeout=100, sets_bucket="stats_sets",
-                gauges_timeout=100, gauges_bucket="stats_gauges",
-                counters_timeout=100, counters_bucket="stats_counters",
+                timers_bucket="stats_timers",
+                histograms_bucket="stats_histograms",
+                sets_bucket="stats_sets",
+                gauges_bucket="stats_gauges",
+                counters_bucket="stats_counters",
             )
             cfg.update(**extra_cfg)
             output_pipe = MagicMock()
@@ -208,7 +209,7 @@ class TestStatsDServer(unittest.TestCase):
         test(False, "not-a-bucket-name")
         test(True, "valid_bucket_name")
 
-    @statsd_setup(counters_timeout=3, timestamps=(2, 4, 6, 8, 10, 12, 14))
+    @statsd_setup(timestamps=(2, 4, 6, 8, 10, 12, 14))
     def test_counters(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
         statsd_module.handle_line(0, "gorm:1.5|c")
@@ -237,7 +238,7 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.tick()
         statsd_verify(mock_pipe, [])
 
-    @statsd_setup(counters_timeout=2, timestamps=range(1, 100))
+    @statsd_setup(timestamps=range(1, 100))
     def test_counters_metadata(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
         statsd_module.handle_line(0, "gorm:1.5|c")
@@ -255,15 +256,10 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(1, "gorm:4.0|c|#c:5,a=z")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_counters', dict(rate=0.0, count=0.0), 2, dict(name='gorm')),
-            ('stats_counters', dict(rate=0.0, count=0.0), 2, dict(name='gorm', a='b')),
-            ('stats_counters', dict(rate=0.0, count=0.0), 2, dict(name='gorm', a='b', c='5')),
             ('stats_counters', dict(rate=4.0, count=4.0), 2, dict(name='gorm', a='z', c='5')),
         ])
         statsd_module.tick()
-        statsd_verify(mock_pipe, [
-            ('stats_counters', dict(rate=0.0, count=0.0), 3, dict(name='gorm', a='z', c='5')),
-        ])
+        statsd_verify(mock_pipe, [])
 
     @statsd_setup(timestamps=range(1, 1000))
     def test_malformed_counters(self, statsd_module):
@@ -281,7 +277,7 @@ class TestStatsDServer(unittest.TestCase):
     def test_bucketed_counters_metadata(self, statsd_module):
         self.bucketed_metadata(statsd_module, "gorm:1|c")
 
-    @statsd_setup(gauges_timeout=3, timestamps=(1, 2, 3, 4, 5, 6, 7, 8))
+    @statsd_setup(timestamps=(1, 2, 3, 4, 5, 6, 7, 8))
     def test_gauges(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
         statsd_module.handle_line(0, "gorm:6.7|g")
@@ -300,22 +296,12 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(2, "gurm:12|g|@0.5")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_gauges', 8.1, 3, dict(name='gorm')),
             ('stats_gauges', 12, 3, dict(name='gurm')),
-        ])
-        statsd_module.tick()
-        statsd_verify(mock_pipe, [
-            ('stats_gauges', 8.1, 4, dict(name='gorm')),
-            ('stats_gauges', 12, 4, dict(name='gurm'))
-        ])
-        statsd_module.tick()
-        statsd_verify(mock_pipe, [
-            ('stats_gauges', 12, 5, dict(name='gurm'))
         ])
         statsd_module.tick()
         statsd_verify(mock_pipe, [])
 
-    @statsd_setup(gauges_timeout=2, timestamps=range(1, 100))
+    @statsd_setup(timestamps=range(1, 100))
     def test_gauges_metadata(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
         statsd_module.handle_line(0, "gorm:1.5|g")
@@ -333,15 +319,10 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(1, "gorm:4.0|g|#c=5,a:z")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_gauges', 1.5, 2, dict(name='gorm')),
-            ('stats_gauges', 2.0, 2, dict(name='gorm', a='b')),
-            ('stats_gauges', 3.5, 2, dict(name='gorm', a='b', c='5')),
             ('stats_gauges', 4.0, 2, dict(name='gorm', a='z', c='5')),
         ])
         statsd_module.tick()
-        statsd_verify(mock_pipe, [
-            ('stats_gauges', 4.0, 3, dict(name='gorm', a='z', c='5')),
-        ])
+        statsd_verify(mock_pipe, [])
 
     @statsd_setup(timestamps=range(1, 1000))
     def test_malformed_gauges(self, statsd_module):
@@ -359,7 +340,7 @@ class TestStatsDServer(unittest.TestCase):
     def test_bucketed_gauges_metadata(self, statsd_module):
         self.bucketed_metadata(statsd_module, "gorm:1|g")
 
-    @statsd_setup(sets_timeout=3, timestamps=(1, 2, 3, 4, 5, 6, 7, 8))
+    @statsd_setup(timestamps=(1, 2, 3, 4, 5, 6, 7, 8))
     def test_sets(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
         statsd_module.handle_line(0, "gorm:abc|s|@0.2")
@@ -372,28 +353,18 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(1, "gurm:z|s|@0.2")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_sets', dict(count=0.0), 2, dict(name='gorm')),
             ('stats_sets', dict(count=3.0), 2, dict(name='gurm'))
         ])
         statsd_module.handle_line(2, "gurm:y|s|@0.2")
         statsd_module.handle_line(2, "gurm:y|s")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_sets', dict(count=0.0), 3, dict(name='gorm')),
             ('stats_sets', dict(count=1.0), 3, dict(name='gurm'))
-        ])
-        statsd_module.tick()
-        statsd_verify(mock_pipe, [
-            ('stats_sets', dict(count=0.0), 4, dict(name='gurm'))
-        ])
-        statsd_module.tick()
-        statsd_verify(mock_pipe, [
-            ('stats_sets', dict(count=0.0), 5, dict(name='gurm'))
         ])
         statsd_module.tick()
         statsd_verify(mock_pipe, [])
 
-    @statsd_setup(sets_timeout=2, timestamps=range(1, 100))
+    @statsd_setup(timestamps=range(1, 100))
     def test_sets_metadata(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
         statsd_module.handle_line(0, "gorm:p|s")
@@ -411,15 +382,10 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(1, "gorm:u|s|#c=5,a:z")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_sets', dict(count=0), 2, dict(name='gorm')),
-            ('stats_sets', dict(count=0), 2, dict(name='gorm', a='b')),
-            ('stats_sets', dict(count=0), 2, dict(name='gorm', a='b', c='5')),
             ('stats_sets', dict(count=1), 2, dict(name='gorm', a='z', c='5')),
         ])
         statsd_module.tick()
-        statsd_verify(mock_pipe, [
-            ('stats_sets', dict(count=0), 3, dict(name='gorm', a='z', c='5')),
-        ])
+        statsd_verify(mock_pipe, [])
 
     @statsd_setup(timestamps=range(1, 1000))
     def test_malformed_sets(self, statsd_module):
@@ -437,8 +403,7 @@ class TestStatsDServer(unittest.TestCase):
     def test_bucketed_sets_metadata(self, statsd_module):
         self.bucketed_metadata(statsd_module, "gorm:x|s")
 
-    @statsd_setup(timers_timeout=0.3,
-                  flush_interval=0.1,
+    @statsd_setup(flush_interval=0.1,
                   percentile_thresholds=(90,),
                   timestamps=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7))
     def test_single_timer_sample(self, statsd_module):
@@ -461,14 +426,9 @@ class TestStatsDServer(unittest.TestCase):
             ('stats_timers', expected_value, 0.2, dict(name='gorm', percentile='90.0'))
         ])
         statsd_module.tick()
-        statsd_verify(mock_pipe, [
-            ('stats_timers', dict(count=0, count_ps=0), 0.3, dict(name='gorm'))
-        ])
-        statsd_module.tick()
         statsd_verify(mock_pipe, [])
 
-    @statsd_setup(timers_timeout=0.3,
-                  flush_interval=0.1,
+    @statsd_setup(flush_interval=0.1,
                   percentile_thresholds=(90,),
                   timestamps=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7))
     def test_timer_samples1(self, statsd_module):
@@ -489,8 +449,7 @@ class TestStatsDServer(unittest.TestCase):
             ('stats_timers', expected_value, 0.1, dict(name='gorm', percentile='90.0'))
         ])
 
-    @statsd_setup(timers_timeout=1,
-                  percentile_thresholds=(90,),
+    @statsd_setup(percentile_thresholds=(90,),
                   timestamps=(0.5, 1.0, 1.5, 2.0, 2.5, 3.0))
     def test_timer_samples2(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
@@ -510,8 +469,7 @@ class TestStatsDServer(unittest.TestCase):
             ('stats_timers', expected_value, 0.5, dict(name='gorm', percentile='90.0'))
         ])
 
-    @statsd_setup(timers_timeout=1,
-                  percentile_thresholds=(90,),
+    @statsd_setup(percentile_thresholds=(90,),
                   timestamps=(0.5, 1.0, 1.5, 2.0, 2.5, 3.0))
     def test_timer_samples3(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
@@ -534,7 +492,7 @@ class TestStatsDServer(unittest.TestCase):
 
     _percentile_thresholds = (10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 97, 98, 99, 99.9, 100)
 
-    @statsd_setup(timers_timeout=100, timestamps=range(1, 100), percentile_thresholds=_percentile_thresholds)
+    @statsd_setup(timestamps=range(1, 100), percentile_thresholds=_percentile_thresholds)
     def test_timer_large_series(self, statsd_module):
         test_name = 'gorm'
         test_vector = self.rand_vec(length=3000)
@@ -558,7 +516,7 @@ class TestStatsDServer(unittest.TestCase):
                                     dict(name=test_name, percentile=str(float(threshold_v)))))
         statsd_verify(statsd_module.dst_pipes[0], expected_values)
 
-    @statsd_setup(timers_timeout=2, timestamps=range(1, 100), percentile_thresholds=(100,))
+    @statsd_setup(timestamps=range(1, 100), percentile_thresholds=(100,))
     def test_timers_metadata(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
         expected_value = {
@@ -585,15 +543,10 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(1, "gorm:100|ms|#a:b,c=5")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_timers', dict(count=0, count_ps=0), 2, dict(name='gorm')),
-            ('stats_timers', dict(count=0, count_ps=0), 2, dict(name='gorm', a='b')),
             ('stats_timers', expected_value, 2, dict(name='gorm', a='b', c='5', percentile='100.0')),
-            ('stats_timers', dict(count=0, count_ps=0), 2, dict(name='gorm', a='z', c='5')),
         ])
         statsd_module.tick()
-        statsd_verify(mock_pipe, [
-            ('stats_timers', dict(count=0, count_ps=0), 3, dict(name='gorm', a='b', c='5')),
-        ])
+        statsd_verify(mock_pipe, [])
 
     @statsd_setup(timestamps=range(1, 1000))
     def test_malformed_timers(self, statsd_module):
@@ -611,8 +564,7 @@ class TestStatsDServer(unittest.TestCase):
     def test_bucketed_timers_metadata(self, statsd_module):
         self.bucketed_metadata(statsd_module, "gorm:1|ms", expected_metadata_size=3)
 
-    @statsd_setup(timers_timeout=0.3,
-                  flush_interval=0.1,
+    @statsd_setup(flush_interval=0.1,
                   timestamps=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7),
                   histogram_selector=lambda key: lambda x: 'test_histogram',)
     def test_histogram_samples1(self, statsd_module):
@@ -630,8 +582,7 @@ class TestStatsDServer(unittest.TestCase):
             ('stats_histograms', expected_value, 0.1, dict(name='gorm', histogram='test_histogram'))
         ])
 
-    @statsd_setup(timers_timeout=0.3,
-                  flush_interval=0.1,
+    @statsd_setup(flush_interval=0.1,
                   timestamps=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7),
                   histogram_selector=lambda key: lambda x: 'test_histogram', )
     def test_histogram_samples2(self, statsd_module):
@@ -652,8 +603,7 @@ class TestStatsDServer(unittest.TestCase):
             ('stats_histograms', expected_value, 0.1, dict(name='gorm', histogram='test_histogram'))
         ])
 
-    @statsd_setup(timers_timeout=0.3,
-                  flush_interval=0.1,
+    @statsd_setup(flush_interval=0.1,
                   timestamps=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7),
                   histogram_selector=multiple_histogram_selector)
     def test_histogram_large_series(self, statsd_module):
@@ -851,7 +801,7 @@ class TestStatsDServer(unittest.TestCase):
         for i in range(M):
             statsd_module.enqueue = lambda bucket, stats, timestamp, metadata: None
             statsd_module.timers.clear()
-            statsd_module.timers.update((k, (8, 8, v)) for k, v in test_set)
+            statsd_module.timers.update((k, (8, v)) for k, v in test_set)
             statsd_module.last_timestamp = 0
             statsd_module.current_timestamp = 10
             start_time = time.process_time()
@@ -869,7 +819,7 @@ class TestStatsDServer(unittest.TestCase):
         ), flush=True, file=sys.stderr)
 
     @statsd_setup(timestamps=range(1, 10000000), percentile_thresholds=(90,))
-    def test_1percentile1_performance(self, statsd_module):
+    def test_1percentile_performance(self, statsd_module):
         prof = self.prepare_performance_test()
         self.percentiles_performance(statsd_module, "1 percentile, 10000 vectors of 10 samples", 10, 10000, 10, prof)
         self.percentiles_performance(statsd_module, "1 percentile, 1000 vectors of 100 samples", 100, 1000, 10, prof)

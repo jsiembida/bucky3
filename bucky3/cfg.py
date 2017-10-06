@@ -1,40 +1,11 @@
 
 """
 
-The default configuration file for Bucky3.
-It's also intended to be a comprehensive configuration reference.
-
-
-This is Python code, parsed only once during the main module init. Once it's
-loaded, the main module spawns the requested modules passing them the config
-in the parsed form. That way, syntactic errors in the config make Bucky3 fail
-fast. Non syntactic errors are not validated. Config processing goes as follows:
-
-1. Environment variables in the form of $${VAR} are interpolated. A variable can
-   be empty. A missing variable however, will trigger the main init failure.
-2. After the variable interpolation, the file is loaded as Python code into its
-   own context (Python "exec" function). Most importantly, this means:
-   - it has to be syntactically correct Python code
-   - config is indentation sensitive
-   - config can contain any Python constructs, including imports, functions etc.
-3. Then the main module finds all dictionaries that:
-   - are declared in the global context of the config
-   - have names not starting with underscore (i.e. "_foo={}" is skipped)
-   - have the key "module_type" defined as one of "statsd_server", "linux_stats",
-     "docker_stats", "influxdb_client", "prometheus_exporter", "carbon_client".
-     The "module_type" value not on the list will trigger the main init failure.
-   Such dictionaries are assumed to be modules' specific configurations and are
-   removed from the global config context. Other variables in the config are
-   assumed to be the global configuration that is inherited by all modules.
-4. Dictionaries from point 3, having the key "module_inactive=True" are skipped.
-5. Thus remaining list of dictionaries must define at least one source module
-   and one destination module, if it doesn't, the main init fails.
-6. All module dictionaries are updated with the variables remaining in the config
-   context (they don't override the module variables with the same names though).
-7. Now, processes are forked with the respective dictionaries passed to them.
-
-
-Notes:
+The default configuration file for Bucky3. Also intended as a comprehensive
+configuration reference. This is Python code, parsed only once during the main
+module init. Once it's loaded, the main module spawns the requested modules
+passing them the config in the parsed form. That way, syntactic errors in
+the config make Bucky3 fail fast.
 
 - The main module itself uses only "log_level" and "log_format" parameters. Other
 parameters are module specific. All modules (including the main module) ignore
@@ -134,8 +105,9 @@ metadata = dict(
 # - Example: self_report = True
 
 
-# This dictionary is a module configuration (see description at the top).
-# The name "linuxstats" doesn't matter so long as it does not start with underscore.
+# This dictionary is a module configuration.
+# The name "linuxstats" doesn't matter as such, but should be descriptive
+# as it is included by default in the log formatter.
 # The module inherits all options defined in the global context.
 linuxstats = dict(
     # module_type
@@ -148,10 +120,10 @@ linuxstats = dict(
     module_type="linux_stats",
 
     # module_inactive
-    # - bool, de/activates the module config (see description at the top).
+    # - bool, de/activates the module config.
     # - Optional, default: False
     # - On non-Linux this module will fail, set the "module_inactive=True" to disable it.
-    #   Or delete the whole section.
+    #   Or delete the whole section. It is a convenience.
     module_inactive=False,
 
     # disk_whitelist, disk_blacklist
@@ -260,25 +232,6 @@ statsd = dict(
     sets_bucket="stats_sets",
     gauges_bucket="stats_gauges",
     counters_bucket="stats_counters",
-
-    # timers_timeout
-    # - int, data expiry in seconds
-    # - Required
-    # - statsd_server module periodically (see flush_interval) aggregates the received metrics
-    #   and while doing it, the metrics that were not "refreshed" within the given number of
-    #   seconds will be dropped. The "refresh" is defined as the UDP packet arrival.
-    #   This value should be longer than flush_interval, otherwise the metrics will not get
-    #   propagated to the destination module(s).
-    timers_timeout=60,
-
-    # histograms_timeout, sets_timeout, gauges_timeout, counters_timeout
-    # - int, data expiry in seconds
-    # - Required
-    # - See the timers_timeout above
-    histograms_timeout=60,
-    sets_timeout=60,
-    gauges_timeout=60,
-    counters_timeout=60,
 
     # percentile_thresholds, percentile ranges for timers
     # - tuple of float
