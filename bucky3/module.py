@@ -126,7 +126,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
                     memory=usage.ru_maxrss,
                     uptime=round(time.monotonic() - self.init_time, 3),
                 ),
-                round(time.time(), 3),
+                None,
                 dict(name=self.name),
             ))
 
@@ -140,7 +140,7 @@ class MetricsDstProcess(MetricsProcess):
         self.src_pipes = src_pipes
 
     def process_self_report(self, batch):
-        self.process_batch([batch])
+        self.process_batch(round(time.time(), 3), [batch])
 
     def loop(self):
         err = 0
