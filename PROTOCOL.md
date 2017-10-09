@@ -130,7 +130,7 @@ The counter values are most often used as sums over a time window for
 measuring requests per second (RPS) or requests per minute (RPM).
 
 Now, *technically* a counter can be increased by any amount, so the
-value after the semicolon may be other than 1. Bucky3 does handle this
+value after the colon may be other than 1. Bucky3 does handle this
 case, making it possible to nudge a counter up by arbitrary amounts.
 However, in practice you should never need to do this. For sanity,
 simply increase a counter always by 1.

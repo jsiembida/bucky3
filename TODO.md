@@ -3,8 +3,6 @@
 ##### High priority
 
 * More tests, especially for common modules code and the main process.
-* Document StatsD protocol implementation. In detail sufficient for somebody to write
-  a fully featured client without resorting to RTFS.
 
 
 ##### Medium priority

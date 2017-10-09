@@ -78,6 +78,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.next_tick = None
         self.next_flush = 0
         self.metadata = self.cfg.get('metadata')
+        self.add_timestamps = self.cfg.get('add_timestamps', False)
         self.self_report = self.cfg.get('self_report', False)
         self.self_report_timestamp = 0
         self.init_time = time.monotonic()
@@ -166,6 +167,14 @@ class MetricsDstProcess(MetricsProcess):
             elif err:
                 time.sleep(1)
 
+    # Prometheus2 introduces new semantics of timing out time series and we want it.
+    # This only works with metrics with no timestamps provided. So we do just that.
+    # We avoid using timestamps as much as possible. InfluxDB and Prometheus take such
+    # metrics just fine. For short flush windows we are off by a few secs, so that's ok.
+    # For edge cases like very late stats from Cloudwatch of Cloudflare we need
+    # to explicitly provide backdated timestamps. For InfluxDB and Prometheus it would
+    # make no difference anyway, for Prometheus2 it will revert the timing out logic
+    # to the old Prometheus behaviour - and there is no working around it for now.
     def process_batch(self, batch):
         for sample in batch:
             if len(sample) == 4:

@@ -70,6 +70,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def enqueue_timers(self, system_timestamp):
         interval = self.current_timestamp - self.last_timestamp
         bucket = self.cfg['timers_bucket']
+        timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, v) in self.timers.items():
             v.sort()
             count = len(v)
@@ -90,7 +91,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                             stats['stdev'] = var ** 0.5
                         metadata = dict(percentile=str(next_t))
                         metadata.update(k)
-                        self.enqueue(bucket, stats, cust_timestamp or system_timestamp, metadata)
+                        self.enqueue(bucket, stats, cust_timestamp or timestamp, metadata)
                         next_i, next_t = next(thresholds)
             except StopIteration:
                 pass
@@ -99,6 +100,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def enqueue_histograms(self, system_timestamp):
         interval = self.current_timestamp - self.last_timestamp
         bucket = self.cfg['histograms_bucket']
+        timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, selector, buckets) in self.histograms.items():
             for histogram_bucket, (vlen, vsum, vsum_squares, vmin, vmax) in buckets.items():
                 mean = vsum / vlen
@@ -108,30 +110,33 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                     stats['stdev'] = var ** 0.5
                 metadata = dict(histogram=str(histogram_bucket))
                 metadata.update(k)
-                self.enqueue(bucket, stats, cust_timestamp or system_timestamp, metadata)
+                self.enqueue(bucket, stats, cust_timestamp or timestamp, metadata)
         self.histograms = {}
 
     def enqueue_sets(self, system_timestamp):
         bucket = self.cfg['sets_bucket']
+        timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, v) in self.sets.items():
-            self.enqueue(bucket, {"count": float(len(v))}, cust_timestamp or system_timestamp, dict(k))
+            self.enqueue(bucket, {"count": float(len(v))}, cust_timestamp or timestamp, dict(k))
         self.sets = {}
 
     def enqueue_gauges(self, system_timestamp):
         bucket = self.cfg['gauges_bucket']
+        timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, v) in self.gauges.items():
-            self.enqueue(bucket, float(v), cust_timestamp or system_timestamp, dict(k))
+            self.enqueue(bucket, float(v), cust_timestamp or timestamp, dict(k))
         self.gauges = {}
 
     def enqueue_counters(self, system_timestamp):
         interval = self.current_timestamp - self.last_timestamp
         bucket = self.cfg['counters_bucket']
+        timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, v) in self.counters.items():
             stats = {
                 'rate': float(v) / interval,
                 'count': float(v)
             }
-            self.enqueue(bucket, stats, cust_timestamp or system_timestamp, dict(k))
+            self.enqueue(bucket, stats, cust_timestamp or timestamp, dict(k))
         self.counters = {}
 
     def handle_packet(self, data, addr=None):
