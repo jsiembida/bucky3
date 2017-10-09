@@ -149,7 +149,7 @@ class MetricsDstProcess(MetricsProcess):
             for pipe in multiprocessing.connection.wait(self.src_pipes, min(self.tick_interval, 60)):
                 try:
                     batch = pipe.recv()
-                    self.process_batch(batch)
+                    self.process_batch(round(time.time(), 3), batch)
                 except InterruptedError:
                     pass
                 except EOFError:
@@ -167,15 +167,7 @@ class MetricsDstProcess(MetricsProcess):
             elif err:
                 time.sleep(1)
 
-    # Prometheus2 introduces new semantics of timing out time series and we want it.
-    # This only works with metrics with no timestamps provided. So we do just that.
-    # We avoid using timestamps as much as possible. InfluxDB and Prometheus take such
-    # metrics just fine. For short flush windows we are off by a few secs, so that's ok.
-    # For edge cases like very late stats from Cloudwatch of Cloudflare we need
-    # to explicitly provide backdated timestamps. For InfluxDB and Prometheus it would
-    # make no difference anyway, for Prometheus2 it will revert the timing out logic
-    # to the old Prometheus behaviour - and there is no working around it for now.
-    def process_batch(self, batch):
+    def process_batch(self, recv_timestamp, batch):
         for sample in batch:
             if len(sample) == 4:
                 bucket, value, timestamp, metadata = sample
@@ -189,14 +181,14 @@ class MetricsDstProcess(MetricsProcess):
                 metadata = self.metadata
 
             if type(value) is dict:
-                self.process_values(bucket, value, timestamp, metadata)
+                self.process_values(recv_timestamp, bucket, value, timestamp, metadata)
             else:
-                self.process_value(bucket, value, timestamp, metadata)
+                self.process_value(recv_timestamp, bucket, value, timestamp, metadata)
 
-    def process_values(self, bucket, values, timestamp, metadata=None):
+    def process_values(self, recv_timestamp, bucket, values, metric_timestamp, metadata=None):
         raise NotImplementedError()
 
-    def process_value(self, bucket, value, timestamp, metadata=None):
+    def process_value(self, recv_timestamp, bucket, value, metric_timestamp, metadata=None):
         raise NotImplementedError()
 
 
@@ -292,8 +284,8 @@ class MetricsPushProcess(MetricsDstProcess):
         self.resolved_hosts = None
         self.resolved_hosts_timestamp = 0
 
-    def process_batch(self, batch):
-        super().process_batch(batch)
+    def process_batch(self, recv_timestamp, batch):
+        super().process_batch(recv_timestamp, batch)
         self.tick()
         self.trim_buffer()
 

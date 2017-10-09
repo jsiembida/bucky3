@@ -15,7 +15,6 @@
 # Copyright 2011 Cloudant, Inc.
 
 
-import time
 import bucky3.module as module
 
 
@@ -41,18 +40,16 @@ class CarbonClient(module.MetricsPushProcess, module.TCPConnector):
         buf.extend(metadata[k] for k in sorted(metadata.keys()))
         return '.'.join(self.translate_token(t) for t in buf)
 
-    def process_values(self, bucket, values, timestamp, metadata=None):
-        if timestamp is None:
-            timestamp = time.time()
+    def process_values(self, recv_timestamp, bucket, values, timestamp, metadata=None):
         for k, v in values.items():
             if metadata:
                 metadata_dict = metadata.copy()
                 metadata_dict.update(value=k)
             else:
                 metadata_dict = dict(value=k)
-            self.process_value(bucket, v, timestamp, metadata_dict)
+            self.process_value(recv_timestamp, bucket, v, timestamp, metadata_dict)
 
-    def process_value(self, bucket, value, timestamp, metadata=None):
+    def process_value(self, recv_timestamp, bucket, value, timestamp, metadata=None):
         if metadata:
             metadata.update(bucket=bucket)
         else:

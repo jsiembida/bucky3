@@ -16,7 +16,7 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
             for ip, port in self.resolve_remote_hosts():
                 self.socket.sendto(payload, (ip, port))
 
-    def process_values(self, bucket, values, timestamp, metadata=None):
+    def process_values(self, recv_timestamp, bucket, values, timestamp, metadata=None):
         # https://docs.influxdata.com/influxdb/v1.2/write_protocols/line_protocol_tutorial/
         label_buf = [bucket]
         if metadata:
@@ -44,5 +44,5 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
             line += ' ' + str(int(timestamp * 1000000000))
         self.buffer.append(line)
 
-    def process_value(self, bucket, value, timestamp, metadata=None):
-        self.process_values(bucket, {'value': value}, timestamp, metadata)
+    def process_value(self, recv_timestamp, bucket, value, timestamp, metadata=None):
+        self.process_values(recv_timestamp, bucket, {'value': value}, timestamp, metadata)
