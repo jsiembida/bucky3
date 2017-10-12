@@ -117,6 +117,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
             return None
         now = time.monotonic()
         if now - self.self_report_timestamp >= 59:
+            self.log.info("Taking self report")
             self.self_report_timestamp = now
             usage = resource.getrusage(resource.RUSAGE_SELF)
             self.process_self_report((
@@ -203,7 +204,7 @@ class MetricsSrcProcess(MetricsProcess):
 
     def process_self_report(self, batch):
         self.buffer.append(batch)
-        self.flush(round(time.time(), 3))
+        MetricsSrcProcess.flush(self, round(time.time(), 3))
 
     def flush(self, system_timestamp):
         if self.buffer:
