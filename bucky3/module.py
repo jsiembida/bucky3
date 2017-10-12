@@ -78,6 +78,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.next_tick = None
         self.next_flush = 0
         self.metadata = self.cfg.get('metadata')
+        self.add_timestamps = self.cfg.get('add_timestamps', False)
         self.self_report = self.cfg.get('self_report', False)
         self.self_report_timestamp = 0
         self.init_time = time.monotonic()
@@ -125,7 +126,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
                     memory=usage.ru_maxrss,
                     uptime=round(time.monotonic() - self.init_time, 3),
                 ),
-                round(time.time(), 3),
+                None,
                 dict(name=self.name),
             ))
 
@@ -139,7 +140,7 @@ class MetricsDstProcess(MetricsProcess):
         self.src_pipes = src_pipes
 
     def process_self_report(self, batch):
-        self.process_batch([batch])
+        self.process_batch(round(time.time(), 3), [batch])
 
     def loop(self):
         err = 0
@@ -148,7 +149,7 @@ class MetricsDstProcess(MetricsProcess):
             for pipe in multiprocessing.connection.wait(self.src_pipes, min(self.tick_interval, 60)):
                 try:
                     batch = pipe.recv()
-                    self.process_batch(batch)
+                    self.process_batch(round(time.time(), 3), batch)
                 except InterruptedError:
                     pass
                 except EOFError:
@@ -166,7 +167,7 @@ class MetricsDstProcess(MetricsProcess):
             elif err:
                 time.sleep(1)
 
-    def process_batch(self, batch):
+    def process_batch(self, recv_timestamp, batch):
         for sample in batch:
             if len(sample) == 4:
                 bucket, value, timestamp, metadata = sample
@@ -180,14 +181,14 @@ class MetricsDstProcess(MetricsProcess):
                 metadata = self.metadata
 
             if type(value) is dict:
-                self.process_values(bucket, value, timestamp, metadata)
+                self.process_values(recv_timestamp, bucket, value, timestamp, metadata)
             else:
-                self.process_value(bucket, value, timestamp, metadata)
+                self.process_value(recv_timestamp, bucket, value, timestamp, metadata)
 
-    def process_values(self, bucket, values, timestamp, metadata=None):
+    def process_values(self, recv_timestamp, bucket, values, metric_timestamp, metadata=None):
         raise NotImplementedError()
 
-    def process_value(self, bucket, value, timestamp, metadata=None):
+    def process_value(self, recv_timestamp, bucket, value, metric_timestamp, metadata=None):
         raise NotImplementedError()
 
 
@@ -283,8 +284,8 @@ class MetricsPushProcess(MetricsDstProcess):
         self.resolved_hosts = None
         self.resolved_hosts_timestamp = 0
 
-    def process_batch(self, batch):
-        super().process_batch(batch)
+    def process_batch(self, recv_timestamp, batch):
+        super().process_batch(recv_timestamp, batch)
         self.tick()
         self.trim_buffer()
 

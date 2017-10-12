@@ -202,10 +202,11 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
             self.buffer.append(("system_protocol", v, timestamp, dict(name=k)))
 
     def flush(self, system_timestamp):
-        self.read_activity_stats(system_timestamp)
-        self.read_memory_stats(system_timestamp)
-        self.read_interface_stats(system_timestamp)
-        self.read_filesystem_stats(system_timestamp)
-        self.read_disk_stats(system_timestamp)
-        self.read_protocol_stats(system_timestamp)
+        timestamp = system_timestamp if self.add_timestamps else None
+        self.read_activity_stats(timestamp)
+        self.read_memory_stats(timestamp)
+        self.read_interface_stats(timestamp)
+        self.read_filesystem_stats(timestamp)
+        self.read_disk_stats(timestamp)
+        self.read_protocol_stats(timestamp)
         return super().flush(system_timestamp)

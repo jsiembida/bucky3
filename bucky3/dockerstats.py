@@ -87,14 +87,15 @@ class DockerStatsCollector(module.MetricsSrcProcess):
 
     def flush(self, system_timestamp):
         try:
+            timestamp = system_timestamp if self.add_timestamps else None
             for i, container in enumerate(self.docker_client.api.containers(size=True)):
                 if container.get('State') == 'running' or container.get('Status', '').startswith('Up'):
                     container_id, container_metadata, host_config = self.get_container_info(container)
                     stats_info = self.docker_client.api.stats(container_id, decode=True, stream=False)
-                    self.read_df_stats(system_timestamp, container_metadata, int(container['SizeRootFs']), int(container.get('SizeRw', 0)))
-                    self.read_cpu_stats(system_timestamp, container_metadata, stats_info['cpu_stats']['cpu_usage'], host_config)
-                    self.read_memory_stats(system_timestamp, container_metadata, stats_info['memory_stats'])
-                    self.read_interface_stats(system_timestamp, container_metadata, stats_info.get('networks'))
+                    self.read_df_stats(timestamp, container_metadata, int(container['SizeRootFs']), int(container.get('SizeRw', 0)))
+                    self.read_cpu_stats(timestamp, container_metadata, stats_info['cpu_stats']['cpu_usage'], host_config)
+                    self.read_memory_stats(timestamp, container_metadata, stats_info['memory_stats'])
+                    self.read_interface_stats(timestamp, container_metadata, stats_info.get('networks'))
             return super().flush(system_timestamp)
         except requests.exceptions.ConnectionError:
             self.log.info("Docker connection error, is docker running?")

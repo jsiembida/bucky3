@@ -65,9 +65,8 @@ flush_interval = 10
 # metadata
 # - dict of str:str, extra metadata injected into metrics
 # - Optional, default: None
-# - Destination modules add this metadata to the metrics received from the source modules.
-#   A union operation with metrics metadata taking precedence, keys defined here only get
-#   added when non present in the metrics. Having the host name injected is very helpful,
+# - Destination modules merge this metadata into the metrics received from the source modules,
+#   with metadata in metrics taking precedence. Having the host name injected is very helpful,
 #   other helpful could be "env", "location" or "team" - depending on your infrastructure.
 metadata = dict(
     host="${BUCKY3_HOST}",
@@ -102,7 +101,27 @@ metadata = dict(
 # self_report
 # - bool, if modules should produce metrics about themselves
 # - Optional, default: False
+# - Each source and each destination module will report CPU usage, MEM usage and uptime
+#   when this option is on. Self reporting is throttled to roughly max(flush_interval, 60).
+#   So the self report will be produced no more often than once a minute, but may be produced
+#   less often if the flush period is long. Note, the main module, by design, will not report
+#   anything regardless of the setting.
 # - Example: self_report = True
+
+
+# add_timestamps
+# - bool, if metrics produced should have timestamps added
+# - Optional, default: False
+# - Each source module can add timestamps to the metrics they produce.
+#   Prometheus 2 comes with new metrics timeout semantics - if you want to use them, leave
+#   this option off.
+#   For InfluxDB and Prometheus that option doesn't matter much so long as the flush_window
+#   is relatively short. If unsure, switch it on.
+#   For carbon, you want this option being on (but the module will work regardless)
+#   In any case, metrics coming via StatsD protocol with explicitly provided timestamps
+#   will always have timestamps included. This is to provide capability of backfilling
+#   late metrics and for those new Prometheus 2 semantics won't work anyway.
+# Example: add_timestamps = True
 
 
 # This dictionary is a module configuration.
@@ -123,7 +142,7 @@ linuxstats = dict(
     # - bool, de/activates the module config.
     # - Optional, default: False
     # - On non-Linux this module will fail, set the "module_inactive=True" to disable it.
-    #   Or delete the whole section. It is a convenience.
+    #   Or delete the whole section. This option is a convenience.
     module_inactive=False,
 
     # disk_whitelist, disk_blacklist
@@ -301,24 +320,23 @@ prometheus = dict(
     # http_path
     # - str
     # - Optional, default: "metrics"
-    # - This module only replies to HTTP GETs for /http_path, by default it's /metrics.
-    #   Other requests receive 404. If you use http_path="", the endpoint will be GET /.
+    # - This module only replies to GETs for /http_path, by default it is GET /metrics
+    #   Other requests receive 404. If you use http_path="", the endpoint will be GET /
     # Example: http_path=""
 
     # As describe above, flush_interval should be longer for this module.
-    flush_interval=60,
+    flush_interval=5,
 
     # values_timeout, data retention (in seconds)
     # - int
     # - Required
     # - Every flush_interval seconds this module runs a housekeeping task. The task
     #   finds all metrics that has not been refreshed (received from source modules)
-    #   in values_timeout seconds and removes them. It is important that this parameter
-    #   is long enough in relation to scraping frequency. Retention 2-3 x longer than
-    #   scraping interval seems like a reasonable minimum.
-    values_timeout=300,
+    #   in values_timeout seconds and removes them. This parameter in combination with
+    #   flush_interval and Prometheus scraping period determine liveness of your metrics.
+    values_timeout=14,
 
-    # As describe above, you likely want this module start up asap.
+    # As described above, you likely want this module start up asap.
     randomize_startup=False,
 )
 

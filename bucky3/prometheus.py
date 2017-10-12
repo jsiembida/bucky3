@@ -48,7 +48,7 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
         tmp = self.buffer.get(k)
         if not tmp:
             return ''
-        timestamp, value, line = tmp
+        recv_timestamp, metric_timestamp, value, line = tmp
         if not line:
             # https://prometheus.io/docs/instrumenting/exposition_formats/
             bucket, metadata = k[0], k[1:]
@@ -56,10 +56,13 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
                 metadata_str = ','.join(str(k) + '="' + str(v) + '"' for k, v in metadata)
                 # Lines MUST end with \n (not \r\n), the last line MUST also end with \n
                 # Otherwise, Prometheus will reject the whole scrape!
-                line = bucket + '{' + metadata_str + '} ' + str(value) + ' ' + str(int(timestamp * 1000)) + '\n'
+                line = bucket + '{' + metadata_str + '} ' + str(value)
             else:
-                line = bucket + ' ' + str(value) + ' ' + str(int(timestamp * 1000)) + '\n'
-            self.buffer[k] = timestamp, value, line
+                line = bucket + ' ' + str(value)
+            if metric_timestamp is not None:
+                line += ' ' + str(int(metric_timestamp * 1000))
+            line += '\n'
+            self.buffer[k] = recv_timestamp, metric_timestamp, value, line
         return line
 
     def get_chunks(self):
@@ -79,24 +82,27 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
 
     def flush(self, system_timestamp):
         timeout = self.cfg['values_timeout']
-        old_keys = [k for k, (timestamp, v, l) in self.buffer.items() if (system_timestamp - timestamp) > timeout]
+        old_keys = [
+            k for k, (recv_timestamp, metric_timestamp, v, l) in self.buffer.items()
+            if (system_timestamp - recv_timestamp) > timeout
+        ]
         for k in old_keys:
             del self.buffer[k]
         return True
 
-    def process_values(self, bucket, values, timestamp, metadata=None):
+    def process_values(self, recv_timestamp, bucket, values, metrics_timestamp, metadata=None):
         for k, v in values.items():
             if metadata:
                 metadata_dict = metadata.copy()
                 metadata_dict.update(value=k)
             else:
                 metadata_dict = dict(value=k)
-            self.process_value(bucket, v, timestamp, metadata_dict)
+            self.process_value(recv_timestamp, bucket, v, metrics_timestamp, metadata_dict)
 
-    def process_value(self, bucket, value, timestamp, metadata=None):
+    def process_value(self, recv_timestamp, bucket, value, metric_timestamp, metadata=None):
         if metadata:
             metadata_tuple = (bucket,) + tuple((k, metadata[k]) for k in sorted(metadata.keys()))
         else:
             metadata_tuple = (bucket,)
         # The None below will get lazily rendered during HTTP req
-        self.buffer[metadata_tuple] = timestamp, value, None
+        self.buffer[metadata_tuple] = recv_timestamp, metric_timestamp, value, None

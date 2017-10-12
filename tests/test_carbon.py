@@ -43,11 +43,11 @@ def carbon_setup(timestamps, **extra_cfg):
 class TestCarbonClient(unittest.TestCase):
     @carbon_setup(timestamps=range(1, 100))
     def test_simple_single_values(self, carbon_module):
-        carbon_module.process_value('val1', 10.3, 1)
-        carbon_module.process_value('val2', 11, 1)
-        carbon_module.process_value('val1', 12.555, 2)
-        carbon_module.process_value('val.3', 13, 1)
-        carbon_module.process_value('val*3', 14, 1)
+        carbon_module.process_value(2, 'val1', 10.3, 1)
+        carbon_module.process_value(2, 'val2', 11, 1)
+        carbon_module.process_value(2, 'val1', 12.555, 2)
+        carbon_module.process_value(2, 'val.3', 13, 1)
+        carbon_module.process_value(2, 'val*3', 14, 1)
         return [
             'val1 10.3 1\n',
             'val2 11 1\n',
@@ -58,10 +58,10 @@ class TestCarbonClient(unittest.TestCase):
 
     @carbon_setup(timestamps=range(1, 100))
     def test_single_values(self, carbon_module):
-        carbon_module.process_value('val1', 10, 1, dict(a='1', b='2'))
-        carbon_module.process_value('val2', 11, 3, dict(path='/foo/bar', foo='world'))
-        carbon_module.process_value('val.3', 13.567, 1, dict(path='foo.bar', hello='world'))
-        carbon_module.process_value('val*3', 14, 1, dict(a='foo.bar', hello='world'))
+        carbon_module.process_value(2, 'val1', 10, 1, dict(a='1', b='2'))
+        carbon_module.process_value(2, 'val2', 11, 3, dict(path='/foo/bar', foo='world'))
+        carbon_module.process_value(2, 'val.3', 13.567, 1, dict(path='foo.bar', hello='world'))
+        carbon_module.process_value(2, 'val*3', 14, 1, dict(a='foo.bar', hello='world'))
         return [
             'val1.1.2 10 1\n',
             'val2.world._foo_bar 11 3\n',
@@ -71,9 +71,9 @@ class TestCarbonClient(unittest.TestCase):
 
     @carbon_setup(timestamps=range(1, 100))
     def test_simple_multi_values(self, carbon_module):
-        carbon_module.process_values('val1', dict(x=1, y=2), 1)
-        carbon_module.process_values('val/2', dict(a=1.23, b=10.10), 1)
-        carbon_module.process_values('val1', dict(y=10, z=11), 2)
+        carbon_module.process_values(2, 'val1', dict(x=1, y=2), 1)
+        carbon_module.process_values(2, 'val/2', dict(a=1.23, b=10.10), 1)
+        carbon_module.process_values(2, 'val1', dict(y=10, z=11), 2)
         return [
             'val1.x 1 1\n',
             'val1.y 2 1\n',
@@ -85,9 +85,9 @@ class TestCarbonClient(unittest.TestCase):
 
     @carbon_setup(timestamps=range(1, 100))
     def test_multi_values(self, carbon_module):
-        carbon_module.process_values('val1', dict(x=1.002, y=0.2), 1, dict(path='/foo/bar', foo='world', hello='world'))
-        carbon_module.process_values('val/2', dict(a=1, b=10), 1, dict(a='1', b='2'))
-        carbon_module.process_values('val1', dict(y=10, z=11.1), 2, dict(path='foo.bar', hello='world'))
+        carbon_module.process_values(2, 'val1', dict(x=1.002, y=0.2), 1, dict(path='/foo/bar', foo='world', hello='world'))
+        carbon_module.process_values(2, 'val/2', dict(a=1, b=10), 1, dict(a='1', b='2'))
+        carbon_module.process_values(2, 'val1', dict(y=10, z=11.1), 2, dict(path='foo.bar', hello='world'))
         return [
             'val1.world.x.world._foo_bar 1.002 1\n',
             'val1.world.y.world._foo_bar 0.2 1\n',

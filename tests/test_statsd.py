@@ -50,6 +50,7 @@ def statsd_setup(timestamps, **extra_cfg):
             monotonic_time.side_effect = monotonic_time_mock
             cfg = dict(
                 flush_interval=1,
+                add_timestamps=True,
                 timers_bucket="stats_timers",
                 histograms_bucket="stats_histograms",
                 sets_bucket="stats_sets",
