@@ -1,6 +1,5 @@
 
 
-import time
 import threading
 import http.server
 import bucky3.module as module
@@ -91,22 +90,19 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
             del self.buffer[k]
         return True
 
-    def process_values(self, bucket, values, metrics_timestamp, metadata=None):
-        recv_timestamp = time.time()
+    def process_values(self, recv_timestamp, bucket, values, metrics_timestamp, metadata=None):
         for k, v in values.items():
             if metadata:
                 metadata_dict = metadata.copy()
                 metadata_dict.update(value=k)
             else:
                 metadata_dict = dict(value=k)
-            self.process_value(bucket, v, metrics_timestamp, metadata_dict, recv_timestamp)
+            self.process_value(recv_timestamp, bucket, v, metrics_timestamp, metadata_dict)
 
-    def process_value(self, bucket, value, metric_timestamp, metadata=None, recv_timestamp=None):
+    def process_value(self, recv_timestamp, bucket, value, metric_timestamp, metadata=None):
         if metadata:
             metadata_tuple = (bucket,) + tuple((k, metadata[k]) for k in sorted(metadata.keys()))
         else:
             metadata_tuple = (bucket,)
-        if recv_timestamp is None:
-            recv_timestamp = time.time()
         # The None below will get lazily rendered during HTTP req
         self.buffer[metadata_tuple] = recv_timestamp, metric_timestamp, value, None

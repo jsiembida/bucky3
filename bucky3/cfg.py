@@ -109,6 +109,21 @@ metadata = dict(
 # - Example: self_report = True
 
 
+# add_timestamps
+# - bool, if metrics produced should have timestamps added
+# - Optional, default: False
+# - Each source module can add timestamps to the metrics they produce.
+#   Prometheus 2 comes with new metrics timeout semantics - if you want to use them, leave
+#   this option off.
+#   For InfluxDB and Prometheus that option doesn't matter much so long as the flush_window
+#   is relatively short. If unsure, switch it on.
+#   For carbon, you want this option being on (but the module will work regardless)
+#   In any case, metrics coming via StatsD protocol with explicitly provided timestamps
+#   will always have timestamps included. This is to provide capability of backfilling
+#   late metrics and for those new Prometheus 2 semantics won't work anyway.
+# Example: add_timestamps = True
+
+
 # This dictionary is a module configuration.
 # The name "linuxstats" doesn't matter as such, but should be descriptive
 # as it is included by default in the log formatter.

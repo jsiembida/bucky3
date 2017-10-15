@@ -40,14 +40,14 @@ def influxdb_setup(timestamps, **extra_cfg):
         return wrapper
 
 
-class TestCarbonClient(unittest.TestCase):
+class TestInfluxDBClient(unittest.TestCase):
     @influxdb_setup(timestamps=range(1, 100))
     def test_simple_single_values(self, influxdb_module):
-        influxdb_module.process_value('val1', 10, 1)
-        influxdb_module.process_value('val2', 11.0, 1)
-        influxdb_module.process_value('val1', 12.7, 2)
-        influxdb_module.process_value('val.3', 13, 1)
-        influxdb_module.process_value('val*3', 14, 1)
+        influxdb_module.process_value(2, 'val1', 10, 1)
+        influxdb_module.process_value(2, 'val2', 11.0, 1)
+        influxdb_module.process_value(2, 'val1', 12.7, 2)
+        influxdb_module.process_value(2, 'val.3', 13, 1)
+        influxdb_module.process_value(2, 'val*3', 14, 1)
         return [
             'val1 value=10i 1000000000',
             'val2 value=11.0 1000000000',
@@ -58,10 +58,10 @@ class TestCarbonClient(unittest.TestCase):
 
     @influxdb_setup(timestamps=range(1, 100))
     def test_single_values(self, influxdb_module):
-        influxdb_module.process_value('val1', 10, 1, dict(a='1', b='2'))
-        influxdb_module.process_value('val2', 11, 3, dict(path='/foo/bar', foo='world'))
-        influxdb_module.process_value('val.3', 13.3, 1, dict(path='foo.bar', hello='world'))
-        influxdb_module.process_value('val*3', 14.1, 1, dict(a='foo.bar', hello='world'))
+        influxdb_module.process_value(2, 'val1', 10, 1, dict(a='1', b='2'))
+        influxdb_module.process_value(2, 'val2', 11, 3, dict(path='/foo/bar', foo='world'))
+        influxdb_module.process_value(2, 'val.3', 13.3, 1, dict(path='foo.bar', hello='world'))
+        influxdb_module.process_value(2, 'val*3', 14.1, 1, dict(a='foo.bar', hello='world'))
         return [
             'val1,a=1,b=2 value=10i 1000000000',
             'val2,foo=world,path=/foo/bar value=11i 3000000000',
@@ -71,9 +71,9 @@ class TestCarbonClient(unittest.TestCase):
 
     @influxdb_setup(timestamps=range(1, 100))
     def test_simple_multi_values(self, influxdb_module):
-        influxdb_module.process_values('val1', dict(x=1.5, y=2), 1)
-        influxdb_module.process_values('val/2', dict(a=1, b=10), 1)
-        influxdb_module.process_values('val1', dict(y=10, z=1.234), 2)
+        influxdb_module.process_values(2, 'val1', dict(x=1.5, y=2), 1)
+        influxdb_module.process_values(2, 'val/2', dict(a=1, b=10), 1)
+        influxdb_module.process_values(2, 'val1', dict(y=10, z=1.234), 2)
         return [
             'val1 x=1.5,y=2i 1000000000',
             'val/2 a=1i,b=10i 1000000000',
@@ -82,9 +82,9 @@ class TestCarbonClient(unittest.TestCase):
 
     @influxdb_setup(timestamps=range(1, 100))
     def test_multi_values(self, influxdb_module):
-        influxdb_module.process_values('val1', dict(x=1, y=2), 1, dict(path='/foo/bar', foo='world', hello='world'))
-        influxdb_module.process_values('val/2', dict(a=1.2, b=10), 1, dict(a='1', b='2'))
-        influxdb_module.process_values('val1', dict(y=10, z=11.22), 2, dict(path='foo.bar', hello='world'))
+        influxdb_module.process_values(2, 'val1', dict(x=1, y=2), 1, dict(path='/foo/bar', foo='world', hello='world'))
+        influxdb_module.process_values(2, 'val/2', dict(a=1.2, b=10), 1, dict(a='1', b='2'))
+        influxdb_module.process_values(2, 'val1', dict(y=10, z=11.22), 2, dict(path='foo.bar', hello='world'))
         return [
             'val1,foo=world,hello=world,path=/foo/bar x=1i,y=2i 1000000000',
             'val/2,a=1,b=2 a=1.2,b=10i 1000000000',
