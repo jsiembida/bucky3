@@ -23,7 +23,7 @@ do the full stop/start sequence.
 # - Optional, default: 'INFO'
 # - More here: https://docs.python.org/3/library/logging.html#levels
 #   This option is in global context and will be used by all modules unless overridden.
-log_level = "DEBUG"
+log_level = "INFO"
 
 
 # log_format
@@ -173,7 +173,7 @@ linuxstats = dict(
 # Set "module_inactive=False" (or remove the line) to enable it.
 dockerstats = dict(
     module_type="docker_stats",
-    module_inactive=False,
+    module_inactive=True,
 
     # api_version
     # - str, defines the docker API version to use (not the same as Docker version)
