@@ -72,10 +72,7 @@ modules (subprocesses). The following modules are available:
 * `statsd_server` - source module that collects metrics via extended StatsD protocol.
 * `linux_stats` - source module that collects Linux metrics via `/proc` filesystem.
 Including CPUs, system load, memory usage, filesystem usage, block devices and network interfaces activity.
-* `docker_stats` - source module that collects metrics from running docker containers. It requires
-[the docker library](https://docker-py.readthedocs.io/en/stable/) but since the module is not activated by default,
-the dependency is deliberately missing in `requirements.txt`. If you want to use it, you'll need to `pip install docker`
-or provide it otherwise.
+* `docker_stats` - source module that collects metrics from running docker containers.
 * `influxdb_client` - destination module that sends metrics to InfluxDB via
 [UDP line protocol.](https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_reference/)
 It can fan out metrics to multiple hosts and automatically detect DNS changes.

@@ -313,3 +313,44 @@ class MetricsPushProcess(MetricsDstProcess):
                 self.socket = None  # CPython will trigger close() when GCing it.
                 return False
         return True
+
+
+class ProcfsReader:
+    INTERFACE_FIELDS = ('rx_bytes', 'rx_packets', 'rx_errors', 'rx_dropped',
+                        None, None, None, None,
+                        'tx_bytes', 'tx_packets', 'tx_errors', 'tx_dropped')
+
+    def read_interfaces(self, path='/proc/net/dev'):
+        with open(path) as f:
+            for l in f:
+                tokens = l.strip().split()
+                if not tokens or len(tokens) != 17:
+                    continue
+                if not tokens[0].endswith(':'):
+                    continue
+                interface_name = tokens.pop(0)[:-1]
+                interface_stats = {k: int(v) for k, v in zip(self.INTERFACE_FIELDS, tokens) if k}
+                yield interface_name, interface_stats
+
+    MEMORY_FIELDS = {
+        'MemTotal:': 'total_bytes',
+        'MemFree:': 'free_bytes',
+        'MemAvailable:': 'available_bytes',
+        'Shmem:': 'shared_bytes',
+        'Cached:': 'cached_bytes',
+        'Slab:': 'slab_bytes',
+        'Mapped:': 'mapped_bytes',
+        'SwapTotal:': 'swap_total_bytes',
+        'SwapFree:': 'swap_free_bytes',
+        'SwapCached:': 'swap_cached_bytes',
+    }
+
+    def read_memory(self, path='/proc/meminfo'):
+        with open(path) as f:
+            for l in f:
+                tokens = l.strip().split()
+                if not tokens or len(tokens) != 3 or tokens[2].lower() != 'kb':
+                    continue
+                name = tokens[0]
+                if name in self.MEMORY_FIELDS:
+                    yield self.MEMORY_FIELDS[name], int(tokens[1]) * 1024

@@ -23,7 +23,7 @@ do the full stop/start sequence.
 # - Optional, default: 'INFO'
 # - More here: https://docs.python.org/3/library/logging.html#levels
 #   This option is in global context and will be used by all modules unless overridden.
-log_level = "INFO"
+log_level = "DEBUG"
 
 
 # log_format
@@ -169,19 +169,25 @@ linuxstats = dict(
 )
 
 
-# This module requires 'docker' package, i.e. `pip3 install docker` so it is disabled
-# in the default config. Set "module_inactive=False" (or remove the line) to enable it.
+# This module only works on linux as it uses /proc & /sys to collect containers' metrics.
+# Set "module_inactive=False" (or remove the line) to enable it.
 dockerstats = dict(
     module_type="docker_stats",
-    module_inactive=True,
+    module_inactive=False,
 
     # api_version
     # - str, defines the docker API version to use (not the same as Docker version)
-    # - Optional, default: None
-    # - More here: https://docker-py.readthedocs.io/en/stable/api.html
-    #   The default will auto-negotiate the protocol. You may need to specify this param
-    #   when using old Docker installations, see "docker version | grep API"
+    # - Optional, default: '1.22'
+    # - More here: https://docs.docker.com/engine/api/v1.32/#section/Versioning
+    #   Note that a newer docker daemon will likely handle older API calls, but the reverse
+    #   will fail. See "docker version | grep API".
     # - Example: api_version = "1.22"
+
+    # docker_socket
+    # - str, unix socket for docker
+    # - Optional, default: '/var/run/docker.sock'
+    # - Note that this module can only use local unix sockets for docker API calls.
+    # - Example: docker_socket = '/var/run/docker.sock'
 
     # env_mapping
     # - dict of str:str
