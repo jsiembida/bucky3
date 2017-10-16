@@ -5,11 +5,8 @@ import platform
 import bucky3.module as module
 
 
-class LinuxStatsCollector(module.MetricsSrcProcess):
+class LinuxStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
     CPU_FIELDS = ('user', 'nice', 'system', 'idle', 'wait', 'interrupt', 'softirq', 'steal')
-    INTERFACE_FIELDS = ('rx_bytes', 'rx_packets', 'rx_errors', 'rx_dropped',
-                        None, None, None, None,
-                        'tx_bytes', 'tx_packets', 'tx_errors', 'tx_dropped')
     DISK_FIELDS = ('read_ops', 'read_merged', 'read_sectors', 'read_time',
                    'write_ops', 'write_merged', 'write_sectors', 'write_time',
                    'in_progress', 'io_time', 'weighted_time')
@@ -137,31 +134,14 @@ class LinuxStatsCollector(module.MetricsSrcProcess):
                     pass
 
     def read_interface_stats(self, timestamp):
-        with open('/proc/net/dev') as f:
-            for l in f:
-                tokens = l.strip().split()
-                if not tokens or len(tokens) != 17:
-                    continue
-                if not tokens[0].endswith(':'):
-                    continue
-                interface_name = tokens.pop(0)[:-1]
-                if not self.check_lists(interface_name, self.interface_blacklist, self.interface_whitelist):
-                    continue
-                interface_stats = {k: int(v) for k, v in zip(self.INTERFACE_FIELDS, tokens) if k}
+        for interface_name, interface_stats in self.read_interfaces():
+            if self.check_lists(interface_name, self.interface_blacklist, self.interface_whitelist):
                 self.buffer.append(("system_interface", interface_stats, timestamp, dict(name=interface_name)))
 
     def read_memory_stats(self, timestamp):
-        with open('/proc/meminfo') as f:
-            memory_stats = {}
-            for l in f:
-                tokens = l.strip().split()
-                if not tokens or len(tokens) != 3 or tokens[2].lower() != 'kb':
-                    continue
-                name = tokens[0]
-                if name in self.MEMORY_FIELDS:
-                    memory_stats[self.MEMORY_FIELDS[name]] = int(tokens[1]) * 1024
-            if memory_stats:
-                self.buffer.append(("system_memory", memory_stats, timestamp))
+        memory_stats = dict(self.read_memory())
+        if memory_stats:
+            self.buffer.append(("system_memory", memory_stats, timestamp))
 
     def read_disk_stats(self, timestamp):
         with open('/proc/diskstats') as f:

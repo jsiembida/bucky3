@@ -61,7 +61,7 @@ and Bucky3 as well highlights of some of Bucky3 features:
 backends like InfluxDB / Prometheus offer rich data processing.
 * CollectD protocol has been dropped. Linux metrics are implemented in ~200 lines
 of Python code to provide replacement for some of the lost CollectD functionality.
-* Docker containers' metrics got implemented in under 100 lines of extra code.
+* Docker containers' metrics collection got implemented in a similar amount of code.
 * Bucky uses `setproctitle` to set human friendly names for its processes. This is a nice
 feature, but the dependency is problematic, i.e. `pip install setproctitle` needs to
 compile native code. It's been therefore removed in favor of simplicity.
@@ -97,4 +97,4 @@ everywhere, more efficient and conceptually closer to its data model.
 * Bucky imports modules at source level, Bucky3 does it dynamically. This is to avoid
 dependencies in the main process. Moreover, to improve isolation, Bucky3 delays modules
 initialization (i.e. socket / file operations) until after fork.
-* Codebase has got reduced from `~2600 loc` to `~1300 loc`
+* Codebase has got reduced from `~2600 loc` to `~1400 loc`
