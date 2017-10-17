@@ -85,7 +85,7 @@ class DockerStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
                 if not cpu_quota:
                     cpu_quota = cpu_period * len(cpu_tokens)
                 limit_ps = round(1000000000 * cpu_quota / cpu_period)
-            buffer.append(("docker_cpu", {'limit_ps': limit_ps}, timestamp, container_metadata.copy()))
+            buffer.append(("docker_cpu", {'limit_ps': limit_ps}, timestamp, container_metadata))
 
     def read_interface_stats(self, buffer, container_id, timestamp, container_metadata, inspect_info):
         root_pid = inspect_info['State']['Pid']

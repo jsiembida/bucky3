@@ -90,11 +90,10 @@ class LinuxStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
                     elif name == 'intr':
                         activity_stats['interrupts'] = int(tokens[0])
                 else:
-                    cpu_suffix = name[3:]
-                    if not cpu_suffix:
+                    if len(name) <= 3:
                         continue
                     cpu_stats = {k: int(v) for k, v in zip(self.CPU_FIELDS, tokens)}
-                    self.buffer.append(("system_cpu", cpu_stats, timestamp, dict(name=cpu_suffix)))
+                    self.buffer.append(("system_cpu", cpu_stats, timestamp, dict(name=name)))
         with open('/proc/loadavg') as f:
             for l in f:
                 tokens = l.strip().split()
@@ -102,7 +101,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
                     activity_stats['load'] = float(tokens[0])
                     break
         if activity_stats:
-            self.buffer.append(("system_activity", activity_stats, timestamp))
+            self.buffer.append(("system_activity", activity_stats, timestamp, None))
 
     def read_filesystem_stats(self, timestamp):
         with open('/proc/mounts') as f:
@@ -141,7 +140,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
     def read_memory_stats(self, timestamp):
         memory_stats = dict(self.read_memory())
         if memory_stats:
-            self.buffer.append(("system_memory", memory_stats, timestamp))
+            self.buffer.append(("system_memory", memory_stats, timestamp, None))
 
     def read_disk_stats(self, timestamp):
         with open('/proc/diskstats') as f:

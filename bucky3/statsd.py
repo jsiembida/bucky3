@@ -29,18 +29,17 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.gauges = {}
         self.counters = {}
         self.sets = {}
-        self.current_timestamp = self.last_timestamp = 0
+        self.last_timestamp = 0
         # Some of those are illegal in Graphite, so Carbon module has to handle them separately.
         self.metadata_regex = re.compile('^([a-zA-Z][a-zA-Z0-9_]*)[:=]([a-zA-Z0-9_:=\-\+\@\?\#\.\/\%\<\>\*\;\&\[\]]+)$', re.ASCII)
 
     def flush(self, system_timestamp):
-        self.last_timestamp = self.current_timestamp
-        self.current_timestamp = system_timestamp
         self.enqueue_timers(system_timestamp)
         self.enqueue_histograms(system_timestamp)
         self.enqueue_counters(system_timestamp)
         self.enqueue_gauges(system_timestamp)
         self.enqueue_sets(system_timestamp)
+        self.last_timestamp = system_timestamp
         return super().flush(system_timestamp)
 
     def init_config(self):
@@ -50,9 +49,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.histogram_selector = self.cfg.get('histogram_selector')
         self.timestamp_window = self.cfg.get('timestamp_window', 600)
 
-    def run(self):
-        super().run(loop=False)
-        self.current_timestamp = self.last_timestamp = time.time()
+    def loop(self):
         while True:
             try:
                 self.socket = self.socket or self.get_udp_socket(bind=True)
@@ -68,7 +65,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.buffer.append((bucket, stats, timestamp, metadata))
 
     def enqueue_timers(self, system_timestamp):
-        interval = self.current_timestamp - self.last_timestamp
+        interval = system_timestamp - self.last_timestamp
         bucket = self.cfg['timers_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, v) in self.timers.items():
@@ -98,7 +95,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.timers = {}
 
     def enqueue_histograms(self, system_timestamp):
-        interval = self.current_timestamp - self.last_timestamp
+        interval = system_timestamp - self.last_timestamp
         bucket = self.cfg['histograms_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, selector, buckets) in self.histograms.items():
@@ -128,7 +125,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.gauges = {}
 
     def enqueue_counters(self, system_timestamp):
-        interval = self.current_timestamp - self.last_timestamp
+        interval = system_timestamp - self.last_timestamp
         bucket = self.cfg['counters_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, v) in self.counters.items():

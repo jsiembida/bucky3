@@ -57,5 +57,5 @@ class CarbonClient(module.MetricsPushProcess, module.TCPConnector):
         name = self.build_name(metadata)
         if name:
             if timestamp is None:
-                timestamp = time.time()
+                timestamp = recv_timestamp
             self.buffer.append("%s %s %s\n" % (name, value, int(timestamp)))

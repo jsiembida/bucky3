@@ -47,10 +47,9 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.schedule_tick()
 
     def setup_tick(self):
-        if self.tick_interval:
-            self.next_tick = time.monotonic() + self.tick_interval
-            signal.signal(signal.SIGALRM, self.tick_handler)
-            signal.setitimer(signal.ITIMER_REAL, self.tick_interval, self.tick_interval + self.tick_interval)
+        self.next_tick = time.monotonic() + self.tick_interval
+        signal.signal(signal.SIGALRM, self.tick_handler)
+        signal.setitimer(signal.ITIMER_REAL, self.tick_interval, self.tick_interval + self.tick_interval)
 
     def tick(self):
         now = time.monotonic()
@@ -73,10 +72,8 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.buffer = []
         self.buffer_limit = max(self.cfg.get('buffer_limit', 10000), 100)
         self.chunk_size = max(self.cfg.get('chunk_size', 300), 1)
-        self.tick_interval = max(self.cfg['flush_interval'], 0.1)
-        self.flush_interval = self.tick_interval
-        self.next_tick = None
-        self.next_flush = 0
+        self.tick_interval = self.flush_interval = max(self.cfg['flush_interval'], 0.1)
+        self.next_tick = self.next_flush = 0
         self.metadata = self.cfg.get('metadata')
         self.add_timestamps = self.cfg.get('add_timestamps', False)
         self.self_report = self.cfg.get('self_report', False)
@@ -99,8 +96,9 @@ class MetricsProcess(multiprocessing.Process, Logger):
         if self.randomize_startup and self.tick_interval > 3:
             # If randomization is configured (it's default) do it asap, before singal handler gets set up
             time.sleep(random.randint(0, min(self.tick_interval - 1, 15)))
-        self.setup_tick()
         self.log.info("Set up")
+        self.tick()
+        self.setup_tick()
 
         if loop:
             self.loop()
@@ -169,11 +167,7 @@ class MetricsDstProcess(MetricsProcess):
 
     def process_batch(self, recv_timestamp, batch):
         for sample in batch:
-            if len(sample) == 4:
-                bucket, value, timestamp, metadata = sample
-            else:
-                bucket, value, timestamp = sample
-                metadata = None
+            bucket, value, timestamp, metadata = sample
             if metadata:
                 if self.metadata:
                     metadata.update((k, v) for k, v in self.metadata.items() if k not in metadata)

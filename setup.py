@@ -17,8 +17,6 @@
 from setuptools import setup
 from bucky3 import __version__
 
-install_requires = [e.strip() for e in open("requirements.txt") if not e.startswith("#")]
-
 setup(
     name='bucky3',
     version=__version__,
@@ -28,7 +26,6 @@ setup(
     author_email='jarek.siembida@gmail.com',
     license='ASF2.0',
     url='http://github.com/jsiembida/bucky3.git',
-    install_requires=install_requires,
 
     classifiers=[
         'Development Status :: 4 - Beta',
