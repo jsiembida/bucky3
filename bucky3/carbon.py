@@ -29,7 +29,7 @@ class CarbonClient(module.MetricsPushProcess, module.TCPConnector):
         self.socket.sendall(payload)
 
     def translate_token(self, token):
-        # TODO: Which chars we have to translate? '[\-\+\@\?\#\.\_\/\%\<\>\*\:\;\&\[\]]'
+        # TODO: Which chars we have to translate? There is much more to handle here.
         return token.replace('/', '_').replace('.', '_').replace('*', '_').replace('[', '_').replace(']', '_')
 
     def build_name(self, metadata):

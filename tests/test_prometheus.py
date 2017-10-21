@@ -86,9 +86,9 @@ class TestPrometheusExporter(unittest.TestCase):
 
     @prometheus_setup(values_timeout=2, timestamps=range(1, 100))
     def test_single_values(self, prometheus_module):
-        prometheus_module.process_value(1, 'val1', 10, 1, dict(a='b', b=123))
+        prometheus_module.process_value(1, 'val1', 10, 1, dict(a='b', b='123'))
         prometheus_module.process_value(2, 'val2', 11.5, 2, dict(foo='bar'))
-        prometheus_module.process_value(1, 'val1', 12, 1, dict(a='b', b=123))
+        prometheus_module.process_value(1, 'val1', 12, 1, dict(a='b', b='123'))
         prometheus_module.process_value(1, 'val2', 13.8, 1, dict(hello='world'))
         prometheus_verify(prometheus_module, [
             ('val1', dict(a='b', b='123'), 12, 1),
@@ -143,10 +143,10 @@ class TestPrometheusExporter(unittest.TestCase):
 
     @prometheus_setup(values_timeout=2, timestamps=range(1, 100))
     def test_multi_values(self, prometheus_module):
-        prometheus_module.process_values(1, 'val1', dict(x=1.1, y=2), 1, dict(a='b', b=123))
+        prometheus_module.process_values(1, 'val1', dict(x=1.1, y=2), 1, dict(a='b', b='123'))
         prometheus_module.process_values(1, 'val2', dict(x=4, y=5.6, z=1000), 1, dict(foo='bar'))
-        prometheus_module.process_values(2, 'val1', dict(x=8.43, z=3.33), 2, dict(a='b', b=123))
-        prometheus_module.process_values(1, 'val3', dict(a=4, b=5), 1, dict(value=123))
+        prometheus_module.process_values(2, 'val1', dict(x=8.43, z=3.33), 2, dict(a='b', b='123'))
+        prometheus_module.process_values(1, 'val3', dict(a=4, b=5), 1, dict(value='123'))
         prometheus_verify(prometheus_module, [
             ('val1', dict(value='x', a='b', b='123'), 8.43, 2),
             ('val1', dict(value='y', a='b', b='123'), 2, 1),

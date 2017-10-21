@@ -15,7 +15,6 @@
 # Copyright 2011 Cloudant, Inc.
 
 
-import re
 import time
 import bucky3.module as module
 
@@ -30,8 +29,6 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.counters = {}
         self.sets = {}
         self.last_timestamp = 0
-        # Some of those are illegal in Graphite, so Carbon module has to handle them separately.
-        self.metadata_regex = re.compile('^([a-zA-Z][a-zA-Z0-9_]*)[:=]([a-zA-Z0-9_:=\-\+\@\?\#\.\/\%\<\>\*\;\&\[\]]+)$', re.ASCII)
 
     def flush(self, system_timestamp):
         self.enqueue_timers(system_timestamp)
@@ -197,11 +194,13 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         if len(bits) < 2:
             return cust_timestamp, line, metadata
         for i in bits[1].split(","):
-            # DataDog docs / examples use key:value, we also handle key=value.
-            m = self.metadata_regex.match(i)
-            if not m:
-                return None, None, None
-            k, v = m.group(1), m.group(2)
+            # Due to how we parse the metadata, comma is the only illegal character
+            # in tag values, everything else will be taken literally.
+            # Prometheus and Influx modules handle escaping the special chars as needed.
+            # There is no special char handling in carbon module at all, i.e. it is flawed.
+            k, _, v = i.partition('=')
+            if not k.isidentifier() or not v:
+                raise ValueError()
             if k == 'timestamp':
                 cust_timestamp = float(v)
                 # 2524608000 = secs from epoch to 1 Jan 2050
