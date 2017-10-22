@@ -161,6 +161,15 @@ linuxstats = dict(
     #   Or delete the whole section. This option is a convenience.
     module_inactive=False,
 
+    # destination_modules
+    # - array / tuple of names / references
+    # - Optional, default: all
+    # - This specifies which destination(s) will be receiving metrics from this source.
+    #   These are either string names of the dictionaries or code level references
+    #   (in that case, order of definitions matters). By default, metrics are fanned out
+    #   to all destination modules configured.
+    # Example: destination_modules = ('prometheus', influxdb)
+
     # disk_whitelist, disk_blacklist
     # - set of str, block devices to include/exclude
     # - Optional, default: None

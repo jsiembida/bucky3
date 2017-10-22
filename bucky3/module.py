@@ -191,6 +191,10 @@ class MetricsSrcProcess(MetricsProcess):
         super().__init__(module_name, module_config)
         self.dst_pipes = dst_pipes
 
+    def init_config(self):
+        super().init_config()
+        self.log.info('Destination modules: ' + ', '.join(m[0] for m in self.cfg['destination_modules']))
+
     def tick(self):
         super().tick()
         self.take_self_report()
