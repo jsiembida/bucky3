@@ -124,6 +124,22 @@ metadata = dict(
 # Example: add_timestamps = True
 
 
+# metric_postprocessor
+# - callback, custom metric postprocessor
+# - Optional, default: None
+# - Each source module can run metrics through extra postprocessing right before pushing
+#   them out to destination module(s). The postprocessor can return an altered metric or
+#   None, in the latter case the metric is dropped. Note, that postprocessor receives
+#   the metric with custom metadata injected. Also, the metadata provided can be None.
+#   The example below would drop all metrics with env=test.
+# Example: metric_postprocessor = ignore_test_environment
+
+def ignore_test_environment(bucket, values, timestamp, metadata):
+    if metadata is not None and metadata.get('env') == 'test':
+        return None
+    return bucket, values, timestamp, metadata
+
+
 # This dictionary is a module configuration.
 # The name "linuxstats" doesn't matter as such, but should be descriptive
 # as it is included by default in the log formatter.

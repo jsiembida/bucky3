@@ -75,6 +75,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.tick_interval = self.flush_interval = max(self.cfg['flush_interval'], 0.1)
         self.next_tick = self.next_flush = 0
         self.metadata = self.cfg.get('metadata')
+        self.metric_postprocessor = self.cfg.get('metric_postprocessor')
         self.add_timestamps = self.cfg.get('add_timestamps', False)
         self.self_report = self.cfg.get('self_report', False)
         self.self_report_timestamp = 0
@@ -202,6 +203,11 @@ class MetricsSrcProcess(MetricsProcess):
             metadata = self.merge_metadata(metadata)
         else:
             metadata = self.metadata
+        if self.metric_postprocessor:
+            tmp = self.metric_postprocessor(bucket, stats, timestamp, metadata)
+            if tmp is None:
+                return
+            bucket, stats, timestamp, metadata = tmp
         self.buffer.append((bucket, stats, timestamp, metadata))
 
     def process_self_report(self, bucket, stats, timestamp, metadata):

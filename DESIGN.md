@@ -57,8 +57,9 @@ the sake of simplicity. Below is a non-exhaustive list of differences between Bu
 and Bucky3 as well highlights of some of Bucky3 features:
 
 * Python3 is the target platform. 
-* Bucky has logic for custom metrics processor, Bucky3 drops that as redundant,
-backends like InfluxDB / Prometheus offer rich data processing.
+* Bucky has a dedicated subprocess for custom metrics processor, Bucky3 drops that
+and uses a configurable hook for filtering. Also, backends like InfluxDB / Prometheus
+offer rich data processing and custom data postprocessing is most likely redundant.
 * CollectD protocol has been dropped. Linux metrics are implemented in ~200 lines
 of Python code to provide replacement for some of the lost CollectD functionality.
 * Docker containers' metrics collection got implemented in a similar amount of code.

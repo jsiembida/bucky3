@@ -8,8 +8,7 @@
 
 ##### Medium priority
 
-* Configurable metric filters, there is need to be able to drop some produced metrics,
-  i.e. on CI / test machines.
+* Regexps in linuxstats white/black lists.
 * Configurable "data channels", something similar to syslog-ng. 
 * Sending massive TCP payloads proved problematic in Prometheus exporter, so it does
   a sequence of smaller writes to the socket instead. Graphite module still does one
