@@ -3,10 +3,14 @@
 ##### High priority
 
 * More tests, especially for common modules code and the main process.
+* Statsd tests for non timestamped metrics 
 
 
 ##### Medium priority
 
+* Configurable metric filters, there is need to be able to drop some produced metrics,
+  i.e. on CI / test machines.
+* Configurable "data channels", something similar to syslog-ng. 
 * Sending massive TCP payloads proved problematic in Prometheus exporter, so it does
   a sequence of smaller writes to the socket instead. Graphite module still does one
   massive write to the socket and most likely may need to do the smaller writes, too.
