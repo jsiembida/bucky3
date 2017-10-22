@@ -124,6 +124,22 @@ metadata = dict(
 # Example: add_timestamps = True
 
 
+# metric_postprocessor
+# - callback, custom metric postprocessor
+# - Optional, default: None
+# - Each source module can run metrics through extra postprocessing right before pushing
+#   them out to destination module(s). The postprocessor can return an altered metric or
+#   None, in the latter case the metric is dropped. Note, that postprocessor receives
+#   the metric with custom metadata injected. Also, the metadata provided can be None.
+#   The example below would drop all metrics with env=test.
+# Example: metric_postprocessor = ignore_test_environment
+
+def ignore_test_environment(bucket, values, timestamp, metadata):
+    if metadata is not None and metadata.get('env') == 'test':
+        return None
+    return bucket, values, timestamp, metadata
+
+
 # This dictionary is a module configuration.
 # The name "linuxstats" doesn't matter as such, but should be descriptive
 # as it is included by default in the log formatter.
@@ -145,18 +161,27 @@ linuxstats = dict(
     #   Or delete the whole section. This option is a convenience.
     module_inactive=False,
 
+    # destination_modules
+    # - array / tuple of names / references
+    # - Optional, default: all
+    # - This specifies which destination(s) will be receiving metrics from this source.
+    #   These are either string names of the dictionaries or code level references
+    #   (in that case, order of definitions matters). By default, metrics are fanned out
+    #   to all destination modules configured.
+    # Example: destination_modules = ('prometheus', influxdb)
+
     # disk_whitelist, disk_blacklist
     # - set of str, block devices to include/exclude
     # - Optional, default: None
     # - The matching logic is:
-    #   1. If whitelist is defined and disk is in it, it is included, skip further checks
-    #   2. If blacklist is defined and disk is in it, it is excluded, skip further checks
+    #   1. If whitelist is defined and disk matches it, it is included, skip further checks
+    #   2. If blacklist is defined and disk matches it, it is excluded, skip further checks
     #   3. disk is included
     #   By default, the lists are None so all disks are included. If you want to monitor
     #   only a specific set of disks, put them in a whitelist and leave the blacklist out.
     #   If you want to exclude a specific set of disks, put them in a blacklist and leave
-    #   the whitelist out. Note, no regexes nor globs, just plain string matching.
-    # - Example: disk_whitelist = {"sda", "sdb"}
+    #   the whitelist out. The strings are used as fully anchored regular expressions.
+    # - Example: disk_whitelist = {"sd[a-z]", "xvd.+"}
     disk_blacklist={
         "loop0", "loop1", "loop2", "loop3",
         "loop4", "loop5", "loop6", "loop7",
@@ -171,7 +196,7 @@ linuxstats = dict(
     # - set of str, filesystems to include/exclude
     # - Optional, default: None
     # - See the disk_whitelist, disk_blacklist for details
-    # - Example: filesystem_whitelist = {"ext4"}
+    # - Example: filesystem_whitelist = {"ext[234]"}
     filesystem_blacklist={
         "tmpfs", "devtmpfs", "rootfs",
     },
@@ -180,7 +205,7 @@ linuxstats = dict(
     # - set of str, network interfaces to include/exclude
     # - Optional, default: None
     # - See the disk_whitelist, disk_blacklist for details
-    # - Example: interface_blacklist = {"lo"}
+    # - Example: interface_blacklist = {"lo", "veth.+"}
 )
 
 

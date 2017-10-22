@@ -63,7 +63,6 @@ class Manager(module.Logger):
                 module_name, module_type, module_config = k, v['module_type'], new_config.pop(k)
                 if module_config.get('module_inactive', False):
                     continue
-                module_config['module_inactive'] = False
                 if module_type not in MODULES:
                     raise ValueError("Invalid module type %s", module_type)
                 module_class = self.import_module(*MODULES[module_type])
@@ -74,16 +73,27 @@ class Manager(module.Logger):
                 else:
                     raise ValueError("Invalid module class %s", module_class)
 
-        if not src_modules:
-            raise ValueError("No source modules configured")
-
-        if not dst_modules:
-            raise ValueError("No destination modules configured")
-
         for module_name, module_class, module_config in src_modules + dst_modules:
             for k, v in new_config.items():
                 if k not in module_config:
                     module_config[k] = v
+
+        for module_name, module_class, module_config in src_modules:
+            destination_modules = module_config.get('destination_modules')
+            if destination_modules:
+                tmp = []
+                for m in destination_modules:
+                    if type(m) is str:
+                        found_destinations = tuple(filter(lambda i: i[0] == m, dst_modules))
+                    else:
+                        found_destinations = tuple(filter(lambda i: id(i[2]) == id(m), dst_modules))
+                    if found_destinations:
+                        tmp.append(found_destinations[0])
+                    else:
+                        raise ValueError("No configured destination found for " + module_name)
+                module_config['destination_modules'] = tmp
+            else:
+                module_config['destination_modules'] = dst_modules
 
         return new_config, src_modules, dst_modules
 
@@ -158,14 +168,16 @@ class Manager(module.Logger):
 
         # Using shared pipes leads to data from multiple source modules being occasionally interleaved
         # which means the receiving end tries to unpickle the corrupted stream. So we use N x M pipes.
-        for module_name, module_class, module_config in dst_modules:
-            tmp = [multiprocessing.Pipe(duplex=False) for i in range(len(src_modules))]
-            recv_ends, send_ends = tuple(i[0] for i in tmp), tuple(i[1] for i in tmp)
-            self.dst_group[(module_name, module_class)] = module_config, [], None, (recv_ends,)
-            pipes.append(send_ends)
-        for i, (module_name, module_class, module_config) in enumerate(src_modules):
-            send_ends = [j[i] for j in pipes]
+        recv_ends = {}
+        for module_name, module_class, module_config in src_modules:
+            send_ends = []
+            for dst_module in module_config['destination_modules']:
+                recv_end, send_end = multiprocessing.Pipe(duplex=False)
+                send_ends.append(send_end)
+                recv_ends.setdefault(dst_module[0], []).append(recv_end)
             self.src_group[(module_name, module_class)] = module_config, [], None, (send_ends,)
+        for module_name, module_class, module_config in dst_modules:
+            self.dst_group[(module_name, module_class)] = module_config, [], None, (recv_ends[module_name],)
 
     def termination_handler(self, signal_number, stack_frame):
         self.terminate_and_exit(0)
