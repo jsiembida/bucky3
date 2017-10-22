@@ -72,7 +72,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
             return val not in blacklist
         return True
 
-    def read_activity_stats(self, timestamp):
+    def read_activity_stats(self, buffer, timestamp):
         activity_stats = {}
         with open('/proc/stat') as f:
             for l in f:
@@ -93,7 +93,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
                     if len(name) <= 3:
                         continue
                     cpu_stats = {k: int(v) for k, v in zip(self.CPU_FIELDS, tokens)}
-                    self.buffer.append(("system_cpu", cpu_stats, timestamp, dict(name=name)))
+                    buffer.append(("system_cpu", cpu_stats, timestamp, dict(name=name)))
         with open('/proc/loadavg') as f:
             for l in f:
                 tokens = l.strip().split()
@@ -101,9 +101,9 @@ class LinuxStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
                     activity_stats['load'] = float(tokens[0])
                     break
         if activity_stats:
-            self.buffer.append(("system_activity", activity_stats, timestamp, None))
+            buffer.append(("system_activity", activity_stats, timestamp, None))
 
-    def read_filesystem_stats(self, timestamp):
+    def read_filesystem_stats(self, buffer, timestamp):
         with open('/proc/mounts') as f:
             for l in f:
                 tokens = l.strip().split()
@@ -127,22 +127,22 @@ class LinuxStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
                         'free_inodes': int(stats.f_favail),
                         'total_inodes': total_inodes
                     }
-                    self.buffer.append(("system_filesystem", df_stats, timestamp,
-                                        dict(device=mount_target, name=mount_path, type=mount_filesystem)))
+                    buffer.append(("system_filesystem", df_stats, timestamp,
+                                   dict(device=mount_target, name=mount_path, type=mount_filesystem)))
                 except OSError:
                     pass
 
-    def read_interface_stats(self, timestamp):
+    def read_interface_stats(self, buffer, timestamp):
         for interface_name, interface_stats in self.read_interfaces():
             if self.check_lists(interface_name, self.interface_blacklist, self.interface_whitelist):
-                self.buffer.append(("system_interface", interface_stats, timestamp, dict(name=interface_name)))
+                buffer.append(("system_interface", interface_stats, timestamp, dict(name=interface_name)))
 
-    def read_memory_stats(self, timestamp):
+    def read_memory_stats(self, buffer, timestamp):
         memory_stats = dict(self.read_memory())
         if memory_stats:
-            self.buffer.append(("system_memory", memory_stats, timestamp, None))
+            buffer.append(("system_memory", memory_stats, timestamp, None))
 
-    def read_disk_stats(self, timestamp):
+    def read_disk_stats(self, buffer, timestamp):
         with open('/proc/diskstats') as f:
             for l in f:
                 tokens = l.strip().split()
@@ -154,9 +154,9 @@ class LinuxStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
                 disk_stats = {k: int(v) for k, v in zip(self.DISK_FIELDS, tokens[3:])}
                 disk_stats['read_bytes'] = disk_stats['read_sectors'] * 512
                 disk_stats['write_bytes'] = disk_stats['write_sectors'] * 512
-                self.buffer.append(("system_disk", disk_stats, timestamp, dict(name=disk_name)))
+                buffer.append(("system_disk", disk_stats, timestamp, dict(name=disk_name)))
 
-    def read_protocol_stats(self, timestamp):
+    def read_protocol_stats(self, buffer, timestamp):
         # TODO: IPv6? (/proc/net/snmp6 has a different syntax)
         param_map, proto_stats = {}, {}
         for p in '/proc/net/snmp', '/proc/net/netstat':
@@ -178,14 +178,16 @@ class LinuxStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
                     else:
                         param_map[name] = tokens
         for k, v in proto_stats.items():
-            self.buffer.append(("system_protocol", v, timestamp, dict(name=k)))
+            buffer.append(("system_protocol", v, timestamp, dict(name=k)))
 
     def flush(self, system_timestamp):
         timestamp = system_timestamp if self.add_timestamps else None
-        self.read_activity_stats(timestamp)
-        self.read_memory_stats(timestamp)
-        self.read_interface_stats(timestamp)
-        self.read_filesystem_stats(timestamp)
-        self.read_disk_stats(timestamp)
-        self.read_protocol_stats(timestamp)
+        buffer = []
+        self.read_activity_stats(buffer, timestamp)
+        self.read_memory_stats(buffer, timestamp)
+        self.read_interface_stats(buffer, timestamp)
+        self.read_filesystem_stats(buffer, timestamp)
+        self.read_disk_stats(buffer, timestamp)
+        self.read_protocol_stats(buffer, timestamp)
+        self.buffer.extend(buffer)
         return super().flush(system_timestamp)
