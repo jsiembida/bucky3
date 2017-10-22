@@ -49,6 +49,9 @@ def statsd_setup(timestamps, **extra_cfg):
             system_time.side_effect = system_time_mock
             monotonic_time.side_effect = monotonic_time_mock
             cfg = dict(
+                # log_level=INFO triggers a log line in src module and that calls the mocked system_time
+                # which consumes one tick and fails the tests. So up the log_level, really ugly.
+                log_level='WARN',
                 flush_interval=1,
                 add_timestamps=True,
                 timers_bucket="stats_timers",
@@ -56,6 +59,7 @@ def statsd_setup(timestamps, **extra_cfg):
                 sets_bucket="stats_sets",
                 gauges_bucket="stats_gauges",
                 counters_bucket="stats_counters",
+                destination_modules=(),
             )
             cfg.update(**extra_cfg)
             output_pipe = MagicMock()
