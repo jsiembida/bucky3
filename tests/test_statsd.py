@@ -661,6 +661,17 @@ class TestStatsDServer(unittest.TestCase):
     def test_bucketed_histograms_metadata(self, statsd_module):
         self.bucketed_metadata(statsd_module, "gorm:1|h", expected_metadata_size=3)
 
+    @statsd_setup(timestamps=range(1, 1000))
+    def test_commas(self, statsd_module):
+        mock_pipe = statsd_module.dst_pipes[0]
+        statsd_module.handle_line(0, "foo:1|c|#hello=world,")
+        statsd_module.handle_line(0, "foo:1|c|#hello=world,,,more=metadata,")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_counters', dict(rate=1, count=1), 1, dict(name='foo', hello='world')),
+            ('stats_counters', dict(rate=1, count=1), 1, dict(name='foo', hello='world', more='metadata')),
+        ])
+
     def prepare_performance_test(self):
         flag = os.environ.get('TEST_PERFORMANCE', 'no').lower()
         test_requested = flag in ('yes', 'true', '1')

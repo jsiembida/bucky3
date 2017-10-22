@@ -53,9 +53,11 @@ Note: unlike in DogStatsD, timer (`ms`) and histogram (`h`) are not aliases
 for one another. Bucky3 implements proper histograms with customizable bins
 instead of redirecting histogram messages to the timer code path.
 
-Note: bucky3 uses `=` as in `key=value` and it has the usual meaning.
-DataDog documentation uses `foo:bar` but tags in DataDog implemenatation
+Note: `=` is used as in `key=value` and it has the usual meaning.
+DataDog documentation uses `foo:bar` but tags in DataDog implementation
 are a list of strings without the meaning they have in bucky3.
+
+Note: trailing comma after the last tag is allowed.
 
 
 

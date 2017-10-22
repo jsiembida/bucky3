@@ -194,6 +194,8 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         if len(bits) < 2:
             return cust_timestamp, line, metadata
         for i in bits[1].split(","):
+            if not i:
+                continue
             # Due to how we parse the metadata, comma is the only illegal character
             # in tag values, everything else will be taken literally.
             # Prometheus and Influx modules handle escaping the special chars as needed.
