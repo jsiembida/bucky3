@@ -65,9 +65,8 @@ flush_interval = 10
 # metadata
 # - dict of str:str, extra metadata injected into metrics
 # - Optional, default: None
-# - Destination modules merge this metadata into the metrics received from the source modules,
-#   with metadata in metrics taking precedence. Having the host name injected is very helpful,
-#   other helpful could be "env", "location" or "team" - depending on your infrastructure.
+# - Source modules merge this metadata into the produced metrics. Having the host name
+#   injected is very helpful, other helpful could be "env", "location" or "team".
 metadata = dict(
     host="${BUCKY3_HOST}",
 )

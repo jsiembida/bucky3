@@ -189,5 +189,6 @@ class LinuxStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
         self.read_filesystem_stats(buffer, timestamp)
         self.read_disk_stats(buffer, timestamp)
         self.read_protocol_stats(buffer, timestamp)
-        self.buffer.extend(buffer)
+        for metric in buffer:
+            self.buffer_metric(*metric)
         return super().flush(system_timestamp)

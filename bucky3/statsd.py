@@ -55,12 +55,6 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             except InterruptedError:
                 pass
 
-    def enqueue(self, bucket, stats, timestamp, metadata):
-        if 'bucket' in metadata:
-            bucket = metadata['bucket']
-            del metadata['bucket']
-        self.buffer.append((bucket, stats, timestamp, metadata))
-
     def enqueue_timers(self, system_timestamp):
         interval = system_timestamp - self.last_timestamp
         bucket = self.cfg['timers_bucket']
@@ -85,7 +79,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                             stats['stdev'] = var ** 0.5
                         metadata = dict(percentile=str(next_t))
                         metadata.update(k)
-                        self.enqueue(bucket, stats, cust_timestamp or timestamp, metadata)
+                        self.buffer_metric(bucket, stats, cust_timestamp or timestamp, metadata)
                         next_i, next_t = next(thresholds)
             except StopIteration:
                 pass
@@ -104,21 +98,21 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                     stats['stdev'] = var ** 0.5
                 metadata = dict(histogram=str(histogram_bucket))
                 metadata.update(k)
-                self.enqueue(bucket, stats, cust_timestamp or timestamp, metadata)
+                self.buffer_metric(bucket, stats, cust_timestamp or timestamp, metadata)
         self.histograms = {}
 
     def enqueue_sets(self, system_timestamp):
         bucket = self.cfg['sets_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, v) in self.sets.items():
-            self.enqueue(bucket, {"count": float(len(v))}, cust_timestamp or timestamp, dict(k))
+            self.buffer_metric(bucket, {"count": float(len(v))}, cust_timestamp or timestamp, dict(k))
         self.sets = {}
 
     def enqueue_gauges(self, system_timestamp):
         bucket = self.cfg['gauges_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, v) in self.gauges.items():
-            self.enqueue(bucket, float(v), cust_timestamp or timestamp, dict(k))
+            self.buffer_metric(bucket, float(v), cust_timestamp or timestamp, dict(k))
         self.gauges = {}
 
     def enqueue_counters(self, system_timestamp):
@@ -130,7 +124,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 'rate': float(v) / interval,
                 'count': float(v)
             }
-            self.enqueue(bucket, stats, cust_timestamp or timestamp, dict(k))
+            self.buffer_metric(bucket, stats, cust_timestamp or timestamp, dict(k))
         self.counters = {}
 
     def handle_packet(self, data, addr=None):

@@ -134,7 +134,8 @@ class DockerStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
                     self.read_cpu_stats(buffer, container_id, timestamp, container_metadata, inspect_info)
                     self.read_memory_stats(buffer, container_id, timestamp, container_metadata, inspect_info)
                     self.read_interface_stats(buffer, container_id, timestamp, container_metadata, inspect_info)
-                    self.buffer.extend(buffer)
+                    for metric in buffer:
+                        self.buffer_metric(*metric)
                 except FileNotFoundError:
                     pass
             self.log.debug('Finished containers scan')

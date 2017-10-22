@@ -117,7 +117,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         if now - self.self_report_timestamp >= 59:
             self.self_report_timestamp = now
             usage = resource.getrusage(resource.RUSAGE_SELF)
-            self.process_self_report((
+            self.process_self_report(
                 "bucky3",
                 dict(
                     cpu=round(usage.ru_utime + usage.ru_stime, 3),
@@ -126,19 +126,21 @@ class MetricsProcess(multiprocessing.Process, Logger):
                 ),
                 None,
                 dict(name=self.name),
-            ))
+            )
 
-    def process_self_report(self, batch):
+    def process_self_report(self, bucket, stats, timestamp, metadata):
         pass
+
+    def merge_metadata(self, metadata):
+        if self.metadata:
+            metadata.update((k, v) for k, v in self.metadata.items() if k not in metadata)
+        return metadata
 
 
 class MetricsDstProcess(MetricsProcess):
     def __init__(self, module_name, module_config, src_pipes):
         super().__init__(module_name, module_config)
         self.src_pipes = src_pipes
-
-    def process_self_report(self, batch):
-        self.process_batch(round(time.time(), 3), [batch])
 
     def loop(self):
         err = 0
@@ -168,16 +170,13 @@ class MetricsDstProcess(MetricsProcess):
     def process_batch(self, recv_timestamp, batch):
         for sample in batch:
             bucket, value, timestamp, metadata = sample
-            if metadata:
-                if self.metadata:
-                    metadata.update((k, v) for k, v in self.metadata.items() if k not in metadata)
-            else:
-                metadata = self.metadata
-
             if type(value) is dict:
                 self.process_values(recv_timestamp, bucket, value, timestamp, metadata)
             else:
                 self.process_value(recv_timestamp, bucket, value, timestamp, metadata)
+
+    def process_self_report(self, bucket, stats, timestamp, metadata):
+        self.process_values(round(time.time(), 3), bucket, stats, timestamp, self.merge_metadata(metadata))
 
     def process_values(self, recv_timestamp, bucket, values, metric_timestamp, metadata=None):
         raise NotImplementedError()
@@ -195,8 +194,18 @@ class MetricsSrcProcess(MetricsProcess):
         super().tick()
         self.take_self_report()
 
-    def process_self_report(self, batch):
-        self.buffer.append(batch)
+    def buffer_metric(self, bucket, stats, timestamp, metadata):
+        if metadata:
+            if 'bucket' in metadata:
+                bucket = metadata['bucket']
+                del metadata['bucket']
+            metadata = self.merge_metadata(metadata)
+        else:
+            metadata = self.metadata
+        self.buffer.append((bucket, stats, timestamp, metadata))
+
+    def process_self_report(self, bucket, stats, timestamp, metadata):
+        self.buffer_metric(bucket, stats, timestamp, metadata)
         self.flush(round(time.time(), 3))
 
     def flush(self, system_timestamp):

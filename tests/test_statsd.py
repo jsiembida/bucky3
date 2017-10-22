@@ -815,7 +815,7 @@ class TestStatsDServer(unittest.TestCase):
     def percentiles_performance(self, statsd_module, prefix, vector_len, N, M, profiler=None):
         total_time, test_set = 0, self.percentile_test_set(vector_len, N)
         for i in range(M):
-            statsd_module.enqueue = lambda bucket, stats, timestamp, metadata: None
+            statsd_module.buffer_metric = lambda bucket, stats, timestamp, metadata: None
             statsd_module.timers.clear()
             statsd_module.timers.update((k, (8, v)) for k, v in test_set)
             statsd_module.last_timestamp = 0
