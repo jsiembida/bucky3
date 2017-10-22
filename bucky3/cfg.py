@@ -174,14 +174,14 @@ linuxstats = dict(
     # - set of str, block devices to include/exclude
     # - Optional, default: None
     # - The matching logic is:
-    #   1. If whitelist is defined and disk is in it, it is included, skip further checks
-    #   2. If blacklist is defined and disk is in it, it is excluded, skip further checks
+    #   1. If whitelist is defined and disk matches it, it is included, skip further checks
+    #   2. If blacklist is defined and disk matches it, it is excluded, skip further checks
     #   3. disk is included
     #   By default, the lists are None so all disks are included. If you want to monitor
     #   only a specific set of disks, put them in a whitelist and leave the blacklist out.
     #   If you want to exclude a specific set of disks, put them in a blacklist and leave
-    #   the whitelist out. Note, no regexes nor globs, just plain string matching.
-    # - Example: disk_whitelist = {"sda", "sdb"}
+    #   the whitelist out. The strings are used as fully anchored regular expressions.
+    # - Example: disk_whitelist = {"sd[a-z]", "xvd.+"}
     disk_blacklist={
         "loop0", "loop1", "loop2", "loop3",
         "loop4", "loop5", "loop6", "loop7",
@@ -196,7 +196,7 @@ linuxstats = dict(
     # - set of str, filesystems to include/exclude
     # - Optional, default: None
     # - See the disk_whitelist, disk_blacklist for details
-    # - Example: filesystem_whitelist = {"ext4"}
+    # - Example: filesystem_whitelist = {"ext[234]"}
     filesystem_blacklist={
         "tmpfs", "devtmpfs", "rootfs",
     },
@@ -205,7 +205,7 @@ linuxstats = dict(
     # - set of str, network interfaces to include/exclude
     # - Optional, default: None
     # - See the disk_whitelist, disk_blacklist for details
-    # - Example: interface_blacklist = {"lo"}
+    # - Example: interface_blacklist = {"lo", "veth.+"}
 )
 
 

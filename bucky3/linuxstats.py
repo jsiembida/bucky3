@@ -1,6 +1,7 @@
 
 
 import os
+import re
 import platform
 import bucky3.module as module
 
@@ -62,14 +63,25 @@ class LinuxStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
     def init_config(self):
         super().init_config()
         for name in 'interface', 'disk', 'filesystem':
-            setattr(self, name + '_blacklist', self.cfg.get(name + '_blacklist', None))
-            setattr(self, name + '_whitelist', self.cfg.get(name + '_whitelist', None))
+            blacklist = self.cfg.get(name + '_blacklist')
+            if blacklist:
+                blacklist = [re.compile(regex) for regex in blacklist]
+            setattr(self, name + '_blacklist', blacklist)
+            whitelist = self.cfg.get(name + '_whitelist')
+            if whitelist:
+                whitelist = [re.compile(regex) for regex in whitelist]
+            setattr(self, name + '_whitelist', whitelist)
 
     def check_lists(self, val, blacklist, whitelist):
         if whitelist:
-            return val in whitelist
+            for regex in whitelist:
+                if regex.fullmatch(val):
+                    return True
+            return False
         if blacklist:
-            return val not in blacklist
+            for regex in blacklist:
+                if regex.fullmatch(val):
+                    return False
         return True
 
     def read_activity_stats(self, buffer, timestamp):
