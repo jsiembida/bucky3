@@ -15,7 +15,6 @@
 # Copyright 2011 Cloudant, Inc.
 
 
-import re
 import time
 import bucky3.module as module
 
@@ -29,18 +28,15 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.gauges = {}
         self.counters = {}
         self.sets = {}
-        self.current_timestamp = self.last_timestamp = 0
-        # Some of those are illegal in Graphite, so Carbon module has to handle them separately.
-        self.metadata_regex = re.compile('^([a-zA-Z][a-zA-Z0-9_]*)[:=]([a-zA-Z0-9_:=\-\+\@\?\#\.\/\%\<\>\*\;\&\[\]]+)$', re.ASCII)
+        self.last_timestamp = 0
 
     def flush(self, system_timestamp):
-        self.last_timestamp = self.current_timestamp
-        self.current_timestamp = system_timestamp
         self.enqueue_timers(system_timestamp)
         self.enqueue_histograms(system_timestamp)
         self.enqueue_counters(system_timestamp)
         self.enqueue_gauges(system_timestamp)
         self.enqueue_sets(system_timestamp)
+        self.last_timestamp = system_timestamp
         return super().flush(system_timestamp)
 
     def init_config(self):
@@ -50,9 +46,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.histogram_selector = self.cfg.get('histogram_selector')
         self.timestamp_window = self.cfg.get('timestamp_window', 600)
 
-    def run(self):
-        super().run(loop=False)
-        self.current_timestamp = self.last_timestamp = time.time()
+    def loop(self):
         while True:
             try:
                 self.socket = self.socket or self.get_udp_socket(bind=True)
@@ -61,14 +55,8 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             except InterruptedError:
                 pass
 
-    def enqueue(self, bucket, stats, timestamp, metadata):
-        if 'bucket' in metadata:
-            bucket = metadata['bucket']
-            del metadata['bucket']
-        self.buffer.append((bucket, stats, timestamp, metadata))
-
     def enqueue_timers(self, system_timestamp):
-        interval = self.current_timestamp - self.last_timestamp
+        interval = system_timestamp - self.last_timestamp
         bucket = self.cfg['timers_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, v) in self.timers.items():
@@ -91,14 +79,14 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                             stats['stdev'] = var ** 0.5
                         metadata = dict(percentile=str(next_t))
                         metadata.update(k)
-                        self.enqueue(bucket, stats, cust_timestamp or timestamp, metadata)
+                        self.buffer_metric(bucket, stats, cust_timestamp or timestamp, metadata)
                         next_i, next_t = next(thresholds)
             except StopIteration:
                 pass
         self.timers = {}
 
     def enqueue_histograms(self, system_timestamp):
-        interval = self.current_timestamp - self.last_timestamp
+        interval = system_timestamp - self.last_timestamp
         bucket = self.cfg['histograms_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, selector, buckets) in self.histograms.items():
@@ -110,25 +98,25 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                     stats['stdev'] = var ** 0.5
                 metadata = dict(histogram=str(histogram_bucket))
                 metadata.update(k)
-                self.enqueue(bucket, stats, cust_timestamp or timestamp, metadata)
+                self.buffer_metric(bucket, stats, cust_timestamp or timestamp, metadata)
         self.histograms = {}
 
     def enqueue_sets(self, system_timestamp):
         bucket = self.cfg['sets_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, v) in self.sets.items():
-            self.enqueue(bucket, {"count": float(len(v))}, cust_timestamp or timestamp, dict(k))
+            self.buffer_metric(bucket, {"count": float(len(v))}, cust_timestamp or timestamp, dict(k))
         self.sets = {}
 
     def enqueue_gauges(self, system_timestamp):
         bucket = self.cfg['gauges_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, v) in self.gauges.items():
-            self.enqueue(bucket, float(v), cust_timestamp or timestamp, dict(k))
+            self.buffer_metric(bucket, float(v), cust_timestamp or timestamp, dict(k))
         self.gauges = {}
 
     def enqueue_counters(self, system_timestamp):
-        interval = self.current_timestamp - self.last_timestamp
+        interval = system_timestamp - self.last_timestamp
         bucket = self.cfg['counters_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, v) in self.counters.items():
@@ -136,7 +124,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 'rate': float(v) / interval,
                 'count': float(v)
             }
-            self.enqueue(bucket, stats, cust_timestamp or timestamp, dict(k))
+            self.buffer_metric(bucket, stats, cust_timestamp or timestamp, dict(k))
         self.counters = {}
 
     def handle_packet(self, data, addr=None):
@@ -200,11 +188,15 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         if len(bits) < 2:
             return cust_timestamp, line, metadata
         for i in bits[1].split(","):
-            # DataDog docs / examples use key:value, we also handle key=value.
-            m = self.metadata_regex.match(i)
-            if not m:
-                return None, None, None
-            k, v = m.group(1), m.group(2)
+            if not i:
+                continue
+            # Due to how we parse the metadata, comma is the only illegal character
+            # in tag values, everything else will be taken literally.
+            # Prometheus and Influx modules handle escaping the special chars as needed.
+            # There is no special char handling in carbon module at all, i.e. it is flawed.
+            k, _, v = i.partition('=')
+            if not k.isidentifier() or not v:
+                raise ValueError()
             if k == 'timestamp':
                 cust_timestamp = float(v)
                 # 2524608000 = secs from epoch to 1 Jan 2050

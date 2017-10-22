@@ -140,10 +140,14 @@ class TestStatsDServer(unittest.TestCase):
 
     def malformed_metadata(self, statsd_module, entry):
         mock_pipe = statsd_module.dst_pipes[0]
-        legal_name_chars = string.ascii_letters
-        illegal_name_chars = '''-+@?#./%<>*;&[], '"'''
-        legal_value_chars = string.ascii_letters + string.digits + '-+@?#._/%<>*:=;&[]'
-        illegal_value_chars = ''', '"'''
+        legal_name_chars = string.ascii_letters + '_'
+        illegal_name_chars = ''.join(
+            set(string.ascii_letters + string.punctuation) - set(legal_name_chars + '=')
+        )
+        illegal_value_chars = ','
+        legal_value_chars = ''.join(
+            set(string.ascii_letters + string.punctuation + string.digits + ' ') - set(',')
+        )
 
         def get_token(legal_chars, illegal_char=None):
             n = random.randint(1, 5) * random.choice(legal_chars)
@@ -244,9 +248,9 @@ class TestStatsDServer(unittest.TestCase):
         mock_pipe = statsd_module.dst_pipes[0]
         statsd_module.handle_line(0, "gorm:1.5|c")
         statsd_module.handle_line(0, "gorm:2.0|c|#a=b")
-        statsd_module.handle_line(0, "gorm:2.5|c|#a:b,c=5")
+        statsd_module.handle_line(0, "gorm:2.5|c|#a=b,c=5")
         statsd_module.handle_line(0, "gorm:3.0|c|#a=z,c=5")
-        statsd_module.handle_line(0, "gorm:3.5|c|#c:5,a=b")
+        statsd_module.handle_line(0, "gorm:3.5|c|#c=5,a=b")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
             ('stats_counters', dict(rate=1.5, count=1.5), 1, dict(name='gorm')),
@@ -254,7 +258,7 @@ class TestStatsDServer(unittest.TestCase):
             ('stats_counters', dict(rate=6.0, count=6.0), 1, dict(name='gorm', a='b', c='5')),
             ('stats_counters', dict(rate=3.0, count=3.0), 1, dict(name='gorm', a='z', c='5')),
         ])
-        statsd_module.handle_line(1, "gorm:4.0|c|#c:5,a=z")
+        statsd_module.handle_line(1, "gorm:4.0|c|#c=5,a=z")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
             ('stats_counters', dict(rate=4.0, count=4.0), 2, dict(name='gorm', a='z', c='5')),
@@ -306,10 +310,10 @@ class TestStatsDServer(unittest.TestCase):
     def test_gauges_metadata(self, statsd_module):
         mock_pipe = statsd_module.dst_pipes[0]
         statsd_module.handle_line(0, "gorm:1.5|g")
-        statsd_module.handle_line(0, "gorm:2.0|g|#a:b")
-        statsd_module.handle_line(0, "gorm:2.5|g|#a=b,c:5")
+        statsd_module.handle_line(0, "gorm:2.0|g|#a=b")
+        statsd_module.handle_line(0, "gorm:2.5|g|#a=b,c=5")
         statsd_module.handle_line(0, "gorm:3.0|g|#a=z,c=5")
-        statsd_module.handle_line(0, "gorm:3.5|g|#c=5,a:b")
+        statsd_module.handle_line(0, "gorm:3.5|g|#c=5,a=b")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
             ('stats_gauges', 1.5, 1, dict(name='gorm')),
@@ -317,7 +321,7 @@ class TestStatsDServer(unittest.TestCase):
             ('stats_gauges', 3.5, 1, dict(name='gorm', a='b', c='5')),
             ('stats_gauges', 3.0, 1, dict(name='gorm', a='z', c='5')),
         ])
-        statsd_module.handle_line(1, "gorm:4.0|g|#c=5,a:z")
+        statsd_module.handle_line(1, "gorm:4.0|g|#c=5,a=z")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
             ('stats_gauges', 4.0, 2, dict(name='gorm', a='z', c='5')),
@@ -370,9 +374,9 @@ class TestStatsDServer(unittest.TestCase):
         mock_pipe = statsd_module.dst_pipes[0]
         statsd_module.handle_line(0, "gorm:p|s")
         statsd_module.handle_line(0, "gorm:q|s|#a=b")
-        statsd_module.handle_line(0, "gorm:r|s|#a:b,c=5")
+        statsd_module.handle_line(0, "gorm:r|s|#a=b,c=5")
         statsd_module.handle_line(0, "gorm:s|s|#a=z,c=5")
-        statsd_module.handle_line(0, "gorm:t|s|#c:5,a=b")
+        statsd_module.handle_line(0, "gorm:t|s|#c=5,a=b")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
             ('stats_sets', dict(count=1), 1, dict(name='gorm')),
@@ -380,7 +384,7 @@ class TestStatsDServer(unittest.TestCase):
             ('stats_sets', dict(count=2), 1, dict(name='gorm', a='b', c='5')),
             ('stats_sets', dict(count=1), 1, dict(name='gorm', a='z', c='5')),
         ])
-        statsd_module.handle_line(1, "gorm:u|s|#c=5,a:z")
+        statsd_module.handle_line(1, "gorm:u|s|#c=5,a=z")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
             ('stats_sets', dict(count=1), 2, dict(name='gorm', a='z', c='5')),
@@ -531,9 +535,9 @@ class TestStatsDServer(unittest.TestCase):
         expected_value2.update(count=2, count_ps=2.0, stdev=0.0)
         statsd_module.handle_line(0, "gorm:100|ms")
         statsd_module.handle_line(0, "gorm:100|ms|#a=b")
-        statsd_module.handle_line(0, "gorm:100|ms|#a:b,c=5")
-        statsd_module.handle_line(0, "gorm:100|ms|#a:z,c=5")
-        statsd_module.handle_line(0, "gorm:100|ms|#c:5,a=b")
+        statsd_module.handle_line(0, "gorm:100|ms|#a=b,c=5")
+        statsd_module.handle_line(0, "gorm:100|ms|#a=z,c=5")
+        statsd_module.handle_line(0, "gorm:100|ms|#c=5,a=b")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
             ('stats_timers', expected_value, 1, dict(name='gorm', percentile='100.0')),
@@ -541,7 +545,7 @@ class TestStatsDServer(unittest.TestCase):
             ('stats_timers', expected_value2, 1, dict(name='gorm', a='b', c='5', percentile='100.0')),
             ('stats_timers', expected_value, 1, dict(name='gorm', a='z', c='5', percentile='100.0')),
         ])
-        statsd_module.handle_line(1, "gorm:100|ms|#a:b,c=5")
+        statsd_module.handle_line(1, "gorm:100|ms|#a=b,c=5")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
             ('stats_timers', expected_value, 2, dict(name='gorm', a='b', c='5', percentile='100.0')),
@@ -656,6 +660,17 @@ class TestStatsDServer(unittest.TestCase):
                   histogram_selector=lambda key: lambda x: 'test_histogram',)
     def test_bucketed_histograms_metadata(self, statsd_module):
         self.bucketed_metadata(statsd_module, "gorm:1|h", expected_metadata_size=3)
+
+    @statsd_setup(timestamps=range(1, 1000))
+    def test_commas(self, statsd_module):
+        mock_pipe = statsd_module.dst_pipes[0]
+        statsd_module.handle_line(0, "foo:1|c|#hello=world,")
+        statsd_module.handle_line(0, "foo:1|c|#hello=world,,,more=metadata,")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_counters', dict(rate=1, count=1), 1, dict(name='foo', hello='world')),
+            ('stats_counters', dict(rate=1, count=1), 1, dict(name='foo', hello='world', more='metadata')),
+        ])
 
     def prepare_performance_test(self):
         flag = os.environ.get('TEST_PERFORMANCE', 'no').lower()
@@ -800,7 +815,7 @@ class TestStatsDServer(unittest.TestCase):
     def percentiles_performance(self, statsd_module, prefix, vector_len, N, M, profiler=None):
         total_time, test_set = 0, self.percentile_test_set(vector_len, N)
         for i in range(M):
-            statsd_module.enqueue = lambda bucket, stats, timestamp, metadata: None
+            statsd_module.buffer_metric = lambda bucket, stats, timestamp, metadata: None
             statsd_module.timers.clear()
             statsd_module.timers.update((k, (8, v)) for k, v in test_set)
             statsd_module.last_timestamp = 0

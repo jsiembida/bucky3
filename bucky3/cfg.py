@@ -46,7 +46,7 @@ log_level = "INFO"
 #   perhaps 1-5 secs.
 #   In "prometheus_exporter" it defines the frequency of housekeeping wherein old metrics
 #   are being found and removed. Note, it is not the maximum age of data kept in prometheus
-#   module (see below for it). The check can be done at low freqs, i.e. every 60-180 secs.
+#   module, see also add_timestamps option and prometheus exporter section below for more.
 #   In any case, flush_interval is enforced to be at least 0.1 sec.
 flush_interval = 10
 
@@ -65,9 +65,8 @@ flush_interval = 10
 # metadata
 # - dict of str:str, extra metadata injected into metrics
 # - Optional, default: None
-# - Destination modules merge this metadata into the metrics received from the source modules,
-#   with metadata in metrics taking precedence. Having the host name injected is very helpful,
-#   other helpful could be "env", "location" or "team" - depending on your infrastructure.
+# - Source modules merge this metadata into the produced metrics. Having the host name
+#   injected is very helpful, other helpful could be "env", "location" or "team".
 metadata = dict(
     host="${BUCKY3_HOST}",
 )
@@ -105,7 +104,8 @@ metadata = dict(
 #   when this option is on. Self reporting is throttled to roughly max(flush_interval, 60).
 #   So the self report will be produced no more often than once a minute, but may be produced
 #   less often if the flush period is long. Note, the main module, by design, will not report
-#   anything regardless of the setting.
+#   anything regardless of the setting. Also, the configured metadata is injected into self
+#   reported metrics just as it would for other type of metrics.
 # - Example: self_report = True
 
 
@@ -330,7 +330,13 @@ prometheus = dict(
     #   Other requests receive 404. If you use http_path="", the endpoint will be GET /
     # Example: http_path=""
 
-    # As describe above, flush_interval should be longer for this module.
+    # flush_interval in combination with values_timeout define the metrics retention
+    # in prometheus exporter. Prometheus1 has a long staleness (configured to a point)
+    # for which it makes sense to have flush_interval and values_timeout long.
+    # Prometheus2 introduces short metric retention, if you want to take advantage of it
+    # you need to tune flush_interval and values_timeout to your scraping interval.
+    # Here, "flush_interval=5" and "values_timeout=14" are set so that statsd module
+    # drops metrics before 20s - which will work with 10s scraping interval.
     flush_interval=5,
 
     # values_timeout, data retention (in seconds)
@@ -338,8 +344,7 @@ prometheus = dict(
     # - Required
     # - Every flush_interval seconds this module runs a housekeeping task. The task
     #   finds all metrics that has not been refreshed (received from source modules)
-    #   in values_timeout seconds and removes them. This parameter in combination with
-    #   flush_interval and Prometheus scraping period determine liveness of your metrics.
+    #   in values_timeout seconds and removes them.
     values_timeout=14,
 
     # As described above, you likely want this module start up asap.

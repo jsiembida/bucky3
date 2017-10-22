@@ -50,12 +50,14 @@ for grouping when viewing the generated time-series graphs, as well as
 for specifying alert rules.
 
 Note: unlike in DogStatsD, timer (`ms`) and histogram (`h`) are not aliases
-for one another. While bucky3 consumes vanilla StatsD and DogStatsD
-timer messages, it implements proper histograms with customizable bins
+for one another. Bucky3 implements proper histograms with customizable bins
 instead of redirecting histogram messages to the timer code path.
 
-Note: bucky3 supports both '=' and ':' as tag/value separator, but for
-clarity we recommend sticking with '='.
+Note: `=` is used as in `key=value` and it has the usual meaning.
+DataDog documentation uses `foo:bar` but tags in DataDog implementation
+are a list of strings without the meaning they have in bucky3.
+
+Note: trailing comma after the last tag is allowed.
 
 
 
@@ -157,6 +159,3 @@ on localhost:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(2)    # Not strictly necessary but a good idea
         sock.sendto(msg.encode('ascii'), ('127.0.0.1', 8125))
-
-You can however use available statsd libraries i.e. DataDog Python library:
-https://github.com/DataDog/datadogpy

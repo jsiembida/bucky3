@@ -53,7 +53,9 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
             # https://prometheus.io/docs/instrumenting/exposition_formats/
             bucket, metadata = k[0], k[1:]
             if metadata:
-                metadata_str = ','.join(str(k) + '="' + str(v) + '"' for k, v in metadata)
+                metadata_str = ','.join(
+                    k + '="' + v.replace('\\', '\\\\').replace('"', '\"') + '"' for k, v in metadata
+                )
                 # Lines MUST end with \n (not \r\n), the last line MUST also end with \n
                 # Otherwise, Prometheus will reject the whole scrape!
                 line = bucket + '{' + metadata_str + '} ' + str(value)

@@ -17,8 +17,8 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
                 self.socket.sendto(payload, (ip, port))
 
     def process_values(self, recv_timestamp, bucket, values, timestamp, metadata=None):
-        # https://docs.influxdata.com/influxdb/v1.2/write_protocols/line_protocol_tutorial/
-        label_buf = [bucket]
+        # https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_tutorial/
+        metadata_buf = [bucket]
         if metadata:
             # InfluxDB docs recommend sorting tags
             for k in sorted(metadata.keys()):
@@ -27,7 +27,7 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
                 if v is None or v == '':
                     continue
                 v = str(v).replace(' ', '')
-                label_buf.append(str(k) + '=' + v)
+                metadata_buf.append(k + '=' + v.replace(',', '\\,').replace(' ', '\\ ').replace('=', '\\='))
         value_buf = []
         for k in sorted(values.keys()):
             v = values[k]
@@ -38,7 +38,7 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
                 value_buf.append(str(k) + '=' + str(v))
             elif t is str:
                 value_buf.append(str(k) + '="' + v + '"')
-        line = ' '.join((','.join(label_buf), ','.join(value_buf)))
+        line = ' '.join((','.join(metadata_buf), ','.join(value_buf)))
         if timestamp is not None:
             # So, the lower timestamp precisions don't seem to work with line protocol...
             line += ' ' + str(int(timestamp * 1000000000))
