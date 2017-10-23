@@ -7,8 +7,7 @@
 
 
 ##### Medium priority
-
-* Regexps in linuxstats white/black lists. 
+ 
 * Sending massive TCP payloads proved problematic in Prometheus exporter, so it does
   a sequence of smaller writes to the socket instead. Graphite module still does one
   massive write to the socket and most likely may need to do the smaller writes, too.

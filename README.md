@@ -35,7 +35,7 @@ After a couple of seconds, you can harvest metrics:
 curl -s http://127.0.0.1:9103/metrics | grep system_cpu
 ```
 
-You can also feed metrics via StatsD protocol:
+You can also feed custom metrics via StatsD protocol:
 
 ```
 echo "foobar:123|g" | nc -w 1 -u 127.0.0.1 8125
@@ -47,7 +47,7 @@ And harvest them, too:
 curl -s http://127.0.0.1:9103/metrics | grep foobar
 ```
 
-From within the project directory, you can run tests:
+Tests can be run as follows:
 
 ```
 python3 -m unittest tests/test_*.py
@@ -60,7 +60,7 @@ python3 -m unittest tests/test_*.py
 ##### Configuration
 
 There is only one, optional, command line argument. A path to configuration file. If not provided, the default
-configuration is used. Please see `bucky3/cfg.py` for a detailed discussion of Bucky3 configuration.
+configuration is used. Please see `bucky3/cfg.py` for a detailed discussion of available configuration options.
 
 ##### Modules
 
@@ -71,18 +71,16 @@ modules (subprocesses). The following modules are available:
 
 * `statsd_server` - source module that collects metrics via extended StatsD protocol.
 * `linux_stats` - source module that collects Linux metrics via `/proc` filesystem.
-Including CPUs, system load, memory usage, filesystem usage, block devices and network interfaces activity.
 * `docker_stats` - source module that collects metrics from running docker containers.
 * `influxdb_client` - destination module that sends metrics to InfluxDB via
 [UDP line protocol.](https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_reference/)
-It can fan out metrics to multiple hosts and automatically detect DNS changes.
 * `prometheus_exporter` - destination module that exposes metrics via 
 [Prometheus text exposition format.](https://prometheus.io/docs/instrumenting/exposition_formats/)
 * `carbon_client` - destination module that sends data to Graphite via TCP.
 
 ##### Installation
 
-Bucky3 and its dependencies can be installed and run from a dedicated virtual environment, i.e.
+Dedicated virtual environment is a recommended way of installing and running:
 
 ```
 # python3 -m venv /usr/local/bucky3
@@ -92,10 +90,10 @@ Bucky3 and its dependencies can be installed and run from a dedicated virtual en
 
 ##### Running
 
-Bucky3 is intended to be run as an unprivileged service / daemon. Only docker module requires that Bucky3 be
-in the docker group, or otherwise have access to the docker socket. Bucky3 doesn't store any data on filesystem,
-nor does it create any log files. All logs go to stdout / stderr. Assuming the installation location as above,
-an example [SystemD unit file](https://www.freedesktop.org/software/systemd/man/systemd.unit.html) could be:
+Bucky3 is intended to be run as an unprivileged service / daemon. Only docker module requires access
+to docker socket. Bucky3 doesn't store any data on filesystem, nor does it create any log files.
+All logs go to stdout / stderr. Assuming the installation location as above, an example
+[SystemD unit file](https://www.freedesktop.org/software/systemd/man/systemd.unit.html) could be:
 
 ```
 [Unit]
