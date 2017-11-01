@@ -32,12 +32,10 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
         for k in sorted(values.keys()):
             v = values[k]
             t = type(v)
-            if t is int:
-                value_buf.append(str(k) + '=' + str(v) + 'i')
-            elif t is float or t is bool:
+            if t is float or t is int or t is bool:
                 value_buf.append(str(k) + '=' + str(v))
             elif t is str:
-                value_buf.append(str(k) + '="' + v + '"')
+                value_buf.append(str(k) + '="' + v.replace('"', r'\"') + '"')
         line = ' '.join((','.join(metadata_buf), ','.join(value_buf)))
         if timestamp is not None:
             # So, the lower timestamp precisions don't seem to work with line protocol...
