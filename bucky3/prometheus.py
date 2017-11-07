@@ -54,7 +54,7 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
             bucket, metadata = k[0], k[1:]
             if metadata:
                 metadata_str = ','.join(
-                    k + '="' + v.replace('\\', '\\\\').replace('"', '\"') + '"' for k, v in metadata
+                    k + '="' + v.replace('\\', '\\\\').replace('"', '\\"') + '"' for k, v in metadata
                 )
                 # Lines MUST end with \n (not \r\n), the last line MUST also end with \n
                 # Otherwise, Prometheus will reject the whole scrape!
@@ -106,5 +106,10 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
             metadata_tuple = (bucket,) + tuple((k, metadata[k]) for k in sorted(metadata.keys()))
         else:
             metadata_tuple = (bucket,)
-        # The None below will get lazily rendered during HTTP req
-        self.buffer[metadata_tuple] = recv_timestamp, metric_timestamp, value, None
+        t = type(value)
+        if t is bool:
+            value = int(bool)
+            t = int
+        if t is int or t is float:
+            # The None below will get lazily rendered during HTTP req
+            self.buffer[metadata_tuple] = recv_timestamp, metric_timestamp, value, None

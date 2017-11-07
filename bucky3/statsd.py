@@ -47,10 +47,10 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.timestamp_window = self.cfg.get('timestamp_window', 600)
 
     def loop(self):
+        socket = self.get_udp_socket(bind=True)
         while True:
             try:
-                self.socket = self.socket or self.get_udp_socket(bind=True)
-                data, addr = self.socket.recvfrom(65535)
+                data, addr = socket.recvfrom(65535)
                 self.handle_packet(data, addr)
             except InterruptedError:
                 pass
