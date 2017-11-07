@@ -265,28 +265,55 @@ class HostResolver:
 
 class UDPConnector(HostResolver):
     def get_udp_socket(self, bind=False):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        if bind:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            if hasattr(socket, 'SO_REUSEPORT'):
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            ip, port = self.resolve_local_host()
-            sock.bind((ip, port))
-            self.log.info("Bound UDP socket %s:%d", ip, port)
-        return sock
+        # UDP sockets don't need the elaborate recycling TCP sockets do
+        if self.socket is None:
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            if bind:
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                if hasattr(socket, 'SO_REUSEPORT'):
+                    self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                ip, port = self.resolve_local_host()
+                self.socket.bind((ip, port))
+                self.log.info("Bound UDP socket %s:%d", ip, port)
+        return self.socket
 
 
 class TCPConnector(HostResolver):
-    def get_tcp_socket(self, bind=False, connect=False):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        if bind:
-            ip, port = self.resolve_local_host()
-            sock.bind((ip, port))
-            self.log.info("Bound TCP socket %s:%d", ip, port)
-        if connect:
-            remote_ip, remote_port = random.choice(self.resolve_remote_hosts())
-            sock.connect((remote_ip, remote_port))
-        return sock
+    def cleanup_tcp_socket(self):
+        if self.socket:
+            self.socket.close()
+        self.socket = None
+
+    # To provide load balancing, when pushing via TCP, we reopen the connection
+    # at intervals (using a random host from the pool of resolved ones).
+    def get_tcp_connection(self):
+        now = time.monotonic()
+        if self.socket is None or (now - self.socket_timestamp) > 180:
+            self.cleanup_tcp_socket()
+            connect_exception = None
+
+            # In theory, DNS should do some sort of round-robin / randomization, but better be safe
+            resolved_hosts = list(self.resolve_remote_hosts())
+            random.shuffle(resolved_hosts)
+
+            for remote_ip, remote_port in resolved_hosts:
+                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.socket.settimeout(1)
+                try:
+                    # Failure of connect should be caught and handled.
+                    # Only when all possible connects fail, propagate the issue.
+                    self.socket.connect((remote_ip, remote_port))
+                except OSError as e:
+                    connect_exception = e
+                    continue
+                self.socket_timestamp = time.monotonic()
+                connect_exception = None
+                break
+
+            if connect_exception:
+                self.cleanup_tcp_socket()
+                raise connect_exception
+        return self.socket
 
 
 class MetricsPushProcess(MetricsDstProcess):
@@ -296,6 +323,8 @@ class MetricsPushProcess(MetricsDstProcess):
         self.default_port = default_port
         self.resolved_hosts = None
         self.resolved_hosts_timestamp = 0
+        self.socket = None
+        self.socket_timestamp = 0
 
     def process_batch(self, recv_timestamp, batch):
         super().process_batch(recv_timestamp, batch)

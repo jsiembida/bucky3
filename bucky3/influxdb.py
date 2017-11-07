@@ -9,12 +9,12 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
 
     def push_buffer(self):
         # For UDP we want to chunk it up into smaller packets.
-        self.socket = self.socket or self.get_udp_socket()
+        socket = self.get_udp_socket()
         for i in range(0, len(self.buffer), self.chunk_size):
             chunk = self.buffer[i:i + self.chunk_size]
             payload = '\n'.join(chunk).encode("ascii")
             for ip, port in self.resolve_remote_hosts():
-                self.socket.sendto(payload, (ip, port))
+                socket.sendto(payload, (ip, port))
 
     def process_values(self, recv_timestamp, bucket, values, timestamp, metadata=None):
         # https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_tutorial/

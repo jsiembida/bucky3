@@ -24,9 +24,9 @@ class CarbonClient(module.MetricsPushProcess, module.TCPConnector):
 
     def push_buffer(self):
         # For TCP we probably can just pump all buffer into the wire.
-        self.socket = self.socket or self.get_tcp_socket(connect=True)
+        socket = self.get_tcp_connection()
         payload = ''.join(self.buffer).encode("ascii")
-        self.socket.sendall(payload)
+        socket.sendall(payload)
 
     def translate_token(self, token):
         # TODO: Which chars we have to translate? There is much more to handle here.
