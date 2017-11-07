@@ -32,6 +32,7 @@ MODULES = {
     'influxdb_client': ('bucky3.influxdb', 'InfluxDBClient'),
     'prometheus_exporter': ('bucky3.prometheus', 'PrometheusExporter'),
     'statsd_server': ('bucky3.statsd', 'StatsDServer'),
+    'jsond_server': ('bucky3.jsond', 'JsonDServer'),
     'linux_stats': ('bucky3.linuxstats', 'LinuxStatsCollector'),
     'docker_stats': ('bucky3.dockerstats', 'DockerStatsCollector')
 }

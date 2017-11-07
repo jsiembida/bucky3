@@ -159,7 +159,7 @@ linuxstats = dict(
     # - Optional, default: False
     # - On non-Linux this module will fail, set the "module_inactive=True" to disable it.
     #   Or delete the whole section. This option is a convenience.
-    module_inactive=False,
+    module_inactive=True,
 
     # destination_modules
     # - array / tuple of names / references
@@ -311,6 +311,23 @@ statsd = dict(
     #   window configured here: now - timestamp_window ... now + timestamp_window
     #   Metrics with custom timestamp outside of the window are ignored.
     # - Example: timestamp_window = 60
+)
+
+
+# jsond_server consumes via UDP protocol newline delimited JSON objects (and only objects)
+# The JSON objects as such obviate the need of having metadata aside of metric(s) values,
+# the metadata configured is still merged into the objects as for other source modules.
+# There is no aggregation carried out on the JSON objects, they are only buffered and
+# flushed to the destination modules at the configured flush_interval.
+jsond = dict(
+    module_type="jsond_server",
+    module_inactive=False,
+
+    # local_host
+    # - str, UDP endpoint to bind at
+    # - Optional, default: '0.0.0.0:0'
+    # - See local_host description statsd, you most likely want to specify this option.
+    local_host='127.0.0.1:8181',
 )
 
 
