@@ -64,7 +64,7 @@ flush_interval = 10
 
 # metadata
 # - dict of str:str, extra metadata injected into metrics
-# - Optional, default: None
+# - Optional, default: {}
 # - Source modules merge this metadata into the produced metrics. Having the host name
 #   injected is very helpful, other helpful could be "env", "location" or "team".
 metadata = dict(

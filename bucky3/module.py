@@ -74,7 +74,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.chunk_size = max(self.cfg.get('chunk_size', 300), 1)
         self.tick_interval = self.flush_interval = max(self.cfg['flush_interval'], 0.1)
         self.next_tick = self.next_flush = 0
-        self.metadata = self.cfg.get('metadata')
+        self.metadata = self.cfg.get('metadata', {})
         self.metric_postprocessor = self.cfg.get('metric_postprocessor')
         self.add_timestamps = self.cfg.get('add_timestamps', False)
         self.self_report = self.cfg.get('self_report', False)
@@ -203,12 +203,12 @@ class MetricsSrcProcess(MetricsProcess):
 
     def buffer_metric(self, bucket, stats, timestamp, metadata):
         if metadata:
-            if 'bucket' in metadata:
-                bucket = metadata['bucket']
-                del metadata['bucket']
             metadata = self.merge_dict(metadata)
         else:
-            metadata = self.metadata
+            metadata = self.metadata.copy()
+        if 'bucket' in metadata:
+            bucket = metadata['bucket']
+            del metadata['bucket']
         if self.metric_postprocessor:
             tmp = self.metric_postprocessor(bucket, stats, timestamp, metadata)
             if tmp is None:
