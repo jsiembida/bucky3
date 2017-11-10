@@ -171,20 +171,13 @@ class MetricsDstProcess(MetricsProcess):
                 time.sleep(1)
 
     def process_batch(self, recv_timestamp, batch):
-        for sample in batch:
-            bucket, value, timestamp, metadata = sample
-            if type(value) is dict:
-                self.process_values(recv_timestamp, bucket, value, timestamp, metadata)
-            else:
-                self.process_value(recv_timestamp, bucket, value, timestamp, metadata)
+        for bucket, values, timestamp, metadata in batch:
+            self.process_values(recv_timestamp, bucket, values, timestamp, metadata)
 
     def process_self_report(self, bucket, stats, timestamp, metadata):
         self.process_values(round(time.time(), 3), bucket, stats, timestamp, self.merge_dict(metadata))
 
     def process_values(self, recv_timestamp, bucket, values, metric_timestamp, metadata=None):
-        raise NotImplementedError()
-
-    def process_value(self, recv_timestamp, bucket, value, metric_timestamp, metadata=None):
         raise NotImplementedError()
 
 

@@ -42,34 +42,6 @@ def influxdb_setup(timestamps, **extra_cfg):
 
 class TestInfluxDBClient(unittest.TestCase):
     @influxdb_setup(timestamps=range(1, 100))
-    def test_simple_single_values(self, influxdb_module):
-        influxdb_module.process_value(2, 'val1', 10, 1)
-        influxdb_module.process_value(2, 'val2', 11.0, 1)
-        influxdb_module.process_value(2, 'val1', 12.7, 2)
-        influxdb_module.process_value(2, 'val.3', 13, 1)
-        influxdb_module.process_value(2, 'val*3', 14, 1)
-        return [
-            'val1 value=10 1000000000',
-            'val2 value=11.0 1000000000',
-            'val1 value=12.7 2000000000',
-            'val.3 value=13 1000000000',
-            'val*3 value=14 1000000000',
-        ]
-
-    @influxdb_setup(timestamps=range(1, 100))
-    def test_single_values(self, influxdb_module):
-        influxdb_module.process_value(2, 'val1', 10, 1, dict(a='1', b='2'))
-        influxdb_module.process_value(2, 'val2', 11, 3, dict(path='/foo/bar', foo='world'))
-        influxdb_module.process_value(2, 'val.3', 13.3, 1, dict(path='foo.bar', hello='world'))
-        influxdb_module.process_value(2, 'val*3', 14.1, 1, dict(a='foo.bar', hello='world'))
-        return [
-            'val1,a=1,b=2 value=10 1000000000',
-            'val2,foo=world,path=/foo/bar value=11 3000000000',
-            'val.3,hello=world,path=foo.bar value=13.3 1000000000',
-            'val*3,a=foo.bar,hello=world value=14.1 1000000000',
-        ]
-
-    @influxdb_setup(timestamps=range(1, 100))
     def test_simple_multi_values(self, influxdb_module):
         influxdb_module.process_values(2, 'val1', dict(x=1.5, y=2), 1)
         influxdb_module.process_values(2, 'val/2', dict(a=1, b=10), 1)

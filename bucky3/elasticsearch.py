@@ -84,6 +84,3 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
         self.merge_dict(metadata)
         self.merge_dict(values, metadata)
         self.buffer.append((bucket, timestamp or recv_timestamp, values))
-
-    def process_value(self, recv_timestamp, bucket, value, timestamp, metadata=None):
-        self.process_values(recv_timestamp, bucket, {'value': value}, timestamp, metadata)

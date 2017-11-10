@@ -41,6 +41,3 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
             # So, the lower timestamp precisions don't seem to work with line protocol...
             line += ' ' + str(int(timestamp * 1000000000))
         self.buffer.append(line)
-
-    def process_value(self, recv_timestamp, bucket, value, timestamp, metadata=None):
-        self.process_values(recv_timestamp, bucket, {'value': value}, timestamp, metadata)
