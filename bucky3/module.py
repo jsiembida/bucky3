@@ -210,10 +210,10 @@ class MetricsSrcProcess(MetricsProcess):
             bucket = metadata['bucket']
             del metadata['bucket']
         if self.metric_postprocessor:
-            tmp = self.metric_postprocessor(bucket, stats, timestamp, metadata)
-            if tmp is None:
+            postprocessed_tuple = self.metric_postprocessor(bucket, stats, timestamp, metadata)
+            if postprocessed_tuple is None:
                 return
-            bucket, stats, timestamp, metadata = tmp
+            self.buffer.append(postprocessed_tuple)
         self.buffer.append((bucket, stats, timestamp, metadata))
 
     def process_self_report(self, bucket, stats, timestamp, metadata):

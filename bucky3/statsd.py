@@ -105,14 +105,14 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         bucket = self.cfg['sets_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, v) in self.sets.items():
-            self.buffer_metric(bucket, {"count": float(len(v))}, cust_timestamp or timestamp, dict(k))
+            self.buffer_metric(bucket, {"count": len(v)}, cust_timestamp or timestamp, dict(k))
         self.sets = {}
 
     def enqueue_gauges(self, system_timestamp):
         bucket = self.cfg['gauges_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
         for k, (cust_timestamp, v) in self.gauges.items():
-            self.buffer_metric(bucket, float(v), cust_timestamp or timestamp, dict(k))
+            self.buffer_metric(bucket, {"value": float(v)}, cust_timestamp or timestamp, dict(k))
         self.gauges = {}
 
     def enqueue_counters(self, system_timestamp):

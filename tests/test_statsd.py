@@ -292,20 +292,20 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(0, "gorm:6.7|g")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_gauges', 6.7, 1, dict(name='gorm'))
+            ('stats_gauges', dict(value=6.7), 1, dict(name='gorm'))
         ])
         statsd_module.handle_line(1, "gorm:3|g|@0.5")
         statsd_module.handle_line(1, "gorm:8.1|g")
         statsd_module.handle_line(1, "gurm:123|g|@0.2")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_gauges', 8.1, 2, dict(name='gorm')),
-            ('stats_gauges', 123, 2, dict(name='gurm'))
+            ('stats_gauges', dict(value=8.1), 2, dict(name='gorm')),
+            ('stats_gauges', dict(value=123), 2, dict(name='gurm'))
         ])
         statsd_module.handle_line(2, "gurm:12|g|@0.5")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_gauges', 12, 3, dict(name='gurm')),
+            ('stats_gauges', dict(value=12), 3, dict(name='gurm')),
         ])
         statsd_module.tick()
         statsd_verify(mock_pipe, [])
@@ -320,15 +320,15 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(0, "gorm:3.5|g|#c=5,a=b")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_gauges', 1.5, 1, dict(name='gorm')),
-            ('stats_gauges', 2.0, 1, dict(name='gorm', a='b')),
-            ('stats_gauges', 3.5, 1, dict(name='gorm', a='b', c='5')),
-            ('stats_gauges', 3.0, 1, dict(name='gorm', a='z', c='5')),
+            ('stats_gauges', dict(value=1.5), 1, dict(name='gorm')),
+            ('stats_gauges', dict(value=2.0), 1, dict(name='gorm', a='b')),
+            ('stats_gauges', dict(value=3.5), 1, dict(name='gorm', a='b', c='5')),
+            ('stats_gauges', dict(value=3.0), 1, dict(name='gorm', a='z', c='5')),
         ])
         statsd_module.handle_line(1, "gorm:4.0|g|#c=5,a=z")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
-            ('stats_gauges', 4.0, 2, dict(name='gorm', a='z', c='5')),
+            ('stats_gauges', dict(value=4.0), 2, dict(name='gorm', a='z', c='5')),
         ])
         statsd_module.tick()
         statsd_verify(mock_pipe, [])
