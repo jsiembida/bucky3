@@ -16,18 +16,16 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
             for ip, port in self.resolve_remote_hosts():
                 socket.sendto(payload, (ip, port))
 
-    def process_values(self, recv_timestamp, bucket, values, timestamp, metadata=None):
+    def process_values(self, recv_timestamp, bucket, values, timestamp, metadata):
         # https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_tutorial/
         metadata_buf = [bucket]
-        if metadata:
-            # InfluxDB docs recommend sorting tags
-            for k in sorted(metadata.keys()):
-                v = metadata[k]
-                # InfluxDB will drop insert with empty tags
-                if v is None or v == '':
-                    continue
-                v = str(v).replace(' ', '')
-                metadata_buf.append(k + '=' + v.replace(',', '\\,').replace(' ', '\\ ').replace('=', '\\='))
+        # InfluxDB docs recommend sorting tags
+        for k in sorted(metadata.keys()):
+            v = metadata[k]
+            # InfluxDB will drop insert with empty tags
+            if v is None or v == '':
+                continue
+            metadata_buf.append(k + '=' + str(v).replace(',', '\\,').replace(' ', '\\ ').replace('=', '\\='))
         value_buf = []
         for k in sorted(values.keys()):
             v = values[k]

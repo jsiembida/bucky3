@@ -43,9 +43,9 @@ def influxdb_setup(timestamps, **extra_cfg):
 class TestInfluxDBClient(unittest.TestCase):
     @influxdb_setup(timestamps=range(1, 100))
     def test_simple_multi_values(self, influxdb_module):
-        influxdb_module.process_values(2, 'val1', dict(x=1.5, y=2), 1)
-        influxdb_module.process_values(2, 'val/2', dict(a=1, b=10), 1)
-        influxdb_module.process_values(2, 'val1', dict(y=10, z=1.234), 2)
+        influxdb_module.process_values(2, 'val1', dict(x=1.5, y=2), 1, {})
+        influxdb_module.process_values(2, 'val/2', dict(a=1, b=10), 1, {})
+        influxdb_module.process_values(2, 'val1', dict(y=10, z=1.234), 2, {})
         return [
             'val1 x=1.5,y=2 1000000000',
             'val/2 a=1,b=10 1000000000',

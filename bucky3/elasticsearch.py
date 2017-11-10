@@ -80,7 +80,7 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
             chunk = self.buffer[i:i + self.chunk_size]
             elasticsearch_connection.bulk_upload(chunk)
 
-    def process_values(self, recv_timestamp, bucket, values, timestamp, metadata=None):
+    def process_values(self, recv_timestamp, bucket, values, timestamp, metadata):
         self.merge_dict(metadata)
         self.merge_dict(values, metadata)
         self.buffer.append((bucket, timestamp or recv_timestamp, values))

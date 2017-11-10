@@ -92,24 +92,14 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
             del self.buffer[k]
         return True
 
-    def process_values(self, recv_timestamp, bucket, values, metrics_timestamp, metadata=None):
+    def process_values(self, recv_timestamp, bucket, values, metrics_timestamp, metadata):
         for k, v in values.items():
-            if metadata:
-                metadata_dict = metadata.copy()
-                metadata_dict.update(value=k)
-            else:
-                metadata_dict = dict(value=k)
-            self.process_value(recv_timestamp, bucket, v, metrics_timestamp, metadata_dict)
-
-    def process_value(self, recv_timestamp, bucket, value, metric_timestamp, metadata=None):
-        if metadata:
+            metadata['value'] = k
             metadata_tuple = (bucket,) + tuple((k, metadata[k]) for k in sorted(metadata.keys()))
-        else:
-            metadata_tuple = (bucket,)
-        t = type(value)
-        if t is bool:
-            value = int(bool)
-            t = int
-        if t is int or t is float:
-            # The None below will get lazily rendered during HTTP req
-            self.buffer[metadata_tuple] = recv_timestamp, metric_timestamp, value, None
+            t = type(v)
+            if t is bool:
+                v = int(bool)
+                t = int
+            if t is int or t is float:
+                # The None below will get lazily rendered during HTTP req
+                self.buffer[metadata_tuple] = recv_timestamp, metrics_timestamp, v, None

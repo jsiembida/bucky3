@@ -344,7 +344,7 @@ class MetricsDstProcess(MetricsProcess):
     def process_self_report(self, bucket, stats, timestamp, metadata):
         self.process_values(round(time.time(), 3), bucket, stats, timestamp, self.merge_dict(metadata))
 
-    def process_values(self, recv_timestamp, bucket, values, metric_timestamp, metadata=None):
+    def process_values(self, recv_timestamp, bucket, values, metric_timestamp, metadata):
         raise NotImplementedError()
 
 
