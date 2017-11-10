@@ -115,7 +115,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         if not self.self_report:
             return None
         now = time.monotonic()
-        if now - self.self_report_timestamp >= 59:
+        if now - self.self_report_timestamp >= 60:
             self.self_report_timestamp = now
             usage = resource.getrusage(resource.RUSAGE_SELF)
             self.process_self_report(
@@ -132,10 +132,12 @@ class MetricsProcess(multiprocessing.Process, Logger):
     def process_self_report(self, bucket, stats, timestamp, metadata):
         pass
 
-    def merge_metadata(self, metadata):
-        if self.metadata:
-            metadata.update((k, v) for k, v in self.metadata.items() if k not in metadata)
-        return metadata
+    def merge_dict(self, dst, src=None):
+        if src is None:
+            src = self.metadata
+        if src:
+            dst.update((k, v) for k, v in src.items() if k not in dst)
+        return dst
 
 
 class MetricsDstProcess(MetricsProcess):
@@ -177,7 +179,7 @@ class MetricsDstProcess(MetricsProcess):
                 self.process_value(recv_timestamp, bucket, value, timestamp, metadata)
 
     def process_self_report(self, bucket, stats, timestamp, metadata):
-        self.process_values(round(time.time(), 3), bucket, stats, timestamp, self.merge_metadata(metadata))
+        self.process_values(round(time.time(), 3), bucket, stats, timestamp, self.merge_dict(metadata))
 
     def process_values(self, recv_timestamp, bucket, values, metric_timestamp, metadata=None):
         raise NotImplementedError()
@@ -204,7 +206,7 @@ class MetricsSrcProcess(MetricsProcess):
             if 'bucket' in metadata:
                 bucket = metadata['bucket']
                 del metadata['bucket']
-            metadata = self.merge_metadata(metadata)
+            metadata = self.merge_dict(metadata)
         else:
             metadata = self.metadata
         if self.metric_postprocessor:
@@ -268,6 +270,7 @@ class UDPConnector(HostResolver):
         # UDP sockets don't need the elaborate recycling TCP sockets do
         if self.socket is None:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.log.info('Created UDP socket')
             if bind:
                 self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 if hasattr(socket, 'SO_REUSEPORT'):
@@ -282,6 +285,7 @@ class TCPConnector(HostResolver):
     def cleanup_tcp_socket(self):
         if self.socket:
             self.socket.close()
+            self.log.debug('Closed TCP socket')
         self.socket = None
 
     # To provide load balancing, when pushing via TCP, we reopen the connection
@@ -290,29 +294,23 @@ class TCPConnector(HostResolver):
         now = time.monotonic()
         if self.socket is None or (now - self.socket_timestamp) > 180:
             self.cleanup_tcp_socket()
-            connect_exception = None
-
             # In theory, DNS should do some sort of round-robin / randomization, but better be safe
             resolved_hosts = list(self.resolve_remote_hosts())
             random.shuffle(resolved_hosts)
 
             for remote_ip, remote_port in resolved_hosts:
                 self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.log.info('Created TCP socket')
                 self.socket.settimeout(1)
                 try:
                     # Failure of connect should be caught and handled.
-                    # Only when all possible connects fail, propagate the issue.
                     self.socket.connect((remote_ip, remote_port))
+                    self.log.info('Connected TCP socket to %s:%d', remote_ip, remote_port)
                 except OSError as e:
-                    connect_exception = e
+                    self.cleanup_tcp_socket()
                     continue
                 self.socket_timestamp = time.monotonic()
-                connect_exception = None
                 break
-
-            if connect_exception:
-                self.cleanup_tcp_socket()
-                raise connect_exception
         return self.socket
 
 
@@ -335,12 +333,15 @@ class MetricsPushProcess(MetricsDstProcess):
         buffer_len = len(self.buffer)
         if buffer_len > self.buffer_limit:
             self.buffer = self.buffer[-int(self.buffer_limit / 2):]
-            self.log.debug("Buffer trimmed from %d to %d entries", buffer_len, len(self.buffer))
+            self.log.warning("Buffer trimmed from %d to %d entries", buffer_len, len(self.buffer))
 
     def flush(self, system_timestamp):
         if self.buffer:
             try:
+                self.log.debug('Pushing %d entries', len(self.buffer))
                 self.push_buffer()
+                if self.buffer:
+                    self.log.warning('%d entries left over in buffer', len(self.buffer))
                 self.buffer.clear()
             except (PermissionError, ConnectionError):
                 self.log.exception("Connection error")

@@ -356,6 +356,34 @@ influxdb = dict(
 )
 
 
+elasticsearch = dict(
+    module_type="elasticsearch_client",
+    module_inactive=False,
+
+    elasticsearch_name="metrics",
+
+    # remote_hosts, Elasticsearch endpoints
+    # - tuple of str
+    # - Required
+    # - See remote_hosts in InfluxDB module. Elasticsearch endpoints are TCP and this
+    #   client sends data to a randomly picked one from the pool of resolved endpoints.
+    #   The connection is recycled every 3min. This is to provide load balancing that
+    #   follows topology changes. The default port is 9200.
+    # - Example: remote_hosts=("es1", "es2:1234")
+    remote_hosts=(
+        "localhost",
+    ),
+
+    # flush_interval should be short for this module so it overrides the value from
+    # the global context. Also, flush_interval<=3 implies randomize_startup=False
+    flush_interval=1,
+
+    # This module uses bulk calls, so it makes sense to keep chunks bigger
+    # rather then smaller, i.e. 100-1000, the default 300 is ok.
+    # chunk_size=300,
+)
+
+
 # Note that Prometheus exporter is implicitly enabled
 prometheus = dict(
     module_type="prometheus_exporter",
