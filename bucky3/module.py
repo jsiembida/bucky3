@@ -30,6 +30,130 @@ class Logger:
         return logging.getLogger(module_name)
 
 
+class HostResolver:
+    def parse_address(self, address, default_port):
+        bits = address.split(":")
+        if len(bits) == 1:
+            host, port = address, default_port
+        elif len(bits) == 2:
+            host, port = bits[0], int(bits[1])
+        else:
+            raise ValueError("Address %s is invalid" % (address,))
+        hostname, aliaslist, ipaddrlist = socket.gethostbyname_ex(host)
+        return {(ip, port) for ip in ipaddrlist}
+
+    def resolve_host(self, host, default_port):
+        for ip, port in self.parse_address(host, default_port):
+            self.log.debug("Resolved %s as %s:%d", host, ip, port)
+            yield ip, port
+
+    def resolve_local_host(self, default_port=0):
+        local_host = self.cfg.get('local_host', '0.0.0.0')
+        return random.choice(tuple(self.resolve_host(local_host, default_port)))
+
+    def resolve_remote_hosts(self):
+        now = time.monotonic()
+        # DNS resolution interval could be parametrized, but it seems a bit involved to get it plugged
+        # efficiently into the mixin. The hardcoded 180s on the other hand seems to be reasonable.
+        if self.resolved_hosts is None or (now - self.resolved_hosts_timestamp) > 180:
+            resolved_hosts = set()
+            for host in self.cfg['remote_hosts']:
+                resolved_hosts.update(self.resolve_host(host, self.default_port))
+            self.resolved_hosts = resolved_hosts
+            self.resolved_hosts_timestamp = now
+        return self.resolved_hosts
+
+
+class UDPConnector(HostResolver):
+    def get_udp_socket(self, bind=False):
+        # UDP sockets don't need the elaborate recycling TCP sockets do
+        if self.socket is None:
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.log.info('Created UDP socket')
+            if bind:
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                if hasattr(socket, 'SO_REUSEPORT'):
+                    self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                ip, port = self.resolve_local_host()
+                self.socket.bind((ip, port))
+                self.log.info("Bound UDP socket %s:%d", ip, port)
+        return self.socket
+
+
+class TCPConnector(HostResolver):
+    def cleanup_tcp_socket(self):
+        if self.socket:
+            self.socket.close()
+            self.log.debug('Closed TCP socket')
+        self.socket = None
+
+    # To provide load balancing, when pushing via TCP, we reopen the connection
+    # at intervals (using a random host from the pool of resolved ones).
+    def get_tcp_connection(self):
+        now = time.monotonic()
+        if self.socket is None or (now - self.socket_timestamp) > 180:
+            self.cleanup_tcp_socket()
+            # In theory, DNS should do some sort of round-robin / randomization, but better be safe
+            resolved_hosts = list(self.resolve_remote_hosts())
+            random.shuffle(resolved_hosts)
+
+            for remote_ip, remote_port in resolved_hosts:
+                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.log.info('Created TCP socket')
+                self.socket.settimeout(1)
+                try:
+                    # Failure of connect should be caught and handled.
+                    self.socket.connect((remote_ip, remote_port))
+                    self.log.info('Connected TCP socket to %s:%d', remote_ip, remote_port)
+                except OSError as e:
+                    self.cleanup_tcp_socket()
+                    continue
+                self.socket_timestamp = time.monotonic()
+                break
+        return self.socket
+
+
+class ProcfsReader:
+    INTERFACE_FIELDS = ('rx_bytes', 'rx_packets', 'rx_errors', 'rx_dropped',
+                        None, None, None, None,
+                        'tx_bytes', 'tx_packets', 'tx_errors', 'tx_dropped')
+
+    def read_interfaces(self, path='/proc/net/dev'):
+        with open(path) as f:
+            for l in f:
+                tokens = l.strip().split()
+                if not tokens or len(tokens) != 17:
+                    continue
+                if not tokens[0].endswith(':'):
+                    continue
+                interface_name = tokens.pop(0)[:-1]
+                interface_stats = {k: int(v) for k, v in zip(self.INTERFACE_FIELDS, tokens) if k}
+                yield interface_name, interface_stats
+
+    MEMORY_FIELDS = {
+        'MemTotal:': 'total_bytes',
+        'MemFree:': 'free_bytes',
+        'MemAvailable:': 'available_bytes',
+        'Shmem:': 'shared_bytes',
+        'Cached:': 'cached_bytes',
+        'Slab:': 'slab_bytes',
+        'Mapped:': 'mapped_bytes',
+        'SwapTotal:': 'swap_total_bytes',
+        'SwapFree:': 'swap_free_bytes',
+        'SwapCached:': 'swap_cached_bytes',
+    }
+
+    def read_memory(self, path='/proc/meminfo'):
+        with open(path) as f:
+            for l in f:
+                tokens = l.strip().split()
+                if not tokens or len(tokens) != 3 or tokens[2].lower() != 'kb':
+                    continue
+                name = tokens[0]
+                if name in self.MEMORY_FIELDS:
+                    yield self.MEMORY_FIELDS[name], int(tokens[1]) * 1024
+
+
 class MetricsProcess(multiprocessing.Process, Logger):
     def __init__(self, module_name, module_config):
         super().__init__(name=module_name, daemon=True)
@@ -140,47 +264,6 @@ class MetricsProcess(multiprocessing.Process, Logger):
         return dst
 
 
-class MetricsDstProcess(MetricsProcess):
-    def __init__(self, module_name, module_config, src_pipes):
-        super().__init__(module_name, module_config)
-        self.src_pipes = src_pipes
-
-    def loop(self):
-        err = 0
-        while True:
-            tmp = False
-            for pipe in multiprocessing.connection.wait(self.src_pipes, min(self.tick_interval, 60)):
-                try:
-                    batch = pipe.recv()
-                    self.process_batch(round(time.time(), 3), batch)
-                except InterruptedError:
-                    pass
-                except EOFError:
-                    # This happens when no source is connected up, keep trying for 10s, then give up.
-                    self.log.debug("EOF while reading source pipe")
-                    tmp = True
-            if tmp:
-                err = err + 1
-            else:
-                err = 0
-                self.take_self_report()
-            if err > 10:
-                self.log.error("Input(s) not ready, quitting")
-                return
-            elif err:
-                time.sleep(1)
-
-    def process_batch(self, recv_timestamp, batch):
-        for bucket, values, timestamp, metadata in batch:
-            self.process_values(recv_timestamp, bucket, values, timestamp, metadata)
-
-    def process_self_report(self, bucket, stats, timestamp, metadata):
-        self.process_values(round(time.time(), 3), bucket, stats, timestamp, self.merge_dict(metadata))
-
-    def process_values(self, recv_timestamp, bucket, values, metric_timestamp, metadata=None):
-        raise NotImplementedError()
-
-
 class MetricsSrcProcess(MetricsProcess):
     def __init__(self, module_name, module_config, dst_pipes):
         super().__init__(module_name, module_config)
@@ -224,87 +307,45 @@ class MetricsSrcProcess(MetricsProcess):
         return True
 
 
-class HostResolver:
-    def parse_address(self, address, default_port):
-        bits = address.split(":")
-        if len(bits) == 1:
-            host, port = address, default_port
-        elif len(bits) == 2:
-            host, port = bits[0], int(bits[1])
-        else:
-            raise ValueError("Address %s is invalid" % (address,))
-        hostname, aliaslist, ipaddrlist = socket.gethostbyname_ex(host)
-        return {(ip, port) for ip in ipaddrlist}
+class MetricsDstProcess(MetricsProcess):
+    def __init__(self, module_name, module_config, src_pipes):
+        super().__init__(module_name, module_config)
+        self.src_pipes = src_pipes
 
-    def resolve_host(self, host, default_port):
-        for ip, port in self.parse_address(host, default_port):
-            self.log.debug("Resolved %s as %s:%d", host, ip, port)
-            yield ip, port
-
-    def resolve_local_host(self, default_port=0):
-        local_host = self.cfg.get('local_host', '0.0.0.0')
-        return random.choice(tuple(self.resolve_host(local_host, default_port)))
-
-    def resolve_remote_hosts(self):
-        now = time.monotonic()
-        # DNS resolution interval could be parametrized, but it seems a bit involved to get it plugged
-        # efficiently into the mixin. The hardcoded 180s on the other hand seems to be reasonable.
-        if self.resolved_hosts is None or (now - self.resolved_hosts_timestamp) > 180:
-            resolved_hosts = set()
-            for host in self.cfg['remote_hosts']:
-                resolved_hosts.update(self.resolve_host(host, self.default_port))
-            self.resolved_hosts = resolved_hosts
-            self.resolved_hosts_timestamp = now
-        return self.resolved_hosts
-
-
-class UDPConnector(HostResolver):
-    def get_udp_socket(self, bind=False):
-        # UDP sockets don't need the elaborate recycling TCP sockets do
-        if self.socket is None:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.log.info('Created UDP socket')
-            if bind:
-                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                if hasattr(socket, 'SO_REUSEPORT'):
-                    self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-                ip, port = self.resolve_local_host()
-                self.socket.bind((ip, port))
-                self.log.info("Bound UDP socket %s:%d", ip, port)
-        return self.socket
-
-
-class TCPConnector(HostResolver):
-    def cleanup_tcp_socket(self):
-        if self.socket:
-            self.socket.close()
-            self.log.debug('Closed TCP socket')
-        self.socket = None
-
-    # To provide load balancing, when pushing via TCP, we reopen the connection
-    # at intervals (using a random host from the pool of resolved ones).
-    def get_tcp_connection(self):
-        now = time.monotonic()
-        if self.socket is None or (now - self.socket_timestamp) > 180:
-            self.cleanup_tcp_socket()
-            # In theory, DNS should do some sort of round-robin / randomization, but better be safe
-            resolved_hosts = list(self.resolve_remote_hosts())
-            random.shuffle(resolved_hosts)
-
-            for remote_ip, remote_port in resolved_hosts:
-                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.log.info('Created TCP socket')
-                self.socket.settimeout(1)
+    def loop(self):
+        err = 0
+        while True:
+            tmp = False
+            for pipe in multiprocessing.connection.wait(self.src_pipes, min(self.tick_interval, 60)):
                 try:
-                    # Failure of connect should be caught and handled.
-                    self.socket.connect((remote_ip, remote_port))
-                    self.log.info('Connected TCP socket to %s:%d', remote_ip, remote_port)
-                except OSError as e:
-                    self.cleanup_tcp_socket()
-                    continue
-                self.socket_timestamp = time.monotonic()
-                break
-        return self.socket
+                    batch = pipe.recv()
+                    self.process_batch(round(time.time(), 3), batch)
+                except InterruptedError:
+                    pass
+                except EOFError:
+                    # This happens when no source is connected up, keep trying for 10s, then give up.
+                    self.log.debug("EOF while reading source pipe")
+                    tmp = True
+            if tmp:
+                err = err + 1
+            else:
+                err = 0
+                self.take_self_report()
+            if err > 10:
+                self.log.error("Input(s) not ready, quitting")
+                return
+            elif err:
+                time.sleep(1)
+
+    def process_batch(self, recv_timestamp, batch):
+        for bucket, values, timestamp, metadata in batch:
+            self.process_values(recv_timestamp, bucket, values, timestamp, metadata)
+
+    def process_self_report(self, bucket, stats, timestamp, metadata):
+        self.process_values(round(time.time(), 3), bucket, stats, timestamp, self.merge_dict(metadata))
+
+    def process_values(self, recv_timestamp, bucket, values, metric_timestamp, metadata=None):
+        raise NotImplementedError()
 
 
 class MetricsPushProcess(MetricsDstProcess):
@@ -341,44 +382,3 @@ class MetricsPushProcess(MetricsDstProcess):
                 self.socket = None  # CPython will trigger close() when GCing it.
                 return False
         return True
-
-
-class ProcfsReader:
-    INTERFACE_FIELDS = ('rx_bytes', 'rx_packets', 'rx_errors', 'rx_dropped',
-                        None, None, None, None,
-                        'tx_bytes', 'tx_packets', 'tx_errors', 'tx_dropped')
-
-    def read_interfaces(self, path='/proc/net/dev'):
-        with open(path) as f:
-            for l in f:
-                tokens = l.strip().split()
-                if not tokens or len(tokens) != 17:
-                    continue
-                if not tokens[0].endswith(':'):
-                    continue
-                interface_name = tokens.pop(0)[:-1]
-                interface_stats = {k: int(v) for k, v in zip(self.INTERFACE_FIELDS, tokens) if k}
-                yield interface_name, interface_stats
-
-    MEMORY_FIELDS = {
-        'MemTotal:': 'total_bytes',
-        'MemFree:': 'free_bytes',
-        'MemAvailable:': 'available_bytes',
-        'Shmem:': 'shared_bytes',
-        'Cached:': 'cached_bytes',
-        'Slab:': 'slab_bytes',
-        'Mapped:': 'mapped_bytes',
-        'SwapTotal:': 'swap_total_bytes',
-        'SwapFree:': 'swap_free_bytes',
-        'SwapCached:': 'swap_cached_bytes',
-    }
-
-    def read_memory(self, path='/proc/meminfo'):
-        with open(path) as f:
-            for l in f:
-                tokens = l.strip().split()
-                if not tokens or len(tokens) != 3 or tokens[2].lower() != 'kb':
-                    continue
-                name = tokens[0]
-                if name in self.MEMORY_FIELDS:
-                    yield self.MEMORY_FIELDS[name], int(tokens[1]) * 1024
