@@ -36,6 +36,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.enqueue_counters(system_timestamp)
         self.enqueue_gauges(system_timestamp)
         self.enqueue_sets(system_timestamp)
+        # TODO revisit the first flush & last_timestamp - seems to be buggy / uninitialized
         self.last_timestamp = system_timestamp
         return super().flush(system_timestamp)
 

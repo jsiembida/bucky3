@@ -67,18 +67,15 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
         super().init_config()
         self.elasticsearch_name = self.cfg['elasticsearch_name']
 
+    def push_chunk(self, chunk):
+        self.elasticsearch_connection.bulk_upload(chunk)
+        return []
+
     def push_buffer(self):
-        if not self.buffer:
-            return
-        socket = self.get_tcp_connection()
-        if not socket:
-            return
-        elasticsearch_connection = ElasticsearchConnection(
+        self.elasticsearch_connection = ElasticsearchConnection(
             self.get_tcp_connection, self.elasticsearch_name, self.elasticsearch_name
         )
-        for i in range(0, len(self.buffer), self.chunk_size):
-            chunk = self.buffer[i:i + self.chunk_size]
-            elasticsearch_connection.bulk_upload(chunk)
+        return super().push_buffer()
 
     def process_values(self, recv_timestamp, bucket, values, timestamp, metadata):
         self.merge_dict(metadata)

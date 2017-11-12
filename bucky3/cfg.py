@@ -90,9 +90,8 @@ metadata = dict(
 #   It is a balance between too granular and too "bursty" IPC. 100 - 1000 looks reasonable.
 #   In "influxdb_client" it defines the number of metrics sent out in single UDP packet,
 #   if you want to keep the UDP packets within MTU, the chunk_size should be low, i.e. 5-15.
-#   In "prometheus_exporter" it defines the number of metrics going into one TCP socket write,
-#   the default 300 seems to be a good value here.
-#   "carbon_client" doesn't use chunk_size (likely subject to change)
+#   In "carbon_client" and "prometheus_exporter" it defines the number of metrics going into
+#   one TCP socket write, the default 300 seems to be a good value here.
 #   In any case, chunk_size is enforced to be at least 1.
 # - Example: chunk_size = 10
 
@@ -122,6 +121,10 @@ metadata = dict(
 #   will always have timestamps included. This is to provide capability of backfilling
 #   late metrics and for those new Prometheus 2 semantics won't work anyway.
 # Example: add_timestamps = True
+
+
+push_time_limit = 1
+push_count_limit = 1000
 
 
 # metric_postprocessor

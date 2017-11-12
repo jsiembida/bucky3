@@ -64,7 +64,15 @@ class HostResolver:
         return self.resolved_hosts
 
 
-class UDPConnector(HostResolver):
+class Connector:
+    def cleanup_socket(self):
+        if self.socket:
+            self.socket.close()
+            self.log.debug('Closed socket')
+        self.socket = None
+
+
+class UDPConnector(Connector, HostResolver):
     def get_udp_socket(self, bind=False):
         # UDP sockets don't need the elaborate recycling TCP sockets do
         if self.socket is None:
@@ -80,19 +88,13 @@ class UDPConnector(HostResolver):
         return self.socket
 
 
-class TCPConnector(HostResolver):
-    def cleanup_tcp_socket(self):
-        if self.socket:
-            self.socket.close()
-            self.log.debug('Closed TCP socket')
-        self.socket = None
-
+class TCPConnector(Connector, HostResolver):
     # To provide load balancing, when pushing via TCP, we reopen the connection
     # at intervals (using a random host from the pool of resolved ones).
     def get_tcp_connection(self):
         now = time.monotonic()
         if self.socket is None or (now - self.socket_timestamp) > 180:
-            self.cleanup_tcp_socket()
+            self.cleanup_socket()
             # In theory, DNS should do some sort of round-robin / randomization, but better be safe
             resolved_hosts = list(self.resolve_remote_hosts())
             random.shuffle(resolved_hosts)
@@ -102,14 +104,16 @@ class TCPConnector(HostResolver):
                 self.log.info('Created TCP socket')
                 self.socket.settimeout(1)
                 try:
-                    # Failure of connect should be caught and handled.
+                    # Connect failure is not fatal.
                     self.socket.connect((remote_ip, remote_port))
                     self.log.info('Connected TCP socket to %s:%d', remote_ip, remote_port)
-                except OSError as e:
-                    self.cleanup_tcp_socket()
+                except ConnectionError as e:
+                    self.cleanup_socket()
                     continue
                 self.socket_timestamp = time.monotonic()
                 break
+        if self.socket is None:
+            raise ConnectionError("No connection")
         return self.socket
 
 
@@ -348,7 +352,7 @@ class MetricsDstProcess(MetricsProcess):
         raise NotImplementedError()
 
 
-class MetricsPushProcess(MetricsDstProcess):
+class MetricsPushProcess(MetricsDstProcess, Connector):
     def __init__(self, *args, default_port=None):
         super().__init__(*args)
         self.socket = None
@@ -361,6 +365,9 @@ class MetricsPushProcess(MetricsDstProcess):
     def process_batch(self, recv_timestamp, batch):
         super().process_batch(recv_timestamp, batch)
         self.tick()
+
+    def tick(self):
+        super().tick()
         self.trim_buffer()
 
     def trim_buffer(self):
@@ -369,16 +376,28 @@ class MetricsPushProcess(MetricsDstProcess):
             self.buffer = self.buffer[-int(self.buffer_limit / 2):]
             self.log.warning("Buffer trimmed from %d to %d entries", buffer_len, len(self.buffer))
 
+    def push_buffer(self):
+        self.log.debug('%d entries in buffer to be pushed', len(self.buffer))
+        push_start, push_counter = time.monotonic(), 0
+        count_limit, time_limit = self.cfg['push_count_limit'], self.cfg['push_time_limit']
+        i, failed_entries = 0, []
+        try:
+            while i < len(self.buffer):
+                if push_counter >= count_limit and (time.monotonic() - push_start) >= time_limit:
+                    break
+                chunk = self.buffer[i:i + self.chunk_size]
+                failed_entries.extend(self.push_chunk(chunk))
+                i += self.chunk_size
+                push_counter += len(chunk)  # Include all entries, even the failed ones
+            return push_counter > len(failed_entries)
+        except (ConnectionError, socket.timeout) as e:
+            self.log.exception(e)
+            self.cleanup_socket()
+            return False
+        finally:
+            self.buffer = failed_entries + self.buffer[i:]
+            if self.buffer:
+                self.log.warning('%d entries left over in buffer', len(self.buffer))
+
     def flush(self, system_timestamp):
-        if self.buffer:
-            try:
-                self.log.debug('Pushing %d entries', len(self.buffer))
-                self.push_buffer()
-                if self.buffer:
-                    self.log.warning('%d entries left over in buffer', len(self.buffer))
-                self.buffer.clear()
-            except (PermissionError, ConnectionError):
-                self.log.exception("Connection error")
-                self.socket = None  # CPython will trigger close() when GCing it.
-                return False
-        return True
+        return self.push_buffer() if self.buffer else True
