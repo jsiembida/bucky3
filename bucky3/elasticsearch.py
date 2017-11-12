@@ -23,7 +23,7 @@ class ElasticsearchConnection(http.client.HTTPConnection):
     # https://github.com/ndjson/ndjson-spec
     def bulk_upload(self, docs):
         buffer = []
-        for bucket, timestamp, doc in docs:
+        for bucket, timestamp, doc, doc_id in docs:
             # ES can be configured otherwise, but by default it has an interesting approach to
             # "we support ISO format". It only takes a space separated string with millisecond
             # precision without TZ (i.e. '2017-11-08 11:04:48.102'), everything else seems to fail.
@@ -38,9 +38,9 @@ class ElasticsearchConnection(http.client.HTTPConnection):
             # some configured / fixed string as they are still mandated by API, but that can be
             # easily dropped in future.
             if self.es_type:
-                req = {"index": {"_index": bucket, "_id": str(uuid.uuid4()), "_type": self.es_type}}
+                req = {"index": {"_index": bucket, "_id": doc_id, "_type": self.es_type}}
             else:
-                req = {"index": {"_index": bucket, "_id": str(uuid.uuid4())}}
+                req = {"index": {"_index": bucket, "_id": doc_id}}
             buffer.append(json.dumps(req, indent=None))
             buffer.append('\n')
             buffer.append(json.dumps(doc, indent=None))
@@ -80,4 +80,6 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
     def process_values(self, recv_timestamp, bucket, values, timestamp, metadata):
         self.merge_dict(metadata)
         self.merge_dict(values, metadata)
-        self.buffer.append((bucket, timestamp or recv_timestamp, values))
+        # Generate uuids now. If in case of connection issues some docs get retransmitted
+        # we will overwrite old docs with the same uuids instead of creating dupes.
+        self.buffer.append((bucket, timestamp or recv_timestamp, values, str(uuid.uuid4())))
