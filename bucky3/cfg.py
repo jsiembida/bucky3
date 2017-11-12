@@ -12,8 +12,10 @@ parameters are module specific. All modules (including the main module) ignore
 unknown params, so it is safe to define module specific params in global context.
 - By design, there is no way to "live reload" or "test" the config. You have to
 do the full stop/start sequence.
-- Source modules: "statsd_server", "linux_stats", "docker_stats"
-- Destination modules: "influxdb_client", "prometheus_exporter", "carbon_client"
+- Source modules:
+    statsd_server, jsond_server, linux_stats, docker_stats
+- Destination modules:
+    influxdb_client, prometheus_exporter, carbon_client, elasticsearch_client
 
 """
 
@@ -30,22 +32,25 @@ log_level = "INFO"
 # - str
 # - Optional, default: '[%(asctime)-15s][%(levelname)s] %(name)s(%(process)d) - %(message)s'
 # - More here: https://docs.python.org/3/library/logging.html#logrecord-attributes
+#   Note that the "ps" command will show identical command lines for all modules, to work
+#   around it, the default log format includes PID.
 # - Example: log_format = '%(message)s'
 
 
 # flush_interval
 # - float, seconds between flush intervals
 # - Required
-# - In "linux_stats" and "docker_stats" it defines how often they will be taking metrics
+# - In linux_stats and docker_stats it defines how often they will be taking metrics
 #   and pushing metrics out to the destination module(s).
-#   In "statsd_server" it defines how often the received metrics are being aggregated and
-#   pushed out to the destination module(s).
-#   This depends on your needs, but 10 secs is typical for the three source modules.
-#   In "influxdb_client" and "carbon_client" it defines the maximum delay before the metrics
-#   received from the source modules are pushed out - for these, it should stay rather low,
-#   perhaps 1-5 secs.
-#   In "prometheus_exporter" it defines the frequency of housekeeping wherein old metrics
-#   are being found and removed. Note, it is not the maximum age of data kept in prometheus
+#   In statsd_server it defines how often the received metrics are being aggregated and
+#   pushed out to the destination module(s). Similarly, in jsond_server, although it does
+#   not do any aggregation.
+#   This depends on your needs, but 10 secs is typical for the source modules.
+#   In influxdb_client, carbon_client and elasticsearch_client it defines the maximum
+#   delay before the metrics received from the source modules are pushed out - for these,
+#   it should stay rather low, perhaps 1-5 secs.
+#   In prometheus_exporter it defines the frequency of housekeeping wherein old metrics
+#   are being evicted from cache. Note, it is not the maximum age of data kept in prometheus
 #   module, see also add_timestamps option and prometheus exporter section below for more.
 #   In any case, flush_interval is enforced to be at least 0.1 sec.
 flush_interval = 10
@@ -75,10 +80,10 @@ metadata = dict(
 # buffer_limit
 # - int, max number of entries in the output buffer
 # - Optional, default: 10000
-# - "influxdb_client" and "carbon_client" modules buffer metrics before pushing them out
-#   to the destination host. This param is a safety measure. If for a reason data doesn't
-#   get pushed out and the buffer grows beyond the configured buffer_limit, it is truncated
-#   to buffer_limit / 2.
+# - influxdb_client, carbon_client and elasticsearch_client modules buffer metrics
+#   before pushing them out to the destination host. This param is a safety measure. If for
+#   a reason data doesn't get pushed out and the buffer grows beyond buffer_limit, it is
+#   truncated to buffer_limit / 2.
 #   In any case, buffer_limit is enforced to be at least 100.
 # - Example: buffer_limit = 1000
 
@@ -88,10 +93,11 @@ metadata = dict(
 # - Optional, default: 300
 # - In source modules it defines the max size of the batch sent out to destination modules.
 #   It is a balance between too granular and too "bursty" IPC. 100 - 1000 looks reasonable.
-#   In "influxdb_client" it defines the number of metrics sent out in single UDP packet,
+#   In influxdb_client it defines the number of metrics sent out in single UDP packet,
 #   if you want to keep the UDP packets within MTU, the chunk_size should be low, i.e. 5-15.
-#   In "carbon_client" and "prometheus_exporter" it defines the number of metrics going into
+#   In carbon_client and prometheus_exporter it defines the number of metrics going into
 #   one TCP socket write, the default 300 seems to be a good value here.
+#   In elasticsearch_client it defines a number of entries in one bulk upload.
 #   In any case, chunk_size is enforced to be at least 1.
 # - Example: chunk_size = 10
 
@@ -112,11 +118,12 @@ metadata = dict(
 # - bool, if metrics produced should have timestamps added
 # - Optional, default: False
 # - Each source module can add timestamps to the metrics they produce.
-#   Prometheus 2 comes with new metrics timeout semantics - if you want to use them, leave
+#   Prometheus2 comes with new metrics timeout semantics - if you want to use them, leave
 #   this option off.
 #   For InfluxDB and Prometheus that option doesn't matter much so long as the flush_window
 #   is relatively short. If unsure, switch it on.
-#   For carbon, you want this option being on (but the module will work regardless)
+#   For Carbon and Elasticsearch, you want this option being on (but the modules will work
+#   regardless)
 #   In any case, metrics coming via StatsD protocol with explicitly provided timestamps
 #   will always have timestamps included. This is to provide capability of backfilling
 #   late metrics and for those new Prometheus 2 semantics won't work anyway.
@@ -132,13 +139,12 @@ push_count_limit = 1000
 # - Optional, default: None
 # - Each source module can run metrics through extra postprocessing right before pushing
 #   them out to destination module(s). The postprocessor can return an altered metric or
-#   None, in the latter case the metric is dropped. Note, that postprocessor receives
-#   the metric with custom metadata injected. Also, the metadata provided can be None.
-#   The example below would drop all metrics with env=test.
+#   None, in the latter case the metric is dropped. Postprocessor receives the metric with
+#   custom metadata injected. The example below would drop all metrics with env=test.
 # Example: metric_postprocessor = ignore_test_environment
 
 def ignore_test_environment(bucket, values, timestamp, metadata):
-    if metadata is not None and metadata.get('env') == 'test':
+    if metadata.get('env') == 'test':
         return None
     return bucket, values, timestamp, metadata
 
@@ -162,7 +168,7 @@ linuxstats = dict(
     # - Optional, default: False
     # - On non-Linux this module will fail, set the "module_inactive=True" to disable it.
     #   Or delete the whole section. This option is a convenience.
-    module_inactive=True,
+    module_inactive=False,
 
     # destination_modules
     # - array / tuple of names / references
@@ -186,13 +192,7 @@ linuxstats = dict(
     #   the whitelist out. The strings are used as fully anchored regular expressions.
     # - Example: disk_whitelist = {"sd[a-z]", "xvd.+"}
     disk_blacklist={
-        "loop0", "loop1", "loop2", "loop3",
-        "loop4", "loop5", "loop6", "loop7",
-        "ram0", "ram1", "ram2", "ram3",
-        "ram4", "ram5", "ram6", "ram7",
-        "ram8", "ram9", "ram10", "ram11",
-        "ram12", "ram13", "ram14", "ram15",
-        "sr0",
+        r"loop\d+", r"ram\d+", r"sr\d+",
     },
 
     # filesystem_whitelist, filesystem_blacklist
@@ -317,14 +317,16 @@ statsd = dict(
 )
 
 
-# jsond_server consumes via UDP protocol newline delimited JSON objects (and only objects)
+# This module consumes via UDP protocol newline delimited JSON objects (and only objects)
 # The JSON objects as such obviate the need of having metadata aside of metric(s) values,
 # the metadata configured is still merged into the objects as for other source modules.
 # There is no aggregation carried out on the JSON objects, they are only buffered and
 # flushed to the destination modules at the configured flush_interval.
+# Note there is no protection against malicious payloads, it is as secure as Python's
+# built-in json module.
 jsond = dict(
     module_type="jsond_server",
-    module_inactive=False,
+    module_inactive=True,
 
     # local_host
     # - str, UDP endpoint to bind at
@@ -359,10 +361,17 @@ influxdb = dict(
 )
 
 
+# This module uses ES indexes as destination buckets.
+# I.e. system_cpu metrics coming from linux_stats will end up in "system_cpu" index.
 elasticsearch = dict(
     module_type="elasticsearch_client",
-    module_inactive=False,
+    module_inactive=True,
 
+    # elasticsearch_name, type name for ES upload calls
+    # - str
+    # - Required
+    # - For ES5 and ES6, this should be a descriptive name of type as it is
+    #   still needed in API calls. For ES7 it is supposed to be None.
     elasticsearch_name="metrics",
 
     # remote_hosts, Elasticsearch endpoints
@@ -377,8 +386,6 @@ elasticsearch = dict(
         "localhost",
     ),
 
-    # flush_interval should be short for this module so it overrides the value from
-    # the global context. Also, flush_interval<=3 implies randomize_startup=False
     flush_interval=1,
 
     # This module uses bulk calls, so it makes sense to keep chunks bigger
