@@ -391,6 +391,13 @@ elasticsearch = dict(
     # This module uses bulk calls, so it makes sense to keep chunks bigger
     # rather then smaller, i.e. 100-1000, the default 300 is ok.
     # chunk_size=300,
+
+    # use_compression, whether to compress HTTP payload in ES API calls
+    # - bool
+    # - Optional, default: True
+    # - In heavy load setups, compressing JSON bulk uploads can save a lot of bandwidth.
+    #   This option controls "Content-Encoding: deflate/identity".
+    # Example: use_compression=False,
 )
 
 

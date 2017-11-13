@@ -2,6 +2,7 @@
 
 import json
 import uuid
+import zlib
 import http.client
 from datetime import datetime, timezone, timedelta
 import bucky3.module as module
@@ -11,10 +12,11 @@ TZ = timezone(timedelta(hours=0))
 
 
 class ElasticsearchConnection(http.client.HTTPConnection):
-    def __init__(self, socket_getter, es_host, es_type=None):
+    def __init__(self, socket_getter, es_host, es_type=None, use_compression=True):
         super().__init__(es_host)
         self.es_type = es_type
         self.socket_getter = socket_getter
+        self.use_compression = use_compression
 
     def connect(self):
         self.sock = self.socket_getter()
@@ -52,11 +54,17 @@ class ElasticsearchConnection(http.client.HTTPConnection):
             # 'Content-Type': 'application/x-ndjson; charset=UTF-8'
             'Content-Type': 'application/x-ndjson'
         }
+        if self.use_compression:
+            body = zlib.compress(body)
+            headers['Content-Encoding'] = headers['Accept-Encoding'] = 'deflate'
         self.request('POST', '/_bulk', body=body, headers=headers)
         resp = self.getresponse()
         if resp.status != 200:
             raise ConnectionError('Elasticsearch error code {}'.format(resp.status))
-        return json.loads(resp.read().decode('utf-8'))
+        body = resp.read()
+        if resp.headers['Content-Encoding'] == 'deflate':
+            body = zlib.decompress(body)
+        return json.loads(body.decode('utf-8'))
 
 
 class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
@@ -66,6 +74,7 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
     def init_config(self):
         super().init_config()
         self.elasticsearch_name = self.cfg['elasticsearch_name']
+        self.use_compression = self.cfg.get('use_compression', True)
 
     def push_chunk(self, chunk):
         self.elasticsearch_connection.bulk_upload(chunk)
@@ -73,7 +82,7 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
 
     def push_buffer(self):
         self.elasticsearch_connection = ElasticsearchConnection(
-            self.get_tcp_connection, self.elasticsearch_name, self.elasticsearch_name
+            self.get_tcp_connection, self.elasticsearch_name, self.elasticsearch_name, self.use_compression
         )
         return super().push_buffer()
 
