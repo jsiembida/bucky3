@@ -221,12 +221,9 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def handle_timer(self, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)
 
-        if key in self.timers:
-            buf = self.timers[key][1]
-            buf.append(val)
-            self.timers[key] = cust_timestamp, buf
-        else:
-            self.timers[key] = cust_timestamp, [val]
+        buf = self.timers.get(key, (None, []))[1]
+        buf.append(val)
+        self.timers[key] = cust_timestamp, buf
 
         if self.histogram_selector is None:
             return
@@ -257,18 +254,15 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def handle_gauge(self, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)
         delta = valstr[0] in "+-"
-        if delta and key in self.gauges:
-            self.gauges[key] = cust_timestamp, self.gauges[key][1] + val
+        if delta:
+            self.gauges[key] = cust_timestamp, self.gauges.get(key, (None, 0))[1] + val
         else:
             self.gauges[key] = cust_timestamp, val
 
     def handle_set(self, cust_timestamp, key, metadata, valstr, ratestr):
-        if key in self.sets:
-            buf = self.sets[key][1]
-            buf.add(valstr)
-            self.sets[key] = cust_timestamp, buf
-        else:
-            self.sets[key] = cust_timestamp, {valstr}
+        buf = self.sets.get(key, (None, set()))[1]
+        buf.add(valstr)
+        self.sets[key] = cust_timestamp, buf
 
     def handle_counter(self, cust_timestamp, key, metadata, valstr, ratestr):
         if ratestr and ratestr[0] == "@":
@@ -279,6 +273,4 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 return
         else:
             val = float(valstr)
-        if key in self.counters:
-            val += self.counters[key][1]
-        self.counters[key] = cust_timestamp, val
+        self.counters[key] = cust_timestamp, self.counters.get(key, (None, 0))[1] + val
