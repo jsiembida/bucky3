@@ -221,6 +221,10 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def handle_timer(self, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)
 
+        # This bit is racy. If we catch SIGALRM in between here and "self.timers[key] = ..."
+        # the samples buffered for the metric will get "carried over" to the next time window.
+        # If we can live with UDP we can live with the damage caused here. Also, a similar
+        # race is below for histograms.
         buf = self.timers.get(key, (None, []))[1]
         buf.append(val)
         self.timers[key] = cust_timestamp, buf
@@ -249,7 +253,6 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 vlen + 1, vsum + val, vsum_squares + val * val, min(val, vmin), max(val, vmax)
             )
             self.histograms[key] = cust_timestamp, selector, buckets
-            return
 
     def handle_gauge(self, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)
