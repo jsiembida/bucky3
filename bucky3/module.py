@@ -181,18 +181,19 @@ class MetricsProcess(multiprocessing.Process, Logger):
 
     def tick(self):
         now = time.monotonic()
-        if now < self.next_flush:
-            return
-        if self.flush(round(time.time(), 3)):
-            self.flush_interval = self.tick_interval
-        else:
-            self.flush_interval = min(self.flush_interval + self.flush_interval, 600)
-            self.log.info("Flush error, next in %d secs", int(self.flush_interval))
-        # Occasionally, at least on macOS, kernel wakes up the process a few millis earlier
-        # then scheduled (most likely scheduling we do here is introducing some small slips),
-        # which triggers the condition at the top of the function and we miss a legit tick.
-        # The 0.03s is a harmless margin that seems to solve the problem.
-        self.next_flush = now + self.flush_interval - 0.03
+        if now >= self.next_flush:
+            if self.flush(round(time.time(), 3)):
+                self.flush_interval = self.tick_interval
+            else:
+                self.flush_interval = min(self.flush_interval + self.flush_interval, 600)
+                self.log.warning("Flush error, next in %d secs", int(self.flush_interval))
+            # Occasionally, at least on macOS, kernel wakes up the process a few millis earlier
+            # then scheduled (most likely scheduling we do here is introducing some small slips),
+            # which triggers the condition at the top of the function and we miss a legit tick.
+            # The 0.03s is a harmless margin that seems to solve the problem.
+            self.next_flush = now + self.flush_interval - 0.03
+        if self.self_report:
+            self.take_self_report()
 
     def init_config(self):
         self.log = self.setup_logging(self.cfg, self.name)
@@ -240,8 +241,6 @@ class MetricsProcess(multiprocessing.Process, Logger):
                 pass
 
     def take_self_report(self):
-        if not self.self_report:
-            return None
         now = time.monotonic()
         if now - self.self_report_timestamp >= 60:
             self.self_report_timestamp = now
@@ -258,7 +257,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
             )
 
     def process_self_report(self, bucket, stats, timestamp, metadata):
-        pass
+        raise NotImplementedError()
 
     def merge_dict(self, dst, src=None):
         if src is None:
@@ -277,10 +276,6 @@ class MetricsSrcProcess(MetricsProcess):
         super().init_config()
         self.log.info('Destination modules: ' + ', '.join(m[0] for m in self.cfg['destination_modules']))
 
-    def tick(self):
-        super().tick()
-        self.take_self_report()
-
     def buffer_metric(self, bucket, stats, timestamp, metadata):
         if metadata:
             metadata = self.merge_dict(metadata)
@@ -298,7 +293,7 @@ class MetricsSrcProcess(MetricsProcess):
 
     def process_self_report(self, bucket, stats, timestamp, metadata):
         self.buffer_metric(bucket, stats, timestamp, metadata)
-        self.flush(round(time.time(), 3))
+        MetricsSrcProcess.flush(self, round(time.time(), 3))
 
     def flush(self, system_timestamp):
         if self.buffer:
@@ -334,7 +329,6 @@ class MetricsDstProcess(MetricsProcess):
                 err = err + 1
             else:
                 err = 0
-                self.take_self_report()
             if err > 10:
                 self.log.error("Input(s) not ready, quitting")
                 return
