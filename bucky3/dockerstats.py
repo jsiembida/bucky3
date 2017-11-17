@@ -24,7 +24,7 @@ import http.client
 import bucky3.module as module
 
 
-class DockerClient(http.client.HTTPConnection):
+class DockerConnection(http.client.HTTPConnection):
     def __init__(self, docker_socket, api_version):
         super().__init__(docker_socket)
         self.api_version = api_version
@@ -120,15 +120,15 @@ class DockerStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
 
     def flush(self, system_timestamp):
         timestamp = system_timestamp if self.add_timestamps else None
-        docker_client = None
+        docker_connection = None
         try:
             self.log.debug('Starting containers scan')
-            docker_client = DockerClient(self.docker_socket, self.api_version)
-            for container_info in sorted(docker_client.list_containers(), key=lambda v: v.get('Id')):
+            docker_connection = DockerConnection(self.docker_socket, self.api_version)
+            for container_info in sorted(docker_connection.list_containers(), key=lambda v: v.get('Id')):
                 try:
                     buffer = []
                     container_id = container_info['Id']
-                    inspect_info = docker_client.inspect_container(container_id)
+                    inspect_info = docker_connection.inspect_container(container_id)
                     container_metadata = self.extract_metadata(container_id, container_info, inspect_info)
                     self.read_df_stats(buffer, container_id, timestamp, container_metadata, inspect_info)
                     self.read_cpu_stats(buffer, container_id, timestamp, container_metadata, inspect_info)
@@ -145,5 +145,5 @@ class DockerStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
             super().flush(system_timestamp)
             return False
         finally:
-            if docker_client:
-                docker_client.close()
+            if docker_connection:
+                docker_connection.close()

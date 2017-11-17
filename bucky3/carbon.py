@@ -22,11 +22,14 @@ class CarbonClient(module.MetricsPushProcess, module.TCPConnector):
     def __init__(self, *args):
         super().__init__(*args, default_port=2003)
 
+    def push_chunk(self, chunk):
+        payload = ''.join(chunk).encode("ascii")
+        self.socket.sendall(payload)
+        return []
+
     def push_buffer(self):
-        # For TCP we probably can just pump all buffer into the wire.
-        socket = self.get_tcp_connection()
-        payload = ''.join(self.buffer).encode("ascii")
-        socket.sendall(payload)
+        self.get_tcp_connection()
+        return super().push_buffer()
 
     def translate_token(self, token):
         # TODO: Which chars we have to translate? There is much more to handle here.
@@ -40,22 +43,10 @@ class CarbonClient(module.MetricsPushProcess, module.TCPConnector):
         buf.extend(metadata[k] for k in sorted(metadata.keys()))
         return '.'.join(self.translate_token(t) for t in buf)
 
-    def process_values(self, recv_timestamp, bucket, values, timestamp, metadata=None):
+    def process_values(self, recv_timestamp, bucket, values, timestamp, metadata):
+        metadata['bucket'] = bucket
         for k, v in values.items():
-            if metadata:
-                metadata_dict = metadata.copy()
-                metadata_dict.update(value=k)
-            else:
-                metadata_dict = dict(value=k)
-            self.process_value(recv_timestamp, bucket, v, timestamp, metadata_dict)
-
-    def process_value(self, recv_timestamp, bucket, value, timestamp, metadata=None):
-        if metadata:
-            metadata.update(bucket=bucket)
-        else:
-            metadata = dict(bucket=bucket)
-        name = self.build_name(metadata)
-        if name:
-            if timestamp is None:
-                timestamp = recv_timestamp
-            self.buffer.append("%s %s %s\n" % (name, value, int(timestamp)))
+            metadata['value'] = k
+            name = self.build_name(metadata.copy())
+            if name:
+                self.buffer.append("%s %s %s\n" % (name, v, int(timestamp or recv_timestamp)))

@@ -91,8 +91,8 @@ the plaintext protocol and uses batch transfers across the board.
 multiprocess architecture and avoids threading by design. StatsD got single threaded.
 The only exception is Prometheus exporter with HTTP server running in a dedicated thread.
 * Option of having multiple "metric streams" was introduced into Bucky3. I.e. multiple
-StatsD instances with different settings can be run and feed their output to separate
-destinations.
+StatsD instances with different settings can be run and configured to feed their output
+to separate destinations.
 * The main process in Bucky passes messages from sources to Graphite module. The main
 process in Bucky3 takes no part in IPC, all IPC stays between source and destination
 modules.
@@ -101,4 +101,4 @@ everywhere, more efficient and conceptually closer to its data model.
 * Bucky imports modules at source level, Bucky3 does it dynamically. This is to avoid
 dependencies in the main process. Moreover, to improve isolation, Bucky3 delays modules
 initialization (i.e. socket / file operations) until after fork.
-* Codebase has got reduced from `~2600 loc` to `~1500 loc`
+* Codebase has got reduced from `~2600 loc` to `~1600 loc`

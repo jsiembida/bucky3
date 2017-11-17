@@ -7,27 +7,26 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
     def __init__(self, *args):
         super().__init__(*args, default_port=8086)
 
-    def push_buffer(self):
-        # For UDP we want to chunk it up into smaller packets.
-        socket = self.get_udp_socket()
-        for i in range(0, len(self.buffer), self.chunk_size):
-            chunk = self.buffer[i:i + self.chunk_size]
-            payload = '\n'.join(chunk).encode("ascii")
-            for ip, port in self.resolve_remote_hosts():
-                socket.sendto(payload, (ip, port))
+    def push_chunk(self, chunk):
+        payload = '\n'.join(chunk).encode("ascii")
+        for ip, port in self.resolve_remote_hosts():
+            self.socket.sendto(payload, (ip, port))
+        return []
 
-    def process_values(self, recv_timestamp, bucket, values, timestamp, metadata=None):
+    def push_buffer(self):
+        self.get_udp_socket()
+        return super().push_buffer()
+
+    def process_values(self, recv_timestamp, bucket, values, timestamp, metadata):
         # https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_tutorial/
         metadata_buf = [bucket]
-        if metadata:
-            # InfluxDB docs recommend sorting tags
-            for k in sorted(metadata.keys()):
-                v = metadata[k]
-                # InfluxDB will drop insert with empty tags
-                if v is None or v == '':
-                    continue
-                v = str(v).replace(' ', '')
-                metadata_buf.append(k + '=' + v.replace(',', '\\,').replace(' ', '\\ ').replace('=', '\\='))
+        # InfluxDB docs recommend sorting tags
+        for k in sorted(metadata.keys()):
+            v = metadata[k]
+            # InfluxDB will drop insert with empty tags
+            if v is None or v == '':
+                continue
+            metadata_buf.append(k + '=' + str(v).replace(',', '\\,').replace(' ', '\\ ').replace('=', '\\='))
         value_buf = []
         for k in sorted(values.keys()):
             v = values[k]
@@ -41,6 +40,3 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
             # So, the lower timestamp precisions don't seem to work with line protocol...
             line += ' ' + str(int(timestamp * 1000000000))
         self.buffer.append(line)
-
-    def process_value(self, recv_timestamp, bucket, value, timestamp, metadata=None):
-        self.process_values(recv_timestamp, bucket, {'value': value}, timestamp, metadata)

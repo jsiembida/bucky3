@@ -61,59 +61,11 @@ def prometheus_setup(timestamps, **extra_cfg):
 
 class TestPrometheusExporter(unittest.TestCase):
     @prometheus_setup(values_timeout=2, timestamps=range(1, 100))
-    def test_simple_single_values(self, prometheus_module):
-        prometheus_module.process_value(1, 'val1', 10, 1)
-        prometheus_module.process_value(1, 'val2', 12.3, 1)
-        prometheus_module.process_value(1, 'val1', 13, 1)
-        prometheus_module.process_value(2, 'val3', 14, 2)
-        prometheus_verify(prometheus_module, [
-            ('val1', {}, 13, 1),
-            ('val2', {}, 12.3, 1),
-            ('val3', {}, 14, 2),
-        ])
-        prometheus_module.flush(3)
-        prometheus_verify(prometheus_module, [
-            ('val1', {}, 13, 1),
-            ('val2', {}, 12.3, 1),
-            ('val3', {}, 14, 2),
-        ])
-        prometheus_module.flush(4)
-        prometheus_verify(prometheus_module, [
-            ('val3', {}, 14, 2),
-        ])
-        prometheus_module.flush(5)
-        prometheus_verify(prometheus_module, [])
-
-    @prometheus_setup(values_timeout=2, timestamps=range(1, 100))
-    def test_single_values(self, prometheus_module):
-        prometheus_module.process_value(1, 'val1', 10, 1, dict(a='b', b='123'))
-        prometheus_module.process_value(2, 'val2', 11.5, 2, dict(foo='bar'))
-        prometheus_module.process_value(1, 'val1', 12, 1, dict(a='b', b='123'))
-        prometheus_module.process_value(1, 'val2', 13.8, 1, dict(hello='world'))
-        prometheus_verify(prometheus_module, [
-            ('val1', dict(a='b', b='123'), 12, 1),
-            ('val2', dict(foo='bar'), 11.5, 2),
-            ('val2', dict(hello='world'), 13.8, 1),
-        ])
-        prometheus_module.flush(3)
-        prometheus_verify(prometheus_module, [
-            ('val1', dict(a='b', b='123'), 12, 1),
-            ('val2', dict(foo='bar'), 11.5, 2),
-            ('val2', dict(hello='world'), 13.8, 1),
-        ])
-        prometheus_module.flush(4)
-        prometheus_verify(prometheus_module, [
-            ('val2', dict(foo='bar'), 11.5, 2),
-        ])
-        prometheus_module.flush(5)
-        prometheus_verify(prometheus_module, [])
-
-    @prometheus_setup(values_timeout=2, timestamps=range(1, 100))
     def test_simple_multi_values(self, prometheus_module):
-        prometheus_module.process_values(1, 'val1', dict(x=1, y=2), 1)
-        prometheus_module.process_values(1, 'val2', dict(x=4.1, y=5.5, z=1000), 1)
-        prometheus_module.process_values(2, 'val1', dict(x=8, z=3.567), 2)
-        prometheus_module.process_values(1, 'val3', dict(a=0), 1)
+        prometheus_module.process_values(1, 'val1', dict(x=1, y=2), 1, {})
+        prometheus_module.process_values(1, 'val2', dict(x=4.1, y=5.5, z=1000), 1, {})
+        prometheus_module.process_values(2, 'val1', dict(x=8, z=3.567), 2, {})
+        prometheus_module.process_values(1, 'val3', dict(a=0), 1, {})
         prometheus_verify(prometheus_module, [
             ('val1', dict(value='x'), 8, 2),
             ('val1', dict(value='y'), 2, 1),

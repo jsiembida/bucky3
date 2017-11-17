@@ -30,205 +30,6 @@ class Logger:
         return logging.getLogger(module_name)
 
 
-class MetricsProcess(multiprocessing.Process, Logger):
-    def __init__(self, module_name, module_config):
-        super().__init__(name=module_name, daemon=True)
-        self.cfg = module_config
-
-    def schedule_tick(self):
-        now = time.monotonic()
-        while now + 0.3 >= self.next_tick:
-            self.next_tick += self.tick_interval
-        signal.setitimer(signal.ITIMER_REAL, self.next_tick - now, self.tick_interval + self.tick_interval)
-
-    def tick_handler(self, signal_number, stack_frame):
-        self.log.debug("Tick received")
-        self.tick()
-        self.schedule_tick()
-
-    def setup_tick(self):
-        self.next_tick = time.monotonic() + self.tick_interval
-        signal.signal(signal.SIGALRM, self.tick_handler)
-        signal.setitimer(signal.ITIMER_REAL, self.tick_interval, self.tick_interval + self.tick_interval)
-
-    def tick(self):
-        now = time.monotonic()
-        if now < self.next_flush:
-            return
-        if self.flush(round(time.time(), 3)):
-            self.flush_interval = self.tick_interval
-        else:
-            self.flush_interval = min(self.flush_interval + self.flush_interval, 600)
-            self.log.info("Flush error, next in %d secs", int(self.flush_interval))
-        # Occasionally, at least on macOS, kernel wakes up the process a few millis earlier
-        # then scheduled (most likely scheduling we do here is introducing some small slips),
-        # which triggers the condition at the top of the function and we miss a legit tick.
-        # The 0.03s is a harmless margin that seems to solve the problem.
-        self.next_flush = now + self.flush_interval - 0.03
-
-    def init_config(self):
-        self.log = self.setup_logging(self.cfg, self.name)
-        self.randomize_startup = self.cfg.get('randomize_startup', True)
-        self.buffer = []
-        self.buffer_limit = max(self.cfg.get('buffer_limit', 10000), 100)
-        self.chunk_size = max(self.cfg.get('chunk_size', 300), 1)
-        self.tick_interval = self.flush_interval = max(self.cfg['flush_interval'], 0.1)
-        self.next_tick = self.next_flush = 0
-        self.metadata = self.cfg.get('metadata')
-        self.metric_postprocessor = self.cfg.get('metric_postprocessor')
-        self.add_timestamps = self.cfg.get('add_timestamps', False)
-        self.self_report = self.cfg.get('self_report', False)
-        self.self_report_timestamp = 0
-        self.init_time = time.monotonic()
-
-    def run(self, loop=True):
-        def termination_handler(signal_number, stack_frame):
-            self.log.info("Received signal %d, exiting", signal_number)
-            sys.exit(0)
-
-        # We have to reset signals set up by master process to reasonable defaults
-        # (because we inherited them via fork, which is most likely invalid in our context)
-        signal.signal(signal.SIGINT, termination_handler)
-        signal.signal(signal.SIGTERM, termination_handler)
-        signal.signal(signal.SIGHUP, termination_handler)
-        signal.signal(signal.SIGALRM, signal.SIG_IGN)
-
-        self.init_config()
-        if self.randomize_startup and self.tick_interval > 3:
-            # If randomization is configured (it's default) do it asap, before singal handler gets set up
-            time.sleep(random.randint(0, min(self.tick_interval - 1, 15)))
-        self.log.info("Set up")
-        self.tick()
-        self.setup_tick()
-
-        if loop:
-            self.loop()
-
-    def loop(self):
-        while True:
-            try:
-                time.sleep(60)
-            except InterruptedError:
-                pass
-
-    def take_self_report(self):
-        if not self.self_report:
-            return None
-        now = time.monotonic()
-        if now - self.self_report_timestamp >= 59:
-            self.self_report_timestamp = now
-            usage = resource.getrusage(resource.RUSAGE_SELF)
-            self.process_self_report(
-                "bucky3",
-                dict(
-                    cpu=round(usage.ru_utime + usage.ru_stime, 3),
-                    memory=usage.ru_maxrss,
-                    uptime=round(time.monotonic() - self.init_time, 3),
-                ),
-                None,
-                dict(name=self.name),
-            )
-
-    def process_self_report(self, bucket, stats, timestamp, metadata):
-        pass
-
-    def merge_metadata(self, metadata):
-        if self.metadata:
-            metadata.update((k, v) for k, v in self.metadata.items() if k not in metadata)
-        return metadata
-
-
-class MetricsDstProcess(MetricsProcess):
-    def __init__(self, module_name, module_config, src_pipes):
-        super().__init__(module_name, module_config)
-        self.src_pipes = src_pipes
-
-    def loop(self):
-        err = 0
-        while True:
-            tmp = False
-            for pipe in multiprocessing.connection.wait(self.src_pipes, min(self.tick_interval, 60)):
-                try:
-                    batch = pipe.recv()
-                    self.process_batch(round(time.time(), 3), batch)
-                except InterruptedError:
-                    pass
-                except EOFError:
-                    # This happens when no source is connected up, keep trying for 10s, then give up.
-                    self.log.debug("EOF while reading source pipe")
-                    tmp = True
-            if tmp:
-                err = err + 1
-            else:
-                err = 0
-                self.take_self_report()
-            if err > 10:
-                self.log.error("Input(s) not ready, quitting")
-                return
-            elif err:
-                time.sleep(1)
-
-    def process_batch(self, recv_timestamp, batch):
-        for sample in batch:
-            bucket, value, timestamp, metadata = sample
-            if type(value) is dict:
-                self.process_values(recv_timestamp, bucket, value, timestamp, metadata)
-            else:
-                self.process_value(recv_timestamp, bucket, value, timestamp, metadata)
-
-    def process_self_report(self, bucket, stats, timestamp, metadata):
-        self.process_values(round(time.time(), 3), bucket, stats, timestamp, self.merge_metadata(metadata))
-
-    def process_values(self, recv_timestamp, bucket, values, metric_timestamp, metadata=None):
-        raise NotImplementedError()
-
-    def process_value(self, recv_timestamp, bucket, value, metric_timestamp, metadata=None):
-        raise NotImplementedError()
-
-
-class MetricsSrcProcess(MetricsProcess):
-    def __init__(self, module_name, module_config, dst_pipes):
-        super().__init__(module_name, module_config)
-        self.dst_pipes = dst_pipes
-
-    def init_config(self):
-        super().init_config()
-        self.log.info('Destination modules: ' + ', '.join(m[0] for m in self.cfg['destination_modules']))
-
-    def tick(self):
-        super().tick()
-        self.take_self_report()
-
-    def buffer_metric(self, bucket, stats, timestamp, metadata):
-        if metadata:
-            if 'bucket' in metadata:
-                bucket = metadata['bucket']
-                del metadata['bucket']
-            metadata = self.merge_metadata(metadata)
-        else:
-            metadata = self.metadata
-        if self.metric_postprocessor:
-            tmp = self.metric_postprocessor(bucket, stats, timestamp, metadata)
-            if tmp is None:
-                return
-            bucket, stats, timestamp, metadata = tmp
-        self.buffer.append((bucket, stats, timestamp, metadata))
-
-    def process_self_report(self, bucket, stats, timestamp, metadata):
-        self.buffer_metric(bucket, stats, timestamp, metadata)
-        self.flush(round(time.time(), 3))
-
-    def flush(self, system_timestamp):
-        if self.buffer:
-            self.log.debug("Flushing %d entries from buffer", len(self.buffer))
-            for chunk_start in range(0, len(self.buffer), self.chunk_size):
-                chunk = self.buffer[chunk_start:chunk_start + self.chunk_size]
-                for dst in self.dst_pipes:
-                    dst.send(chunk)
-            self.buffer = []
-        return True
-
-
 class HostResolver:
     def parse_address(self, address, default_port):
         bits = address.split(":")
@@ -263,11 +64,20 @@ class HostResolver:
         return self.resolved_hosts
 
 
-class UDPConnector(HostResolver):
+class Connector:
+    def cleanup_socket(self):
+        if self.socket:
+            self.socket.close()
+            self.log.debug('Closed socket')
+        self.socket = None
+
+
+class UDPConnector(Connector, HostResolver):
     def get_udp_socket(self, bind=False):
         # UDP sockets don't need the elaborate recycling TCP sockets do
         if self.socket is None:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.log.info('Created UDP socket')
             if bind:
                 self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 if hasattr(socket, 'SO_REUSEPORT'):
@@ -278,75 +88,34 @@ class UDPConnector(HostResolver):
         return self.socket
 
 
-class TCPConnector(HostResolver):
-    def cleanup_tcp_socket(self):
-        if self.socket:
-            self.socket.close()
-        self.socket = None
-
+class TCPConnector(Connector, HostResolver):
     # To provide load balancing, when pushing via TCP, we reopen the connection
     # at intervals (using a random host from the pool of resolved ones).
     def get_tcp_connection(self):
         now = time.monotonic()
         if self.socket is None or (now - self.socket_timestamp) > 180:
-            self.cleanup_tcp_socket()
-            connect_exception = None
-
+            self.cleanup_socket()
             # In theory, DNS should do some sort of round-robin / randomization, but better be safe
             resolved_hosts = list(self.resolve_remote_hosts())
             random.shuffle(resolved_hosts)
 
             for remote_ip, remote_port in resolved_hosts:
                 self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.log.info('Created TCP socket')
                 self.socket.settimeout(1)
                 try:
-                    # Failure of connect should be caught and handled.
-                    # Only when all possible connects fail, propagate the issue.
+                    # Connect failure is not fatal.
                     self.socket.connect((remote_ip, remote_port))
-                except OSError as e:
-                    connect_exception = e
+                    self.log.info('Connected TCP socket to %s:%d', remote_ip, remote_port)
+                except ConnectionError as e:
+                    self.log.warning('TCP connection to %s:%d failed', remote_ip, remote_port)
+                    self.cleanup_socket()
                     continue
                 self.socket_timestamp = time.monotonic()
-                connect_exception = None
                 break
-
-            if connect_exception:
-                self.cleanup_tcp_socket()
-                raise connect_exception
+        if self.socket is None:
+            raise ConnectionError("No connection")
         return self.socket
-
-
-class MetricsPushProcess(MetricsDstProcess):
-    def __init__(self, *args, default_port=None):
-        super().__init__(*args)
-        self.socket = None
-        self.default_port = default_port
-        self.resolved_hosts = None
-        self.resolved_hosts_timestamp = 0
-        self.socket = None
-        self.socket_timestamp = 0
-
-    def process_batch(self, recv_timestamp, batch):
-        super().process_batch(recv_timestamp, batch)
-        self.tick()
-        self.trim_buffer()
-
-    def trim_buffer(self):
-        buffer_len = len(self.buffer)
-        if buffer_len > self.buffer_limit:
-            self.buffer = self.buffer[-int(self.buffer_limit / 2):]
-            self.log.debug("Buffer trimmed from %d to %d entries", buffer_len, len(self.buffer))
-
-    def flush(self, system_timestamp):
-        if self.buffer:
-            try:
-                self.push_buffer()
-                self.buffer.clear()
-            except (PermissionError, ConnectionError):
-                self.log.exception("Connection error")
-                self.socket = None  # CPython will trigger close() when GCing it.
-                return False
-        return True
 
 
 class ProcfsReader:
@@ -388,3 +157,248 @@ class ProcfsReader:
                 name = tokens[0]
                 if name in self.MEMORY_FIELDS:
                     yield self.MEMORY_FIELDS[name], int(tokens[1]) * 1024
+
+
+class MetricsProcess(multiprocessing.Process, Logger):
+    def __init__(self, module_name, module_config):
+        super().__init__(name=module_name, daemon=True)
+        self.cfg = module_config
+
+    def schedule_tick(self):
+        now = time.monotonic()
+        while now + 0.3 >= self.next_tick:
+            self.next_tick += self.tick_interval
+        signal.setitimer(signal.ITIMER_REAL, self.next_tick - now, self.tick_interval + self.tick_interval)
+
+    def tick_handler(self, signal_number, stack_frame):
+        self.log.debug("Tick received")
+        self.tick()
+        self.schedule_tick()
+
+    def setup_tick(self):
+        self.next_tick = time.monotonic() + self.tick_interval
+        signal.signal(signal.SIGALRM, self.tick_handler)
+        signal.setitimer(signal.ITIMER_REAL, self.tick_interval, self.tick_interval + self.tick_interval)
+
+    def tick(self):
+        now = time.monotonic()
+        if now >= self.next_flush:
+            if self.flush(round(time.time(), 3)):
+                self.flush_interval = self.tick_interval
+            else:
+                self.flush_interval = min(self.flush_interval + self.flush_interval, 600)
+                self.log.warning("Flush error, next in %d secs", int(self.flush_interval))
+            # Occasionally, at least on macOS, kernel wakes up the process a few millis earlier
+            # then scheduled (most likely scheduling we do here is introducing some small slips),
+            # which triggers the condition at the top of the function and we miss a legit tick.
+            # The 0.03s is a harmless margin that seems to solve the problem.
+            self.next_flush = now + self.flush_interval - 0.03
+        if self.self_report:
+            self.take_self_report()
+
+    def init_config(self):
+        self.log = self.setup_logging(self.cfg, self.name)
+        self.randomize_startup = self.cfg.get('randomize_startup', True)
+        self.buffer = []
+        self.buffer_limit = max(self.cfg.get('buffer_limit', 10000), 100)
+        self.chunk_size = max(self.cfg.get('chunk_size', 300), 1)
+        self.tick_interval = self.flush_interval = max(self.cfg['flush_interval'], 0.1)
+        self.next_tick = self.next_flush = 0
+        self.metadata = self.cfg.get('metadata', {})
+        self.metric_postprocessor = self.cfg.get('metric_postprocessor')
+        self.add_timestamps = self.cfg.get('add_timestamps', False)
+        self.self_report = self.cfg.get('self_report', False)
+        self.self_report_timestamp = 0
+        self.init_time = time.monotonic()
+
+    def run(self, loop=True):
+        def termination_handler(signal_number, stack_frame):
+            self.log.info("Received signal %d, exiting", signal_number)
+            sys.exit(0)
+
+        # We have to reset signals set up by master process to reasonable defaults
+        # (because we inherited them via fork, which is most likely invalid in our context)
+        signal.signal(signal.SIGINT, termination_handler)
+        signal.signal(signal.SIGTERM, termination_handler)
+        signal.signal(signal.SIGHUP, termination_handler)
+        signal.signal(signal.SIGALRM, signal.SIG_IGN)
+
+        self.init_config()
+        if self.randomize_startup and self.tick_interval > 3:
+            # If randomization is configured (it's default) do it asap, before singal handler gets set up
+            time.sleep(random.randint(0, min(self.tick_interval - 1, 15)))
+        self.log.info("Set up")
+        self.tick()
+        self.setup_tick()
+
+        if loop:
+            self.loop()
+
+    def loop(self):
+        while True:
+            try:
+                time.sleep(60)
+            except InterruptedError:
+                pass
+
+    def take_self_report(self):
+        now = time.monotonic()
+        if now - self.self_report_timestamp >= 60:
+            self.self_report_timestamp = now
+            usage = resource.getrusage(resource.RUSAGE_SELF)
+            self.process_self_report(
+                "bucky3",
+                dict(
+                    cpu=round(usage.ru_utime + usage.ru_stime, 3),
+                    memory=usage.ru_maxrss,
+                    uptime=round(time.monotonic() - self.init_time, 3),
+                ),
+                None,
+                dict(name=self.name),
+            )
+
+    def process_self_report(self, bucket, stats, timestamp, metadata):
+        raise NotImplementedError()
+
+    def merge_dict(self, dst, src=None):
+        if src is None:
+            src = self.metadata
+        if src:
+            dst.update((k, v) for k, v in src.items() if k not in dst)
+        return dst
+
+
+class MetricsSrcProcess(MetricsProcess):
+    def __init__(self, module_name, module_config, dst_pipes):
+        super().__init__(module_name, module_config)
+        self.dst_pipes = dst_pipes
+
+    def init_config(self):
+        super().init_config()
+        self.log.info('Destination modules: ' + ', '.join(m[0] for m in self.cfg['destination_modules']))
+
+    def buffer_metric(self, bucket, stats, timestamp, metadata):
+        if metadata:
+            metadata = self.merge_dict(metadata)
+        else:
+            metadata = self.metadata.copy()
+        if 'bucket' in metadata:
+            bucket = metadata['bucket']
+            del metadata['bucket']
+        if self.metric_postprocessor:
+            postprocessed_tuple = self.metric_postprocessor(bucket, stats, timestamp, metadata)
+            if postprocessed_tuple is None:
+                return
+            self.buffer.append(postprocessed_tuple)
+        self.buffer.append((bucket, stats, timestamp, metadata))
+
+    def process_self_report(self, bucket, stats, timestamp, metadata):
+        self.buffer_metric(bucket, stats, timestamp, metadata)
+        MetricsSrcProcess.flush(self, round(time.time(), 3))
+
+    def flush(self, system_timestamp):
+        if self.buffer:
+            self.log.debug("Flushing %d entries from buffer", len(self.buffer))
+            for chunk_start in range(0, len(self.buffer), self.chunk_size):
+                chunk = self.buffer[chunk_start:chunk_start + self.chunk_size]
+                for dst in self.dst_pipes:
+                    dst.send(chunk)
+            self.buffer = []
+        return True
+
+
+class MetricsDstProcess(MetricsProcess):
+    def __init__(self, module_name, module_config, src_pipes):
+        super().__init__(module_name, module_config)
+        self.src_pipes = src_pipes
+
+    def loop(self):
+        err = 0
+        while True:
+            tmp = False
+            for pipe in multiprocessing.connection.wait(self.src_pipes, min(self.tick_interval, 60)):
+                try:
+                    batch = pipe.recv()
+                    self.process_batch(round(time.time(), 3), batch)
+                except InterruptedError:
+                    pass
+                except EOFError:
+                    # This happens when no source is connected up, keep trying for 10s, then give up.
+                    self.log.debug("EOF while reading source pipe")
+                    tmp = True
+            if tmp:
+                err = err + 1
+            else:
+                err = 0
+            if err > 10:
+                self.log.error("Input(s) not ready, quitting")
+                return
+            elif err:
+                time.sleep(1)
+
+    def process_batch(self, recv_timestamp, batch):
+        for bucket, values, timestamp, metadata in batch:
+            self.process_values(recv_timestamp, bucket, values, timestamp, metadata)
+
+    def process_self_report(self, bucket, stats, timestamp, metadata):
+        self.process_values(round(time.time(), 3), bucket, stats, timestamp, self.merge_dict(metadata))
+
+    def process_values(self, recv_timestamp, bucket, values, metric_timestamp, metadata):
+        raise NotImplementedError()
+
+
+class MetricsPushProcess(MetricsDstProcess, Connector):
+    def __init__(self, *args, default_port=None):
+        super().__init__(*args)
+        self.socket = None
+        self.default_port = default_port
+        self.resolved_hosts = None
+        self.resolved_hosts_timestamp = 0
+        self.socket = None
+        self.socket_timestamp = 0
+
+    def init_config(self):
+        super().init_config()
+        self.push_count_limit = self.cfg.get('push_count_limit', self.buffer_limit)
+        self.push_time_limit = self.cfg.get('push_time_limit', max(self.tick_interval / 3, 0.1))
+
+    def process_batch(self, recv_timestamp, batch):
+        super().process_batch(recv_timestamp, batch)
+        self.tick()
+
+    def tick(self):
+        super().tick()
+        self.trim_buffer()
+
+    def trim_buffer(self):
+        buffer_len = len(self.buffer)
+        if buffer_len > self.buffer_limit:
+            self.buffer = self.buffer[-int(self.buffer_limit / 2):]
+            self.log.warning("Buffer trimmed from %d to %d entries", buffer_len, len(self.buffer))
+
+    def push_buffer(self):
+        self.log.debug('%d entries in buffer to be pushed', len(self.buffer))
+        push_start, push_counter = time.monotonic(), 0
+        i, failed_entries = 0, []
+        try:
+            while i < len(self.buffer):
+                if push_counter >= self.push_count_limit:
+                    break
+                if time.monotonic() - push_start >= self.push_time_limit:
+                    break
+                chunk = self.buffer[i:i + self.chunk_size]
+                failed_entries.extend(self.push_chunk(chunk))
+                i += self.chunk_size
+                push_counter += len(chunk)  # Include all entries, even the failed ones
+            return push_counter > len(failed_entries)
+        except (ConnectionError, socket.timeout) as e:
+            self.log.exception(e)
+            self.cleanup_socket()
+            return False
+        finally:
+            self.buffer = failed_entries + self.buffer[i:]
+            if self.buffer:
+                self.log.warning('%d entries left over in buffer', len(self.buffer))
+
+    def flush(self, system_timestamp):
+        return self.push_buffer() if self.buffer else True
