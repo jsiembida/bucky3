@@ -357,6 +357,11 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
         self.socket = None
         self.socket_timestamp = 0
 
+    def init_config(self):
+        super().init_config()
+        self.push_count_limit = self.cfg.get('push_count_limit', self.buffer_limit)
+        self.push_time_limit = self.cfg.get('push_time_limit', max(self.tick_interval / 3, 0.1))
+
     def process_batch(self, recv_timestamp, batch):
         super().process_batch(recv_timestamp, batch)
         self.tick()
@@ -374,11 +379,12 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
     def push_buffer(self):
         self.log.debug('%d entries in buffer to be pushed', len(self.buffer))
         push_start, push_counter = time.monotonic(), 0
-        count_limit, time_limit = self.cfg['push_count_limit'], self.cfg['push_time_limit']
         i, failed_entries = 0, []
         try:
             while i < len(self.buffer):
-                if push_counter >= count_limit and (time.monotonic() - push_start) >= time_limit:
+                if push_counter >= self.push_count_limit:
+                    break
+                if time.monotonic() - push_start >= self.push_time_limit:
                     break
                 chunk = self.buffer[i:i + self.chunk_size]
                 failed_entries.extend(self.push_chunk(chunk))

@@ -130,8 +130,22 @@ metadata = dict(
 # Example: add_timestamps = True
 
 
-push_time_limit = 1
-push_count_limit = 1000
+# push_time_limit
+# - float, time limit in seconds for a single flush
+# - Optional, default: = flush_interval / 3
+# - It can happen that sending the data out takes too long. This parameter sets a total time
+#   limit a single flush operation can take. This is only required for influxdb_client,
+#   carbon_client and elasticsearch_client and should be reasonably shorter than flush_interval.
+# Example: push_time_limit = 0.3
+
+
+# push_count_limit
+# - int, max number or records pushed in a single flush
+# - Optional, default: = buffer_limit
+# - Similarly to push_time_limit, this parameter sets a boundary on how much data we flush
+#   in one go. Also only applicable to influxdb_client, carbon_client and elasticsearch_client.
+#   push_count_limit, buffer_limit and chunk_size define the buffering policy for those three
+#   modules and provide control over traffic generated and data retention.
 
 
 # metric_postprocessor
