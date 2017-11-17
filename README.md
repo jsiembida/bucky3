@@ -6,8 +6,8 @@
 is a rework of [Bucky](https://github.com/trbs/bucky). Major differences include:
 
 * Metrics with metadata are designed into Bucky3 from the ground up. This is a shift towards systems like
-[InfluxDB](https://www.influxdata.com) or [Prometheus](https://prometheus.io) and biggest conceptual
-difference between Bucky3 and original Bucky.
+[InfluxDB](https://www.influxdata.com), [Prometheus](https://prometheus.io) or [Elasticsearch](https://www.elastic.co)
+and biggest conceptual difference between Bucky3 and original Bucky.
 * Consequently, while support of [Carbon protocol](http://graphite.readthedocs.io/en/latest/feeding-carbon.html)
 has been retained, Graphite naming style is built as a mapping on top of the underlying metadata.
 * Python 3.4+ only.
@@ -70,12 +70,15 @@ many-to-many, one or more source modules (subprocesses) produce metrics and send
 modules (subprocesses). The following modules are available:
 
 * `statsd_server` - source module that collects metrics via extended StatsD protocol.
+* `jsond_server` - source module that takes raw JSON objects via UDP protocol.
 * `linux_stats` - source module that collects Linux metrics via `/proc` filesystem.
 * `docker_stats` - source module that collects metrics from running docker containers.
-* `influxdb_client` - destination module that sends metrics to InfluxDB via
+* `influxdb_client` - destination module that sends data to InfluxDB via
 [UDP line protocol.](https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_reference/)
-* `prometheus_exporter` - destination module that exposes metrics via 
+* `prometheus_exporter` - destination module that exposes data via 
 [Prometheus text exposition format.](https://prometheus.io/docs/instrumenting/exposition_formats/)
+* `elasticsearch_client` - destination module that sends data to Elasticsearch via
+[bulk document upload.](https://www.elastic.co/guide/en/elasticsearch/reference/5.6/docs-bulk.html)
 * `carbon_client` - destination module that sends data to Graphite via TCP.
 
 ##### Installation
