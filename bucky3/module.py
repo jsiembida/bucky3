@@ -108,6 +108,7 @@ class TCPConnector(Connector, HostResolver):
                     self.socket.connect((remote_ip, remote_port))
                     self.log.info('Connected TCP socket to %s:%d', remote_ip, remote_port)
                 except ConnectionError as e:
+                    self.log.warning('TCP connection to %s:%d failed', remote_ip, remote_port)
                     self.cleanup_socket()
                     continue
                 self.socket_timestamp = time.monotonic()

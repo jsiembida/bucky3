@@ -222,18 +222,23 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def handle_timer(self, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)
 
-        # This bit is racy. If we catch SIGALRM in between here and "self.timers[key] = ..."
-        # the samples buffered for the metric will get "carried over" to the next time window.
-        # If we can live with UDP we can live with the damage caused here. Also, a similar
-        # race is below for histograms.
-        buf = self.timers.get(key, (None, []))[1]
-        buf.append(val)
-        self.timers[key] = cust_timestamp, buf
+        # For all aggregates there is a race between the updates in handle_* and SIGALRM codepath.
+        # Signal handler resets all self.aggregate={} so we buffer the references in handlers and
+        # do all operations on them. In case of race, the changes are committed to stale references.
+        # This is a damage we can live with (if we can live with UDP).
+        timers = self.timers
+        if key in timers:
+            buf = timers[key][1]
+            buf.append(val)
+            timers[key] = cust_timestamp, buf
+        else:
+            timers[key] = cust_timestamp, [val]
 
         if self.histogram_selector is None:
             return
 
-        histogram = self.histograms.get(key)
+        histograms = self.histograms
+        histogram = histograms.get(key)
         if histogram is None:
             selector = self.histogram_selector(metadata)
             if selector is None:
@@ -253,20 +258,25 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             buckets[bucket_name] = (
                 vlen + 1, vsum + val, vsum_squares + val * val, min(val, vmin), max(val, vmax)
             )
-            self.histograms[key] = cust_timestamp, selector, buckets
+            histograms[key] = cust_timestamp, selector, buckets
 
     def handle_gauge(self, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)
         delta = valstr[0] in "+-"
-        if delta:
-            self.gauges[key] = cust_timestamp, self.gauges.get(key, (None, 0))[1] + val
+        gauges = self.gauges
+        if delta and key in gauges:
+            gauges[key] = cust_timestamp, gauges[key][1] + val
         else:
-            self.gauges[key] = cust_timestamp, val
+            gauges[key] = cust_timestamp, val
 
     def handle_set(self, cust_timestamp, key, metadata, valstr, ratestr):
-        buf = self.sets.get(key, (None, set()))[1]
-        buf.add(valstr)
-        self.sets[key] = cust_timestamp, buf
+        sets = self.sets
+        if key in sets:
+            buf = sets[key][1]
+            buf.add(valstr)
+            sets[key] = cust_timestamp, buf
+        else:
+            sets[key] = cust_timestamp, {valstr}
 
     def handle_counter(self, cust_timestamp, key, metadata, valstr, ratestr):
         if ratestr and ratestr[0] == "@":
@@ -277,4 +287,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 return
         else:
             val = float(valstr)
-        self.counters[key] = cust_timestamp, self.counters.get(key, (None, 0))[1] + val
+        counters = self.counters
+        if key in counters:
+            val += counters[key][1]
+        counters[key] = cust_timestamp, val
