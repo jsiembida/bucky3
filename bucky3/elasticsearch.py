@@ -25,7 +25,7 @@ class ElasticsearchConnection(http.client.HTTPConnection):
     # https://github.com/ndjson/ndjson-spec
     def bulk_upload(self, docs):
         buffer = []
-        for bucket, doc, doc_id in docs:
+        for bucket, doc_json, doc_id in docs:
             # ES6 deprecates types, ES7 will drop them. We use indices as buckets, and types are
             # some configured / fixed string as they are still mandated by API, but that can be
             # easily dropped in future.
@@ -35,7 +35,7 @@ class ElasticsearchConnection(http.client.HTTPConnection):
                 req = {"index": {"_index": bucket, "_id": doc_id}}
             buffer.append(json.dumps(req, indent=None))
             buffer.append('\n')
-            buffer.append(json.dumps(doc, indent=None))
+            buffer.append(doc_json)
             buffer.append('\n')
         body = ''.join(buffer).encode('utf-8')
         headers = {
@@ -89,7 +89,9 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
         # https://docs.python.org/3/library/datetime.html#datetime.datetime.isoformat
         timestamp = datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         values['timestamp'] = timestamp
-        # Generate uuids now. If in case of connection issues some docs get retransmitted
-        # we will overwrite old docs with the same uuids instead of creating dupes.
-        # TODO: a consistent uuid generation / hashing sounds like a desirable feature
-        self.buffer.append((bucket, values, str(uuid.uuid4())))
+
+        # Try to produce consistent hashing, it is as consistent as json serializer inner workings.
+        # I.e. serialization of floats or unicode. Should be more then enough in our case though.
+        doc_json = json.dumps(values, sort_keys=True, indent=None, separators=(',', ':'))
+        doc_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, doc_json))
+        self.buffer.append((bucket, doc_json, doc_id))
