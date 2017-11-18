@@ -25,17 +25,7 @@ class ElasticsearchConnection(http.client.HTTPConnection):
     # https://github.com/ndjson/ndjson-spec
     def bulk_upload(self, docs):
         buffer = []
-        for bucket, timestamp, doc, doc_id in docs:
-            # ES can be configured otherwise, but by default it has an interesting approach to
-            # "we support ISO format". It only takes a space separated string with millisecond
-            # precision without TZ (i.e. '2017-11-08 11:04:48.102'), everything else seems to fail.
-            # Python's datetime.isoformat on the other hand, only produces microsecond precision
-            # (optional parameter to control it was introduced in Python 3.6) and has the edge case
-            # where it is skipping the fraction part altogether if microseconds==0.
-            # https://www.elastic.co/guide/en/elasticsearch/reference/current/date.html
-            # https://docs.python.org/3/library/datetime.html#datetime.datetime.isoformat
-            timestamp = datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            doc['timestamp'] = timestamp
+        for bucket, doc, doc_id in docs:
             # ES6 deprecates types, ES7 will drop them. We use indices as buckets, and types are
             # some configured / fixed string as they are still mandated by API, but that can be
             # easily dropped in future.
@@ -89,6 +79,17 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
     def process_values(self, recv_timestamp, bucket, values, timestamp, metadata):
         self.merge_dict(metadata)
         self.merge_dict(values, metadata)
+        timestamp = timestamp or recv_timestamp
+        # ES can be configured otherwise, but by default it only takes a space separated string
+        # with millisecond precision without a TZ (i.e. '2017-11-08 11:04:48.102').
+        # Python's datetime.isoformat on the other hand, only produces microsecond precision
+        # (optional parameter to control it was introduced in Python 3.6) and has the edge case
+        # where it is skipping the fraction part altogether if microseconds==0.
+        # https://www.elastic.co/guide/en/elasticsearch/reference/current/date.html
+        # https://docs.python.org/3/library/datetime.html#datetime.datetime.isoformat
+        timestamp = datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        values['timestamp'] = timestamp
         # Generate uuids now. If in case of connection issues some docs get retransmitted
         # we will overwrite old docs with the same uuids instead of creating dupes.
-        self.buffer.append((bucket, timestamp or recv_timestamp, values, str(uuid.uuid4())))
+        # TODO: a consistent uuid generation / hashing sounds like a desirable feature
+        self.buffer.append((bucket, values, str(uuid.uuid4())))
