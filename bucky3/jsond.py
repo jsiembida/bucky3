@@ -39,7 +39,7 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
             # TODO there is no protection against malicious / malformed lines
             obj, end = self.decoder.raw_decode(line)
             if end == len(line) and type(obj) is dict:
-                self.handle_obj(obj)
+                self.handle_obj(recv_timestamp, obj)
         except JSONDecodeError as e:
             pass
 
