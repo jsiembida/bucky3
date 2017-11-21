@@ -95,6 +95,8 @@ class TCPConnector(Connector, HostResolver):
         now = time.monotonic()
         if self.socket is None or (now - self.socket_timestamp) > 180:
             self.cleanup_socket()
+
+            # TODO use socket.create_connection instead?
             # In theory, DNS should do some sort of round-robin / randomization, but better be safe
             resolved_hosts = list(self.resolve_remote_hosts())
             random.shuffle(resolved_hosts)
@@ -224,10 +226,10 @@ class MetricsProcess(multiprocessing.Process, Logger):
         signal.signal(signal.SIGALRM, signal.SIG_IGN)
 
         self.init_config()
+        self.log.info("Set up")
         if self.randomize_startup and self.tick_interval > 3:
             # If randomization is configured (it's default) do it asap, before singal handler gets set up
             time.sleep(random.randint(0, min(self.tick_interval - 1, 15)))
-        self.log.info("Set up")
         self.tick()
         self.setup_tick()
 
