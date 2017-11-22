@@ -46,7 +46,7 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
     def handle_obj(self, recv_timestamp, obj):
         # Only flat objects with basic types
         for k, v in obj.items():
-            if not isinstance(v, (int, float, bool, str, None)):
+            if not isinstance(v, (int, float, bool, str)) and v is not None:
                 return
         # Parsing ISO/RFC would be really nice, but in Python is not going to be simple
         # and fast. So let's accept only a sensible number of secs / millis from epoch.
