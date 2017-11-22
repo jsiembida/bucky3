@@ -38,10 +38,10 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
         try:
             # TODO there is no protection against malicious / malformed lines
             obj, end = self.decoder.raw_decode(line)
-            if end == len(line) and type(obj) is dict:
-                self.handle_obj(recv_timestamp, obj)
         except ValueError as e:
-            pass
+            return
+        if end == len(line) and type(obj) is dict:
+            self.handle_obj(recv_timestamp, obj)
 
     def handle_obj(self, recv_timestamp, obj):
         # Only flat objects with basic types

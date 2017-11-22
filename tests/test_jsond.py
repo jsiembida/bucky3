@@ -117,6 +117,10 @@ class TestJsonDServer(unittest.TestCase):
     @jsond_setup(timestamps=(2, 4, 6, 8, 10, 12, 14, 16, 18, 20))
     def test_malformed_lines(self, module):
         pipe = module.dst_pipes[0]
+        payload_str = self.randstr()
+        module.handle_line(0, payload_str)
+        module.tick()
+        jsond_verify(pipe, [])
         payload_obj = self.randlist()
         payload_str = json.dumps(payload_obj)
         module.handle_line(0, payload_str)
