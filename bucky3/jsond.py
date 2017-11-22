@@ -40,7 +40,7 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
             obj, end = self.decoder.raw_decode(line)
             if end == len(line) and type(obj) is dict:
                 self.handle_obj(recv_timestamp, obj)
-        except JSONDecodeError as e:
+        except ValueError as e:
             pass
 
     def handle_obj(self, recv_timestamp, obj):
