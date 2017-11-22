@@ -173,14 +173,14 @@ class TestJsonDServer(unittest.TestCase):
         ])
 
         payload_obj = self.randdict()
-        now = datetime.datetime.utcnow()
-        payload_obj['timestamp'] = now.timestamp() * 1000
+        now = int(datetime.datetime.utcnow().timestamp() * 1000)
+        payload_obj['timestamp'] = now
         payload_str = json.dumps(payload_obj)
         module.handle_line(0, payload_str)
         del payload_obj['timestamp']
         module.tick()
         jsond_verify(pipe, [
-            ('metrics', payload_obj, now.timestamp(), {}),
+            ('metrics', payload_obj, now / 1000, {}),
         ])
 
 
