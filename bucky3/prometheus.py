@@ -44,31 +44,20 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
         http_thread.start()
         self.log.info("Started server at http://%s:%d/%s", ip, port, path)
 
-    def get_line(self, k):
-        tmp = self.buffer.get(k)
-        if not tmp:
-            return ''
-        recv_timestamp, metric_timestamp, value, line = tmp
-        if not line:
-            # https://prometheus.io/docs/instrumenting/exposition_formats/
-            bucket, metadata = k[0], k[1:]
-            if metadata:
-                metadata_str = ','.join(
-                    k + '="' + v.replace('\\', '\\\\').replace('"', '\\"') + '"' for k, v in metadata
-                )
-                # Lines MUST end with \n (not \r\n), the last line MUST also end with \n
-                # Otherwise, Prometheus will reject the whole scrape!
-                line = bucket + '{' + metadata_str + '} ' + str(value)
-            else:
-                line = bucket + ' ' + str(value)
-            if metric_timestamp is not None:
-                line += ' ' + str(int(metric_timestamp * 1000))
-            line += '\n'
-            self.buffer[k] = recv_timestamp, metric_timestamp, value, line
-        return line
+    def get_line(self, bucket, value, metadata, timestamp):
+        # https://prometheus.io/docs/instrumenting/exposition_formats/
+        metadata_str = ','.join(
+            k + '="' + v.replace('\\', '\\\\').replace('"', '\\"') + '"' for k, v in metadata
+        )
+        # Lines MUST end with \n (not \r\n), the last line MUST also end with \n
+        # Otherwise, Prometheus will reject the whole scrape!
+        line = bucket + '{' + metadata_str + '} ' + str(value)
+        if timestamp is not None:
+            line += ' ' + str(int(timestamp * 1000))
+        return line + '\n'
 
     def get_chunks(self):
-        buffer = tuple(self.get_line(k) for k in tuple(self.buffer.keys()))
+        buffer = tuple(metric_line for recv_timestamp, metric_line in self.buffer.values())
         for chunk_start in range(0, len(buffer), self.chunk_size):
             chunk = buffer[chunk_start:chunk_start + self.chunk_size]
             yield ''.join(chunk)
@@ -85,7 +74,7 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
     def flush(self, system_timestamp):
         timeout = self.cfg['values_timeout']
         old_keys = [
-            k for k, (recv_timestamp, metric_timestamp, v, l) in self.buffer.items()
+            k for k, (recv_timestamp, metric_line) in self.buffer.items()
             if (system_timestamp - recv_timestamp) > timeout
         ]
         for k in old_keys:
@@ -94,12 +83,12 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
 
     def process_values(self, recv_timestamp, bucket, values, metrics_timestamp, metadata):
         for k, v in values.items():
-            metadata['value'] = k
-            metadata_tuple = (bucket,) + tuple((k, metadata[k]) for k in sorted(metadata.keys()))
             t = type(v)
             if t is bool:
                 v = int(bool)
                 t = int
             if t is int or t is float:
-                # The None below will get lazily rendered during HTTP req
-                self.buffer[metadata_tuple] = recv_timestamp, metrics_timestamp, v, None
+                metadata['value'] = k
+                metadata_tuple = tuple((k, metadata[k]) for k in sorted(metadata.keys()))
+                metric_line = self.get_line(bucket, v, metadata_tuple, metrics_timestamp)
+                self.buffer[(bucket,) + metadata_tuple] = recv_timestamp, metric_line
