@@ -11,9 +11,6 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.socket = None
         self.decoder = json.JSONDecoder()
 
-    def flush(self, system_timestamp):
-        return super().flush(system_timestamp)
-
     def loop(self):
         socket = self.get_udp_socket(bind=True)
         while True:
@@ -28,6 +25,7 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
             recv_timestamp, data = round(time.time(), 3), data.decode('utf-8-sig')
         except UnicodeDecodeError:
             return
+        # http://ndjson.org/
         for line in data.splitlines():
             line = line.strip()
             if line:

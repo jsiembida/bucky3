@@ -3,6 +3,7 @@
 import json
 import uuid
 import zlib
+import gzip
 import http.client
 from datetime import datetime, timezone, timedelta
 import bucky3.module as module
@@ -12,10 +13,11 @@ TZ = timezone(timedelta(hours=0))
 
 
 class ElasticsearchConnection(http.client.HTTPConnection):
-    def __init__(self, socket_getter, use_compression=True):
+    def __init__(self, socket_getter, compression=None):
         super().__init__('elasticsearch')
         self.socket_getter = socket_getter
-        self.use_compression = use_compression
+        self.compression = compression
+        self.compressor = dict(gzip=gzip.compress, deflate=zlib.compress).get(compression, lambda x: x)
 
     def connect(self):
         self.sock = self.socket_getter()
@@ -37,17 +39,19 @@ class ElasticsearchConnection(http.client.HTTPConnection):
             # 'Content-Type': 'application/x-ndjson; charset=UTF-8'
             'Content-Type': 'application/x-ndjson'
         }
-        if self.use_compression:
-            body = zlib.compress(body)
-            headers['Content-Encoding'] = headers['Accept-Encoding'] = 'deflate'
+        body = self.compressor(body)
+        headers['Content-Encoding'] = headers['Accept-Encoding'] = self.compression
         self.request('POST', '/_bulk', body=body, headers=headers)
         resp = self.getresponse()
         if resp.status != 200:
             raise ConnectionError('Elasticsearch error code {}'.format(resp.status))
         body = resp.read()
-        if resp.headers['Content-Encoding'] == 'deflate':
-            body = zlib.decompress(body)
-        return json.loads(body.decode('utf-8'))  # Needed? Is HTTP code not enough?
+        # Needed? Is HTTP code not enough?
+        # if resp.headers['Content-Encoding'] == 'deflate':
+        #     body = zlib.decompress(body)
+        # elif resp.headers['Content-Encoding'] == 'gzip':
+        #     body = gzip.decompress(body)
+        # return json.loads(body.decode('utf-8'))
 
 
 class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
@@ -58,14 +62,16 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
         super().init_config()
         self.index_name = self.cfg.get('index_name')
         self.type_name = self.cfg.get('type_name')
-        self.use_compression = self.cfg.get('use_compression', True)
+        self.compression = self.cfg.get('compression')
+        if self.compression not in {'gzip', 'deflate'}:
+            self.compression = 'identity'
 
     def push_chunk(self, chunk):
         self.elasticsearch_connection.bulk_upload(chunk)
         return []
 
     def push_buffer(self):
-        self.elasticsearch_connection = ElasticsearchConnection(self.get_tcp_connection, self.use_compression)
+        self.elasticsearch_connection = ElasticsearchConnection(self.get_tcp_connection, self.compression)
         return super().push_buffer()
 
     def process_values(self, recv_timestamp, bucket, values, timestamp, metadata):

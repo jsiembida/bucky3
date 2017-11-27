@@ -97,7 +97,8 @@ metadata = dict(
 #   if you want to keep the UDP packets within MTU, the chunk_size should be low, i.e. 5-15.
 #   In carbon_client and prometheus_exporter it defines the number of metrics going into
 #   one TCP socket write, the default 300 seems to be a good value here.
-#   In elasticsearch_client it defines a number of entries in one bulk upload.
+#   In elasticsearch_client it defines a number of entries in one bulk upload. Bigger bulk
+#   calls are significantly more efficient in Elasticsearch. The default 300 or bigger is fine.
 #   In any case, chunk_size is enforced to be at least 1.
 # - Example: chunk_size = 10
 
@@ -375,25 +376,23 @@ influxdb = dict(
 )
 
 
-# This module uses ES indexes as destination buckets.
-# I.e. system_cpu metrics coming from linux_stats will end up in "system_cpu" index.
 elasticsearch = dict(
     module_type="elasticsearch_client",
     module_inactive=True,
 
-    # index_name, ES index name
+    # index_name, Elasticsearch index name
     # - str
     # - Optional, default: None
     # - If not provided, the destination index names are bucket names, see also:
     #   https://www.elastic.co/blog/index-type-parent-child-join-now-future-in-elasticsearch
     #   https://www.elastic.co/guide/en/elasticsearch/guide/current/mapping.html
-    # - Example: index_name="metrics"
+    # - Example: index_name="graylog_deflector"
 
-    # type_name, ES type name
+    # type_name, Elasticsearch type name
     # - str
     # - Optional, default: None
     # - If not provided, the destination type names are bucket names, see also index_name.
-    # - Example: type_name="metrics"
+    # - Example: type_name="message"
 
     # remote_hosts, Elasticsearch endpoints
     # - tuple of str
@@ -409,16 +408,12 @@ elasticsearch = dict(
 
     flush_interval=1,
 
-    # This module uses bulk calls, so it makes sense to keep chunks bigger
-    # rather then smaller, i.e. 100-1000, the default 300 is ok.
-    # chunk_size=300,
-
-    # use_compression, whether to compress HTTP payload in ES API calls
-    # - bool
-    # - Optional, default: True
+    # compression, whether to compress HTTP payload in Elasticsearch API calls
+    # - str
+    # - Optional, default: None
     # - In heavy load setups, compressing JSON bulk uploads can save a lot of bandwidth.
-    #   This option controls "Content-Encoding: deflate/identity".
-    # - Example: use_compression=False,
+    #   Acceptable values are: 'deflate' and 'gzip'
+    # - Example: compression='deflate',
 )
 
 
