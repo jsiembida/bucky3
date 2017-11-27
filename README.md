@@ -70,7 +70,8 @@ many-to-many, one or more source modules (subprocesses) produce metrics and send
 modules (subprocesses). The following modules are available:
 
 * `statsd_server` - source module that collects metrics via extended StatsD protocol.
-* `jsond_server` - source module that takes raw JSON objects via UDP protocol.
+* `jsond_server` - source module that takes [newline delimited JSON objects](http://ndjson.org/)
+via UDP protocol.
 * `linux_stats` - source module that collects Linux metrics via `/proc` filesystem.
 * `docker_stats` - source module that collects metrics from running docker containers.
 * `influxdb_client` - destination module that sends data to InfluxDB via

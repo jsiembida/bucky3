@@ -97,7 +97,8 @@ metadata = dict(
 #   if you want to keep the UDP packets within MTU, the chunk_size should be low, i.e. 5-15.
 #   In carbon_client and prometheus_exporter it defines the number of metrics going into
 #   one TCP socket write, the default 300 seems to be a good value here.
-#   In elasticsearch_client it defines a number of entries in one bulk upload.
+#   In elasticsearch_client it defines a number of entries in one bulk upload. Bigger bulk
+#   calls are significantly more efficient in Elasticsearch. The default 300 or bigger is fine.
 #   In any case, chunk_size is enforced to be at least 1.
 # - Example: chunk_size = 10
 
@@ -127,7 +128,7 @@ metadata = dict(
 #   In any case, metrics coming via StatsD protocol with explicitly provided timestamps
 #   will always have timestamps included. This is to provide capability of backfilling
 #   late metrics and for those new Prometheus 2 semantics won't work anyway.
-# Example: add_timestamps = True
+# - Example: add_timestamps = True
 
 
 # push_time_limit
@@ -136,7 +137,7 @@ metadata = dict(
 # - It can happen that sending the data out takes too long. This parameter sets a total time
 #   limit a single flush operation can take. This is only required for influxdb_client,
 #   carbon_client and elasticsearch_client and should be reasonably shorter than flush_interval.
-# Example: push_time_limit = 0.3
+# - Example: push_time_limit = 0.3
 
 
 # push_count_limit
@@ -155,7 +156,7 @@ metadata = dict(
 #   them out to destination module(s). The postprocessor can return an altered metric or
 #   None, in the latter case the metric is dropped. Postprocessor receives the metric with
 #   custom metadata injected. The example below would drop all metrics with env=test.
-# Example: metric_postprocessor = ignore_test_environment
+# - Example: metric_postprocessor = ignore_test_environment
 
 def ignore_test_environment(bucket, values, timestamp, metadata):
     if metadata.get('env') == 'test':
@@ -191,7 +192,7 @@ linuxstats = dict(
     #   These are either string names of the dictionaries or code level references
     #   (in that case, order of definitions matters). By default, metrics are fanned out
     #   to all destination modules configured.
-    # Example: destination_modules = ('prometheus', influxdb)
+    # - Example: destination_modules = ('prometheus', influxdb)
 
     # disk_whitelist, disk_blacklist
     # - set of str, block devices to include/exclude
@@ -258,7 +259,7 @@ dockerstats = dict(
     #   labels baked into the image. All the labels are unconditionally injected and take
     #   precedence over the ENV variables. See:
     #      https://docs.docker.com/engine/userguide/labels-custom-metadata/
-    # Example: env_mapping={'TEAM_NAME': 'team'}
+    # - Example: env_mapping={'TEAM_NAME': 'team'}
 )
 
 
@@ -375,18 +376,23 @@ influxdb = dict(
 )
 
 
-# This module uses ES indexes as destination buckets.
-# I.e. system_cpu metrics coming from linux_stats will end up in "system_cpu" index.
 elasticsearch = dict(
     module_type="elasticsearch_client",
     module_inactive=True,
 
-    # elasticsearch_name, type name for ES upload calls
+    # index_name, Elasticsearch index name
     # - str
-    # - Required
-    # - For ES5 and ES6, this should be a descriptive name of type as it is
-    #   still needed in API calls. For ES7 it is supposed to be None.
-    elasticsearch_name="metrics",
+    # - Optional, default: None
+    # - If not provided, the destination index names are bucket names, see also:
+    #   https://www.elastic.co/blog/index-type-parent-child-join-now-future-in-elasticsearch
+    #   https://www.elastic.co/guide/en/elasticsearch/guide/current/mapping.html
+    # - Example: index_name="graylog_deflector"
+
+    # type_name, Elasticsearch type name
+    # - str
+    # - Optional, default: None
+    # - If not provided, the destination type names are bucket names, see also index_name.
+    # - Example: type_name="message"
 
     # remote_hosts, Elasticsearch endpoints
     # - tuple of str
@@ -402,16 +408,12 @@ elasticsearch = dict(
 
     flush_interval=1,
 
-    # This module uses bulk calls, so it makes sense to keep chunks bigger
-    # rather then smaller, i.e. 100-1000, the default 300 is ok.
-    # chunk_size=300,
-
-    # use_compression, whether to compress HTTP payload in ES API calls
-    # - bool
-    # - Optional, default: True
+    # compression, whether to compress HTTP payload in Elasticsearch API calls
+    # - str
+    # - Optional, default: None
     # - In heavy load setups, compressing JSON bulk uploads can save a lot of bandwidth.
-    #   This option controls "Content-Encoding: deflate/identity".
-    # Example: use_compression=False,
+    #   Acceptable values are: 'deflate' and 'gzip'
+    # - Example: compression='deflate',
 )
 
 

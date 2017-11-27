@@ -51,7 +51,6 @@ class DockerConnection(http.client.HTTPConnection):
 class DockerStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
     def __init__(self, *args):
         super().__init__(*args)
-        # See the statsd metadata matching regexp.
         self.env_regex = re.compile('^([a-zA-Z][a-zA-Z0-9_]*)=([a-zA-Z0-9_:=\-\+\@\?\#\.\/\%\<\>\*\;\&\[\]]+)$', re.ASCII)
 
     def init_config(self):
