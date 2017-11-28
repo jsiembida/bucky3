@@ -36,11 +36,16 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
             {
                 'do_GET': do_GET,
                 'log_message': log_message,
+                # With the default wbufsize=0 the _SocketWriter() is used in StreamRequestHandler
+                # and that causes payload corruption when request is being interrupted by alarm.
+                # With the wbufsize>0 the buffered socket IO is used and that seems to work fine.
+                # Which is weird because in recent Pythons all interrupted calls should restart.
+                'wbufsize': 256*1024,
                 'timeout': 3
             }
         )
         http_server = http.server.HTTPServer((ip, port), handler)
-        http_thread = threading.Thread(target=lambda: http_server.serve_forever())
+        http_thread = threading.Thread(target=http_server.serve_forever)
         http_thread.start()
         self.log.info("Started server at http://%s:%d/%s", ip, port, path)
 
