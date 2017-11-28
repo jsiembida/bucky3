@@ -1,5 +1,6 @@
 
 
+import gzip
 import threading
 import http.server
 import bucky3.module as module
@@ -12,6 +13,9 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
     def init_config(self):
         super().init_config()
         self.buffer = {}
+        self.compression = self.cfg.get('compression')
+        if self.compression != 'gzip':
+            self.compression = None
 
     def start_http_server(self, ip, port, path):
         def do_GET(req):
@@ -22,10 +26,19 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
             else:
                 req.send_response(200)
                 req.send_header("Content-Type", "text/plain; version=0.0.4")
-                req.end_headers()
+                write, flush, close = req.wfile.write, req.wfile.flush, None
+                if self.compression == 'gzip' and 'gzip' in req.headers.get('Accept-Encoding', ''):
+                    req.send_header('Content-Encoding', self.compression)
+                    req.end_headers()
+                    gzip_stream = gzip.GzipFile(filename='', mode='wb', fileobj=req.wfile)
+                    write, flush, close = gzip_stream.write, gzip_stream.flush, gzip_stream.close
+                else:
+                    req.end_headers()
                 for chunk in self.get_chunks():
-                    req.wfile.write(chunk.encode("ascii"))
-                    req.wfile.flush()
+                    write(chunk.encode("ascii"))
+                    flush()
+                if close:
+                    close()
 
         def log_message(req, format, *args):
             self.log.info(format, *args)
@@ -36,39 +49,33 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
             {
                 'do_GET': do_GET,
                 'log_message': log_message,
+                # With the default wbufsize=0 the _SocketWriter() is used in StreamRequestHandler
+                # and that causes payload corruption when request is being interrupted by alarm.
+                # With the wbufsize>0 the buffered socket IO is used and that seems to work fine.
+                # Which is weird because in recent Pythons all interrupted calls should restart.
+                'wbufsize': 256*1024,
                 'timeout': 3
             }
         )
         http_server = http.server.HTTPServer((ip, port), handler)
-        http_thread = threading.Thread(target=lambda: http_server.serve_forever())
+        http_thread = threading.Thread(target=http_server.serve_forever)
         http_thread.start()
         self.log.info("Started server at http://%s:%d/%s", ip, port, path)
 
-    def get_line(self, k):
-        tmp = self.buffer.get(k)
-        if not tmp:
-            return ''
-        recv_timestamp, metric_timestamp, value, line = tmp
-        if not line:
-            # https://prometheus.io/docs/instrumenting/exposition_formats/
-            bucket, metadata = k[0], k[1:]
-            if metadata:
-                metadata_str = ','.join(
-                    k + '="' + v.replace('\\', '\\\\').replace('"', '\\"') + '"' for k, v in metadata
-                )
-                # Lines MUST end with \n (not \r\n), the last line MUST also end with \n
-                # Otherwise, Prometheus will reject the whole scrape!
-                line = bucket + '{' + metadata_str + '} ' + str(value)
-            else:
-                line = bucket + ' ' + str(value)
-            if metric_timestamp is not None:
-                line += ' ' + str(int(metric_timestamp * 1000))
-            line += '\n'
-            self.buffer[k] = recv_timestamp, metric_timestamp, value, line
-        return line
+    def get_line(self, bucket, value, metadata, timestamp):
+        # https://prometheus.io/docs/instrumenting/exposition_formats/
+        metadata_str = ','.join(
+            k + '="' + v.replace('\\', '\\\\').replace('"', '\\"') + '"' for k, v in metadata
+        )
+        # Lines MUST end with \n (not \r\n), the last line MUST also end with \n
+        # Otherwise, Prometheus will reject the whole scrape!
+        line = bucket + '{' + metadata_str + '} ' + str(value)
+        if timestamp is not None:
+            line += ' ' + str(int(timestamp * 1000))
+        return line + '\n'
 
     def get_chunks(self):
-        buffer = tuple(self.get_line(k) for k in tuple(self.buffer.keys()))
+        buffer = tuple(metric_line for recv_timestamp, metric_line in self.buffer.values())
         for chunk_start in range(0, len(buffer), self.chunk_size):
             chunk = buffer[chunk_start:chunk_start + self.chunk_size]
             yield ''.join(chunk)
@@ -85,7 +92,7 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
     def flush(self, system_timestamp):
         timeout = self.cfg['values_timeout']
         old_keys = [
-            k for k, (recv_timestamp, metric_timestamp, v, l) in self.buffer.items()
+            k for k, (recv_timestamp, metric_line) in self.buffer.items()
             if (system_timestamp - recv_timestamp) > timeout
         ]
         for k in old_keys:
@@ -94,12 +101,12 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
 
     def process_values(self, recv_timestamp, bucket, values, metrics_timestamp, metadata):
         for k, v in values.items():
-            metadata['value'] = k
-            metadata_tuple = (bucket,) + tuple((k, metadata[k]) for k in sorted(metadata.keys()))
             t = type(v)
             if t is bool:
                 v = int(bool)
                 t = int
             if t is int or t is float:
-                # The None below will get lazily rendered during HTTP req
-                self.buffer[metadata_tuple] = recv_timestamp, metrics_timestamp, v, None
+                metadata['value'] = k
+                metadata_tuple = tuple((k, metadata[k]) for k in sorted(metadata.keys()))
+                metric_line = self.get_line(bucket, v, metadata_tuple, metrics_timestamp)
+                self.buffer[(bucket,) + metadata_tuple] = recv_timestamp, metric_line
