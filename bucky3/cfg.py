@@ -452,6 +452,14 @@ prometheus = dict(
 
     # As described above, you likely want this module start up asap.
     randomize_startup=False,
+
+    # compression, whether to compress HTTP response
+    # - str
+    # - Optional, default: None
+    # - Note that unlike Elasticsearch, Prometheus can only accept 'gzip' encoding.
+    #   Also, the module will only use gzip when client offers it with 'Accept-Encoding'.
+    # - Example: compression='gzip',
+    compression='gzip',
 )
 
 

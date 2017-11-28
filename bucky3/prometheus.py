@@ -1,5 +1,6 @@
 
 
+import gzip
 import threading
 import http.server
 import bucky3.module as module
@@ -12,6 +13,9 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
     def init_config(self):
         super().init_config()
         self.buffer = {}
+        self.compression = self.cfg.get('compression')
+        if self.compression != 'gzip':
+            self.compression = None
 
     def start_http_server(self, ip, port, path):
         def do_GET(req):
@@ -22,10 +26,19 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
             else:
                 req.send_response(200)
                 req.send_header("Content-Type", "text/plain; version=0.0.4")
-                req.end_headers()
+                write, flush, close = req.wfile.write, req.wfile.flush, None
+                if self.compression == 'gzip' and 'gzip' in req.headers.get('Accept-Encoding', ''):
+                    req.send_header('Content-Encoding', self.compression)
+                    req.end_headers()
+                    gzip_stream = gzip.GzipFile(filename='', mode='wb', fileobj=req.wfile)
+                    write, flush, close = gzip_stream.write, gzip_stream.flush, gzip_stream.close
+                else:
+                    req.end_headers()
                 for chunk in self.get_chunks():
-                    req.wfile.write(chunk.encode("ascii"))
-                    req.wfile.flush()
+                    write(chunk.encode("ascii"))
+                    flush()
+                if close:
+                    close()
 
         def log_message(req, format, *args):
             self.log.info(format, *args)
