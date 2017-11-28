@@ -77,6 +77,9 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                         stats = dict(count=vlen, count_ps=vlen / interval, lower=v[0], upper=x, mean=mean)
                         if vlen > 1:
                             var = (vsum_squares - 2 * mean * vsum + vlen * mean * mean) / (vlen - 1)
+                            # FP rounding can lead to negative variance and in consequence complex stdev.
+                            # I.e. three samples of [0.003, 0.003, 0.003]
+                            var = max(var, 0)
                             stats['stdev'] = var ** 0.5
                         metadata = dict(percentile=str(next_t))
                         metadata.update(k)
@@ -96,6 +99,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 stats = dict(count=vlen, count_ps=vlen / interval, lower=vmin, upper=vmax, mean=mean)
                 if vlen > 1:
                     var = (vsum_squares - 2 * mean * vsum + vlen * mean * mean) / (vlen - 1)
+                    var = max(var, 0)
                     stats['stdev'] = var ** 0.5
                 metadata = dict(histogram=str(histogram_bucket))
                 metadata.update(k)
