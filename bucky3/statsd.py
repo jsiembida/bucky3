@@ -16,6 +16,7 @@
 
 
 import time
+import threading
 import bucky3.module as module
 
 
@@ -24,10 +25,15 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         super().__init__(*args)
         self.socket = None
         self.timers = {}
+        self.timers_lock = threading.Lock()
         self.histograms = {}
+        self.histograms_lock = threading.Lock()
         self.gauges = {}
+        self.gauges_lock = threading.Lock()
         self.counters = {}
+        self.counters_lock = threading.Lock()
         self.sets = {}
+        self.sets_lock = threading.Lock()
         self.last_timestamp = 0
 
     def flush(self, system_timestamp):
@@ -60,77 +66,82 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         interval = system_timestamp - self.last_timestamp
         bucket = self.cfg['timers_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
-        for k, (cust_timestamp, v) in self.timers.items():
-            v.sort()
-            count = len(v)
-            thresholds = ((count if t == 100 else (t * count) // 100, t) for t in self.percentile_thresholds)
+        with self.timers_lock:
+            for k, (cust_timestamp, v) in self.timers.items():
+                v.sort()
+                count = len(v)
+                thresholds = ((count if t == 100 else (t * count) // 100, t) for t in self.percentile_thresholds)
 
-            try:
-                next_i, next_t = next(thresholds)
-                vlen = vsum = vsum_squares = 0
-                for i, x in enumerate(v):
-                    vlen += 1
-                    vsum += x
-                    vsum_squares += x * x
-                    while i >= next_i - 1:
-                        mean = vsum / vlen
-                        stats = dict(count=vlen, count_ps=vlen / interval, lower=v[0], upper=x, mean=mean)
-                        if vlen > 1:
-                            var = (vsum_squares - 2 * mean * vsum + vlen * mean * mean) / (vlen - 1)
-                            # FP rounding can lead to negative variance and in consequence complex stdev.
-                            # I.e. three samples of [0.003, 0.003, 0.003]
-                            var = max(var, 0)
-                            stats['stdev'] = var ** 0.5
-                        metadata = dict(percentile=str(next_t))
-                        metadata.update(k)
-                        self.buffer_metric(bucket, stats, cust_timestamp or timestamp, metadata)
-                        next_i, next_t = next(thresholds)
-            except StopIteration:
-                pass
-        self.timers = {}
+                try:
+                    next_i, next_t = next(thresholds)
+                    vlen = vsum = vsum_squares = 0
+                    for i, x in enumerate(v):
+                        vlen += 1
+                        vsum += x
+                        vsum_squares += x * x
+                        while i >= next_i - 1:
+                            mean = vsum / vlen
+                            stats = dict(count=vlen, count_ps=vlen / interval, lower=v[0], upper=x, mean=mean)
+                            if vlen > 1:
+                                var = (vsum_squares - 2 * mean * vsum + vlen * mean * mean) / (vlen - 1)
+                                # FP rounding can lead to negative variance and in consequence complex stdev.
+                                # I.e. three samples of [0.003, 0.003, 0.003]
+                                var = max(var, 0)
+                                stats['stdev'] = var ** 0.5
+                            metadata = dict(percentile=str(next_t))
+                            metadata.update(k)
+                            self.buffer_metric(bucket, stats, cust_timestamp or timestamp, metadata)
+                            next_i, next_t = next(thresholds)
+                except StopIteration:
+                    pass
+            self.timers = {}
 
     def enqueue_histograms(self, system_timestamp):
         interval = system_timestamp - self.last_timestamp
         bucket = self.cfg['histograms_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
-        for k, (cust_timestamp, selector, buckets) in self.histograms.items():
-            for histogram_bucket, (vlen, vsum, vsum_squares, vmin, vmax) in buckets.items():
-                mean = vsum / vlen
-                stats = dict(count=vlen, count_ps=vlen / interval, lower=vmin, upper=vmax, mean=mean)
-                if vlen > 1:
-                    var = (vsum_squares - 2 * mean * vsum + vlen * mean * mean) / (vlen - 1)
-                    var = max(var, 0)
-                    stats['stdev'] = var ** 0.5
-                metadata = dict(histogram=str(histogram_bucket))
-                metadata.update(k)
-                self.buffer_metric(bucket, stats, cust_timestamp or timestamp, metadata)
-        self.histograms = {}
+        with self.histograms_lock:
+            for k, (cust_timestamp, selector, buckets) in self.histograms.items():
+                for histogram_bucket, (vlen, vsum, vsum_squares, vmin, vmax) in buckets.items():
+                    mean = vsum / vlen
+                    stats = dict(count=vlen, count_ps=vlen / interval, lower=vmin, upper=vmax, mean=mean)
+                    if vlen > 1:
+                        var = (vsum_squares - 2 * mean * vsum + vlen * mean * mean) / (vlen - 1)
+                        var = max(var, 0)
+                        stats['stdev'] = var ** 0.5
+                    metadata = dict(histogram=str(histogram_bucket))
+                    metadata.update(k)
+                    self.buffer_metric(bucket, stats, cust_timestamp or timestamp, metadata)
+            self.histograms = {}
 
     def enqueue_sets(self, system_timestamp):
         bucket = self.cfg['sets_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
-        for k, (cust_timestamp, v) in self.sets.items():
-            self.buffer_metric(bucket, {"count": len(v)}, cust_timestamp or timestamp, dict(k))
-        self.sets = {}
+        with self.sets_lock:
+            for k, (cust_timestamp, v) in self.sets.items():
+                self.buffer_metric(bucket, {"count": len(v)}, cust_timestamp or timestamp, dict(k))
+            self.sets = {}
 
     def enqueue_gauges(self, system_timestamp):
         bucket = self.cfg['gauges_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
-        for k, (cust_timestamp, v) in self.gauges.items():
-            self.buffer_metric(bucket, {"value": float(v)}, cust_timestamp or timestamp, dict(k))
-        self.gauges = {}
+        with self.gauges_lock:
+            for k, (cust_timestamp, v) in self.gauges.items():
+                self.buffer_metric(bucket, {"value": float(v)}, cust_timestamp or timestamp, dict(k))
+            self.gauges = {}
 
     def enqueue_counters(self, system_timestamp):
         interval = system_timestamp - self.last_timestamp
         bucket = self.cfg['counters_bucket']
         timestamp = system_timestamp if self.add_timestamps else None
-        for k, (cust_timestamp, v) in self.counters.items():
-            stats = {
-                'rate': float(v) / interval,
-                'count': float(v)
-            }
-            self.buffer_metric(bucket, stats, cust_timestamp or timestamp, dict(k))
-        self.counters = {}
+        with self.counters_lock:
+            for k, (cust_timestamp, v) in self.counters.items():
+                stats = {
+                    'rate': float(v) / interval,
+                    'count': float(v)
+                }
+                self.buffer_metric(bucket, stats, cust_timestamp or timestamp, dict(k))
+            self.counters = {}
 
     def handle_packet(self, data, addr=None):
         # Adding a bit of extra sauce so clients can send multiple samples in a single UDP packet.
@@ -226,61 +237,57 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def handle_timer(self, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)
 
-        # For all aggregates there is a race between the updates in handle_* and SIGALRM codepath.
-        # Signal handler resets all self.aggregate={} so we buffer the references in handlers and
-        # do all operations on them. In case of race, the changes are committed to stale references.
-        # This is a damage we can live with (if we can live with UDP).
-        timers = self.timers
-        if key in timers:
-            buf = timers[key][1]
-            buf.append(val)
-            timers[key] = cust_timestamp, buf
-        else:
-            timers[key] = cust_timestamp, [val]
+        with self.timers_lock:
+            if key in self.timers:
+                buf = self.timers[key][1]
+                buf.append(val)
+                self.timers[key] = cust_timestamp, buf
+            else:
+                self.timers[key] = cust_timestamp, [val]
 
         if self.histogram_selector is None:
             return
 
-        histograms = self.histograms
-        histogram = histograms.get(key)
-        if histogram is None:
-            selector = self.histogram_selector(metadata)
-            if selector is None:
-                return
-            buckets = {}
-        else:
-            selector = histogram[1]
-            buckets = histogram[2]
-        bucket_name = selector(val)
-        if bucket_name:
-            bucket_stats = buckets.get(bucket_name)
-            if bucket_stats:
-                vlen, vsum, vsum_squares, vmin, vmax = bucket_stats
+        with self.histograms_lock:
+            histogram = self.histograms.get(key)
+            if histogram is None:
+                selector = self.histogram_selector(metadata)
+                if selector is None:
+                    return
+                buckets = {}
             else:
-                vlen = vsum = vsum_squares = 0
-                vmin = vmax = val
-            buckets[bucket_name] = (
-                vlen + 1, vsum + val, vsum_squares + val * val, min(val, vmin), max(val, vmax)
-            )
-            histograms[key] = cust_timestamp, selector, buckets
+                selector = histogram[1]
+                buckets = histogram[2]
+            bucket_name = selector(val)
+            if bucket_name:
+                bucket_stats = buckets.get(bucket_name)
+                if bucket_stats:
+                    vlen, vsum, vsum_squares, vmin, vmax = bucket_stats
+                else:
+                    vlen = vsum = vsum_squares = 0
+                    vmin = vmax = val
+                buckets[bucket_name] = (
+                    vlen + 1, vsum + val, vsum_squares + val * val, min(val, vmin), max(val, vmax)
+                )
+                self.histograms[key] = cust_timestamp, selector, buckets
 
     def handle_gauge(self, cust_timestamp, key, metadata, valstr, ratestr):
         val = float(valstr)
         delta = valstr[0] in "+-"
-        gauges = self.gauges
-        if delta and key in gauges:
-            gauges[key] = cust_timestamp, gauges[key][1] + val
-        else:
-            gauges[key] = cust_timestamp, val
+        with self.gauges_lock:
+            if delta and key in self.gauges:
+                self.gauges[key] = cust_timestamp, self.gauges[key][1] + val
+            else:
+                self.gauges[key] = cust_timestamp, val
 
     def handle_set(self, cust_timestamp, key, metadata, valstr, ratestr):
-        sets = self.sets
-        if key in sets:
-            buf = sets[key][1]
-            buf.add(valstr)
-            sets[key] = cust_timestamp, buf
-        else:
-            sets[key] = cust_timestamp, {valstr}
+        with self.sets_lock:
+            if key in self.sets:
+                buf = self.sets[key][1]
+                buf.add(valstr)
+                self.sets[key] = cust_timestamp, buf
+            else:
+                self.sets[key] = cust_timestamp, {valstr}
 
     def handle_counter(self, cust_timestamp, key, metadata, valstr, ratestr):
         if ratestr and ratestr[0] == "@":
@@ -291,7 +298,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 return
         else:
             val = float(valstr)
-        counters = self.counters
-        if key in counters:
-            val += counters[key][1]
-        counters[key] = cust_timestamp, val
+        with self.counters_lock:
+            if key in self.counters:
+                val += self.counters[key][1]
+            self.counters[key] = cust_timestamp, val
