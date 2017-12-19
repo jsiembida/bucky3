@@ -351,6 +351,12 @@ jsond = dict(
 )
 
 
+systemd = dict(
+    module_type="systemd_journal",
+    module_inactive=True,
+)
+
+
 # Note that InfluxDB module is disabled (it would produce UDP traffic)
 influxdb = dict(
     module_type="influxdb_client",
