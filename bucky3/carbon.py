@@ -49,4 +49,5 @@ class CarbonClient(module.MetricsPushProcess, module.TCPConnector):
             metadata['value'] = k
             name = self.build_name(metadata.copy())
             if name:
-                self.buffer.append("%s %s %s\n" % (name, v, int(timestamp or recv_timestamp)))
+                with self.buffer_lock:
+                    self.buffer.append("%s %s %s\n" % (name, v, int(timestamp or recv_timestamp)))

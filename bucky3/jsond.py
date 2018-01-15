@@ -2,6 +2,7 @@
 
 import json
 import time
+import threading
 import bucky3.module as module
 
 
@@ -11,7 +12,7 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.socket = None
         self.decoder = json.JSONDecoder()
 
-    def loop(self):
+    def read_loop(self):
         socket = self.get_udp_socket(bind=True)
         while True:
             try:
@@ -19,6 +20,10 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
                 self.handle_packet(data, addr)
             except InterruptedError:
                 pass
+
+    def loop(self):
+        threading.Thread(name='UdpReadThread', target=self.read_loop).start()
+        super().loop()
 
     def handle_packet(self, data, addr=None):
         try:

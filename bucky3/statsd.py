@@ -53,7 +53,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.histogram_selector = self.cfg.get('histogram_selector')
         self.timestamp_window = self.cfg.get('timestamp_window', 600)
 
-    def loop(self):
+    def read_loop(self):
         socket = self.get_udp_socket(bind=True)
         while True:
             try:
@@ -61,6 +61,10 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 self.handle_packet(data, addr)
             except InterruptedError:
                 pass
+
+    def loop(self):
+        threading.Thread(name='UdpReadThread', target=self.read_loop).start()
+        super().loop()
 
     def enqueue_timers(self, system_timestamp):
         interval = system_timestamp - self.last_timestamp

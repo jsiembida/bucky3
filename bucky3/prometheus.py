@@ -75,7 +75,8 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
         return line + '\n'
 
     def get_chunks(self):
-        buffer = tuple(metric_line for recv_timestamp, metric_line in self.buffer.values())
+        with self.buffer_lock:
+            buffer = tuple(metric_line for recv_timestamp, metric_line in self.buffer.values())
         for chunk_start in range(0, len(buffer), self.chunk_size):
             chunk = buffer[chunk_start:chunk_start + self.chunk_size]
             yield ''.join(chunk)
@@ -91,13 +92,14 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
 
     def flush(self, system_timestamp):
         timeout = self.cfg['values_timeout']
-        old_keys = [
-            k for k, (recv_timestamp, metric_line) in self.buffer.items()
-            if (system_timestamp - recv_timestamp) > timeout
-        ]
-        for k in old_keys:
-            del self.buffer[k]
-        return True
+        with self.buffer_lock:
+            old_keys = [
+                k for k, (recv_timestamp, metric_line) in self.buffer.items()
+                if (system_timestamp - recv_timestamp) > timeout
+            ]
+            for k in old_keys:
+                del self.buffer[k]
+            return True
 
     def process_values(self, recv_timestamp, bucket, values, metrics_timestamp, metadata):
         for k, v in values.items():
@@ -109,4 +111,5 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
                 metadata['value'] = k
                 metadata_tuple = tuple((k, metadata[k]) for k in sorted(metadata.keys()))
                 metric_line = self.get_line(bucket, v, metadata_tuple, metrics_timestamp)
-                self.buffer[(bucket,) + metadata_tuple] = recv_timestamp, metric_line
+                with self.buffer_lock:
+                    self.buffer[(bucket,) + metadata_tuple] = recv_timestamp, metric_line

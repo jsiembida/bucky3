@@ -30,7 +30,7 @@ log_level = "INFO"
 
 # log_format
 # - str
-# - Optional, default: '[%(asctime)-15s][%(levelname)s] %(name)s(%(process)d) - %(message)s'
+# - Optional, default: '[%(asctime)-15s][%(levelname)s] %(name)s(%(threadName)s@%(process)d) - %(message)s'
 # - More here: https://docs.python.org/3/library/logging.html#logrecord-attributes
 #   Note that the "ps" command will show identical command lines for all modules, to work
 #   around it, the default log format includes PID.
@@ -41,7 +41,7 @@ log_level = "INFO"
 # - float, seconds between flush intervals
 # - Required
 # - In linux_stats and docker_stats it defines how often they will be taking metrics
-#   and pushing metrics out to the destination module(s).
+#   and pushing them out to the destination module(s).
 #   In statsd_server it defines how often the received metrics are being aggregated and
 #   pushed out to the destination module(s). Similarly, in jsond_server, although it does
 #   not do any aggregation.
@@ -119,7 +119,7 @@ metadata = dict(
 # - bool, if metrics produced should have timestamps added
 # - Optional, default: False
 # - Each source module can add timestamps to the metrics they produce.
-#   Prometheus2 comes with new metrics timeout semantics - if you want to use them, leave
+#   Prometheus2 comes with new metrics timeout semantics - if you want to use it, leave
 #   this option off.
 #   For InfluxDB and Prometheus that option doesn't matter much so long as the flush_window
 #   is relatively short. If unsure, switch it on.

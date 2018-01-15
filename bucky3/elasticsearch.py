@@ -102,4 +102,5 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
         # TODO ES6 deprecates types, ES7 will drop them - index/type handling needs revisiting
         req = {"index": {"_index": index_name, "_type": type_name, "_id": doc_id}}
         req_str = json.dumps(req, indent=None, separators=(',', ':'))
-        self.buffer.append((req_str, doc_str))
+        with self.buffer_lock:
+            self.buffer.append((req_str, doc_str))

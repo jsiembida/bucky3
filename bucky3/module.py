@@ -8,6 +8,7 @@ import signal
 import random
 import logging
 import resource
+import threading
 import multiprocessing
 import multiprocessing.connection
 
@@ -23,7 +24,7 @@ class Logger:
         root.setLevel(cfg.get('log_level', 'INFO'))
         handler = logging.StreamHandler()
         formatter = logging.Formatter(
-            cfg.get('log_format', "[%(asctime)-15s][%(levelname)s] %(name)s(%(process)d) - %(message)s")
+            cfg.get('log_format', "[%(asctime)-15s][%(levelname)s] %(name)s(%(threadName)s@%(process)d) - %(message)s")
         )
         handler.setFormatter(formatter)
         root.addHandler(handler)
@@ -166,22 +167,6 @@ class MetricsProcess(multiprocessing.Process, Logger):
         super().__init__(name=module_name, daemon=True)
         self.cfg = module_config
 
-    def schedule_tick(self):
-        now = time.monotonic()
-        while now + 0.3 >= self.next_tick:
-            self.next_tick += self.tick_interval
-        signal.setitimer(signal.ITIMER_REAL, self.next_tick - now, self.tick_interval + self.tick_interval)
-
-    def tick_handler(self, signal_number, stack_frame):
-        self.log.debug("Tick received")
-        self.tick()
-        self.schedule_tick()
-
-    def setup_tick(self):
-        self.next_tick = time.monotonic() + self.tick_interval
-        signal.signal(signal.SIGALRM, self.tick_handler)
-        signal.setitimer(signal.ITIMER_REAL, self.tick_interval, self.tick_interval + self.tick_interval)
-
     def tick(self):
         now = time.monotonic()
         if now >= self.next_flush:
@@ -202,6 +187,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.log = self.setup_logging(self.cfg, self.name)
         self.randomize_startup = self.cfg.get('randomize_startup', True)
         self.buffer = []
+        self.buffer_lock = threading.Lock()
         self.buffer_limit = max(self.cfg.get('buffer_limit', 10000), 100)
         self.chunk_size = max(self.cfg.get('chunk_size', 300), 1)
         self.tick_interval = self.flush_interval = max(self.cfg['flush_interval'], 0.1)
@@ -213,33 +199,32 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.self_report_timestamp = 0
         self.init_time = time.monotonic()
 
-    def run(self, loop=True):
+    def run(self):
         def termination_handler(signal_number, stack_frame):
             self.log.info("Received signal %d, exiting", signal_number)
             sys.exit(0)
 
-        # We have to reset signals set up by master process to reasonable defaults
-        # (because we inherited them via fork, which is most likely invalid in our context)
         signal.signal(signal.SIGINT, termination_handler)
         signal.signal(signal.SIGTERM, termination_handler)
         signal.signal(signal.SIGHUP, termination_handler)
-        signal.signal(signal.SIGALRM, signal.SIG_IGN)
 
         self.init_config()
         self.log.info("Set up")
         if self.randomize_startup and self.tick_interval > 3:
-            # If randomization is configured (it's default) do it asap, before singal handler gets set up
+            # If randomization is configured (it's default) do it asap
             time.sleep(random.randint(0, min(self.tick_interval - 1, 15)))
-        self.tick()
-        self.setup_tick()
-
-        if loop:
-            self.loop()
+        self.loop()
 
     def loop(self):
+        self.next_tick = time.monotonic()
         while True:
             try:
-                time.sleep(60)
+                self.log.debug("Loop tick")
+                self.tick()
+                now = time.monotonic()
+                while now + 0.3 >= self.next_tick:
+                    self.next_tick += self.tick_interval
+                time.sleep(self.next_tick - now)
             except InterruptedError:
                 pass
 
@@ -253,7 +238,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
                 dict(
                     cpu=round(usage.ru_utime + usage.ru_stime, 3),
                     memory=usage.ru_maxrss,
-                    uptime=round(time.monotonic() - self.init_time, 3),
+                    uptime=round(now - self.init_time, 3),
                 ),
                 None,
                 dict(name=self.name),
@@ -291,21 +276,27 @@ class MetricsSrcProcess(MetricsProcess):
             postprocessed_tuple = self.metric_postprocessor(bucket, stats, timestamp, metadata)
             if postprocessed_tuple is None:
                 return
-            self.buffer.append(postprocessed_tuple)
-        self.buffer.append((bucket, stats, timestamp, metadata))
+            with self.buffer_lock:
+                self.buffer.append(postprocessed_tuple)
+        else:
+            with self.buffer_lock:
+                self.buffer.append((bucket, stats, timestamp, metadata))
 
     def process_self_report(self, bucket, stats, timestamp, metadata):
         self.buffer_metric(bucket, stats, timestamp, metadata)
         MetricsSrcProcess.flush(self, round(time.time(), 3))
 
     def flush(self, system_timestamp):
-        if self.buffer:
-            self.log.debug("Flushing %d entries from buffer", len(self.buffer))
-            for chunk_start in range(0, len(self.buffer), self.chunk_size):
-                chunk = self.buffer[chunk_start:chunk_start + self.chunk_size]
-                for dst in self.dst_pipes:
-                    dst.send(chunk)
-            self.buffer = []
+        while self.buffer:
+            with self.buffer_lock:
+                chunk = self.buffer[0:self.chunk_size]
+                if not chunk:
+                    break
+                # TODO this doesn't look sound, if sending to dst pipes fails for a reason later on, we lose the chunk
+                del self.buffer[0:self.chunk_size]
+            self.log.debug("Flushing %d entries from buffer", len(chunk))
+            for dst in self.dst_pipes:
+                dst.send(chunk)
         return True
 
 
@@ -314,7 +305,7 @@ class MetricsDstProcess(MetricsProcess):
         super().__init__(module_name, module_config)
         self.src_pipes = src_pipes
 
-    def loop(self):
+    def read_loop(self):
         err = 0
         while True:
             tmp = False
@@ -334,9 +325,13 @@ class MetricsDstProcess(MetricsProcess):
                 err = 0
             if err > 10:
                 self.log.error("Input(s) not ready, quitting")
-                return
+                sys.exit(1)
             elif err:
                 time.sleep(1)
+
+    def loop(self):
+        threading.Thread(name='SrcReadThread', target=self.read_loop).start()
+        super().loop()
 
     def process_batch(self, recv_timestamp, batch):
         for bucket, values, timestamp, metadata in batch:
@@ -373,34 +368,39 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
         self.trim_buffer()
 
     def trim_buffer(self):
-        buffer_len = len(self.buffer)
-        if buffer_len > self.buffer_limit:
-            self.buffer = self.buffer[-int(self.buffer_limit / 2):]
-            self.log.warning("Buffer trimmed from %d to %d entries", buffer_len, len(self.buffer))
+        with self.buffer_lock:
+            buffer_len = len(self.buffer)
+            if buffer_len > self.buffer_limit:
+                self.buffer = self.buffer[-int(self.buffer_limit / 2):]
+                self.log.warning("Buffer trimmed from %d to %d entries", buffer_len, len(self.buffer))
 
     def push_buffer(self):
-        self.log.debug('%d entries in buffer to be pushed', len(self.buffer))
-        push_start, push_counter = time.monotonic(), 0
-        i, failed_entries = 0, []
-        try:
-            while i < len(self.buffer):
-                if push_counter >= self.push_count_limit:
-                    break
-                if time.monotonic() - push_start >= self.push_time_limit:
-                    break
-                chunk = self.buffer[i:i + self.chunk_size]
-                failed_entries.extend(self.push_chunk(chunk))
-                i += self.chunk_size
-                push_counter += len(chunk)  # Include all entries, even the failed ones
-            return push_counter > len(failed_entries)
-        except (ConnectionError, socket.timeout) as e:
-            self.log.exception(e)
-            self.cleanup_socket()
-            return False
-        finally:
-            self.buffer = failed_entries + self.buffer[i:]
-            if self.buffer:
-                self.log.warning('%d entries left over in buffer', len(self.buffer))
+        with self.buffer_lock:
+            if not self.buffer:
+                return
+            self.log.debug('%d entries in buffer to be pushed', len(self.buffer))
+            push_start, push_counter = time.monotonic(), 0
+            failed_entries = []
+            try:
+                while self.buffer:
+                    if push_counter >= self.push_count_limit:
+                        break
+                    if time.monotonic() - push_start >= self.push_time_limit:
+                        break
+                    chunk = self.buffer[:self.chunk_size]
+                    failed_entries.extend(self.push_chunk(chunk))
+                    del self.buffer[:self.chunk_size]
+                    push_counter += len(chunk)  # Include all entries, even the failed ones
+                return push_counter > len(failed_entries)
+            except (ConnectionError, socket.timeout) as e:
+                self.log.exception(e)
+                self.cleanup_socket()
+                return False
+            finally:
+                if failed_entries:
+                    self.buffer = failed_entries + self.buffer
+                if self.buffer:
+                    self.log.warning('%d entries left over in buffer', len(self.buffer))
 
     def flush(self, system_timestamp):
         return self.push_buffer() if self.buffer else True
