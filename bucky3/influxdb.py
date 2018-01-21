@@ -39,4 +39,5 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
         if timestamp is not None:
             # So, the lower timestamp precisions don't seem to work with line protocol...
             line += ' ' + str(int(timestamp * 1000000000))
-        self.buffer.append(line)
+        with self.buffer_lock:
+            self.buffer.append(line)

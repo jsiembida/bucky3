@@ -191,14 +191,13 @@ class Manager(module.Logger):
         signal.signal(signal.SIGINT, self.termination_handler)
         signal.signal(signal.SIGTERM, self.termination_handler)
         signal.signal(signal.SIGHUP, signal.SIG_IGN)
-        signal.signal(signal.SIGALRM, signal.SIG_IGN)
 
         while True:
             try:
                 err = self.healthcheck(self.dst_group) + self.healthcheck(self.src_group)
                 if err:
                     self.terminate_and_exit(err)
-                time.sleep(3)
+                time.sleep(1)
             except InterruptedError:
                 pass
 
