@@ -5,6 +5,7 @@ import select
 import syslog
 import logging
 import platform
+import threading
 # https://www.freedesktop.org/software/systemd/python-systemd/journal.html
 from systemd import journal
 import bucky3.module as module
@@ -70,7 +71,7 @@ class SystemDJournal(module.MetricsSrcProcess):
         else:
             self.event_map = self.default_event_map
 
-    def loop(self):
+    def read_journal(self):
         with journal.Reader() as j:
             j.log_level(self.log_level)
             j.this_boot()
@@ -90,6 +91,10 @@ class SystemDJournal(module.MetricsSrcProcess):
                                 self.handle_event(event)
                 except InterruptedError:
                     pass
+
+    def loop(self):
+        threading.Thread(name='JournalReadThread', target=self.read_journal).start()
+        super().loop()
 
     def handle_event(self, event):
         obj = {}
