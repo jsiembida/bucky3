@@ -374,33 +374,34 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
                 self.buffer = self.buffer[-int(self.buffer_limit / 2):]
                 self.log.warning("Buffer trimmed from %d to %d entries", buffer_len, len(self.buffer))
 
-    def push_buffer(self):
-        with self.buffer_lock:
-            if not self.buffer:
-                return
-            self.log.debug('%d entries in buffer to be pushed', len(self.buffer))
-            push_start, push_counter = time.monotonic(), 0
-            failed_entries = []
-            try:
-                while self.buffer:
-                    if push_counter >= self.push_count_limit:
-                        break
-                    if time.monotonic() - push_start >= self.push_time_limit:
-                        break
-                    chunk = self.buffer[:self.chunk_size]
-                    failed_entries.extend(self.push_chunk(chunk))
-                    del self.buffer[:self.chunk_size]
-                    push_counter += len(chunk)  # Include all entries, even the failed ones
-                return push_counter > len(failed_entries)
-            except (ConnectionError, socket.timeout) as e:
-                self.log.exception(e)
-                self.cleanup_socket()
-                return False
-            finally:
-                if failed_entries:
-                    self.buffer = failed_entries + self.buffer
-                if self.buffer:
-                    self.log.warning('%d entries left over in buffer', len(self.buffer))
-
     def flush(self, system_timestamp):
-        return self.push_buffer() if self.buffer else True
+        if not self.buffer:
+            return True
+        self.log.debug('%d entries in buffer to be pushed', len(self.buffer))
+        push_start, push_counter = time.monotonic(), 0
+        failed_entries = []
+        try:
+            while self.buffer:
+                if push_counter >= self.push_count_limit:
+                    break
+                if time.monotonic() - push_start >= self.push_time_limit:
+                    break
+                with self.buffer_lock:
+                    chunk = self.buffer[:self.chunk_size]
+                    chunk_len = len(chunk)
+                failed_entries.extend(self.push_chunk(chunk))
+                with self.buffer_lock:
+                    del self.buffer[:chunk_len]
+                push_counter += chunk_len  # Include all entries, even the failed ones
+            # If we manage to push something then report success. Ok?
+            return push_counter > len(failed_entries)
+        except (ConnectionError, socket.timeout) as e:
+            self.log.exception(e)
+            self.cleanup_socket()
+            return False
+        finally:
+            if failed_entries:
+                with self.buffer_lock:
+                    self.buffer = failed_entries + self.buffer
+            if self.buffer:
+                self.log.warning('%d entries left over in buffer', len(self.buffer))

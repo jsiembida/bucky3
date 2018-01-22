@@ -26,13 +26,7 @@ class ElasticsearchConnection(http.client.HTTPConnection):
     # https://www.elastic.co/guide/en/elasticsearch/reference/5.6/docs-bulk.html
     # https://github.com/ndjson/ndjson-spec
     def bulk_upload(self, docs):
-        buffer = []
-        for req_str, doc_str in docs:
-            buffer.append(req_str)
-            buffer.append('\n')
-            buffer.append(doc_str)
-            buffer.append('\n')
-        body = ''.join(buffer).encode('utf-8')
+        body = ''.join(docs).encode('utf-8')
         headers = {
             # ES complains when receiving the content type with charset specified, even though
             # it does specify charset in its responses...
@@ -45,6 +39,7 @@ class ElasticsearchConnection(http.client.HTTPConnection):
         resp = self.getresponse()
         if resp.status != 200:
             raise ConnectionError('Elasticsearch error code {}'.format(resp.status))
+        # This is to pull the data in from the socket.
         body = resp.read()
         # Needed? Is HTTP code not enough?
         # if resp.headers['Content-Encoding'] == 'deflate':
@@ -61,6 +56,10 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
     def init_config(self):
         super().init_config()
         self.index_name = self.cfg.get('index_name')
+        if self.index_name is not None:
+            if not callable(self.index_name):
+                static_index_name = self.index_name
+                self.index_name = lambda *args: static_index_name
         self.type_name = self.cfg.get('type_name')
         self.compression = self.cfg.get('compression')
         if self.compression not in {'gzip', 'deflate'}:
@@ -85,14 +84,16 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
         # where it is skipping the fraction part altogether if microseconds==0.
         # https://www.elastic.co/guide/en/elasticsearch/reference/current/date.html
         # https://docs.python.org/3/library/datetime.html#datetime.datetime.isoformat
-        timestamp = datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        values['timestamp'] = timestamp
+        timestamp_str = datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        values['timestamp'] = timestamp_str
 
         if self.index_name:
             values['bucket'] = bucket
-            index_name = self.index_name
+            index_name = self.index_name(bucket, values, timestamp)
         else:
             index_name = bucket
+        if not index_name:
+            return
         type_name = self.type_name or bucket
 
         # Try to produce consistent hashing, it is as consistent as json serializer inner workings.
@@ -103,4 +104,4 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
         req = {"index": {"_index": index_name, "_type": type_name, "_id": doc_id}}
         req_str = json.dumps(req, indent=None, separators=(',', ':'))
         with self.buffer_lock:
-            self.buffer.append((req_str, doc_str))
+            self.buffer.append(req_str + '\n' + doc_str + '\n')

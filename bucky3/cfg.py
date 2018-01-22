@@ -418,16 +418,25 @@ influxdb = dict(
 )
 
 
+# This is an example of a dynamic ES index name generator.
+# It should return a str or None, in the latter case, the metric will be dropped.
+# See index_name option in the elasticsearch module below.
+def elasticsearch_index_generator(bucket, values, timestamp):
+    from datetime import datetime
+    return datetime.utcfromtimestamp(timestamp).strftime('metrics_%Y_%m_%d')
+
+
 elasticsearch = dict(
     module_type="elasticsearch_client",
     module_inactive=True,
 
     # index_name, Elasticsearch index name
-    # - str
+    # - str or callable
     # - Optional, default: None
     # - If not provided, the destination index names are bucket names, see also:
     #   https://www.elastic.co/blog/index-type-parent-child-join-now-future-in-elasticsearch
     #   https://www.elastic.co/guide/en/elasticsearch/guide/current/mapping.html
+    #   Note, that this can be a function, see elasticsearch_index_generator above.
     # - Example: index_name="graylog_deflector"
 
     # type_name, Elasticsearch type name
