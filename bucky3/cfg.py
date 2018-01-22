@@ -351,9 +351,45 @@ jsond = dict(
 )
 
 
+# This is linux specific module. It reads systemd journal events. See:
+# https://www.freedesktop.org/software/systemd/python-systemd/journal.html
 systemd = dict(
     module_type="systemd_journal",
     module_inactive=True,
+
+    # journal_log_level, event severity level threshold
+    # - str
+    # - Optional, default: 'INFO'
+    # - This parameter is similar to log_level. It however applies to events coming from
+    #   the system journal. Note that you provide Python's log levels here, they are being
+    #   mapped by the module to syslog levels (because that's what journal events use).
+    # - Example: journal_log_level = 'ERROR'
+
+    # event_map
+    # - dict of str:str
+    # - Optional, default:
+    #         {
+    #             'MESSAGE': 'message',
+    #             'SYSLOG_IDENTIFIER': 'identifier',
+    #             '_EXE': 'command',
+    #             '_HOSTNAME': 'host',
+    #             '_MACHINE_ID': 'machine_id',
+    #             '_BOOT_ID': 'boot_id',
+    #             '_PID': 'pid',
+    #             '_UID': 'uid',
+    #             '_GID': 'gid',
+    #             '_SYSTEMD_UNIT': 'systemd_unit',
+    #         }
+    # - Keys that are not in the map are being dropped from the incoming event objects.
+    #   The existing ones are renamed according to the map.
+    # - Example: event_map = {'MESSAGE': 'msg'}
+
+    # timestamp_window, time window (in seconds) for past events
+    # - int
+    # - Optional, default: 600
+    # - You may want to receive events from before Bucky3 was started (i.e. boot messages)
+    #   This parameter defines how far back should the module read the events from journal.
+    # - Example: timestamp_window = 60
 )
 
 
