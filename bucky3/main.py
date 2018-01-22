@@ -36,7 +36,7 @@ MODULES = {
     'jsond_server': ('bucky3.jsond', 'JsonDServer'),
     'linux_stats': ('bucky3.linuxstats', 'LinuxStatsCollector'),
     'docker_stats': ('bucky3.dockerstats', 'DockerStatsCollector'),
-    'systemd_journal': ('bucky3.systemdjournal', 'SystemDJournal'),
+    'systemd_journal': ('bucky3.systemd', 'SystemDJournal'),
 }
 
 
