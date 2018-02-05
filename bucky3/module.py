@@ -13,8 +13,24 @@ import multiprocessing
 import multiprocessing.connection
 
 
+def cached_with_timeout(timeout, allow_none=False):
+    def decorator(func):
+        timestamp, value = 0, None
+
+        def wrapper(*args, **kwargs):
+            nonlocal timestamp, value
+            now = time.monotonic()
+            if (now - timestamp > timeout) or (value is None and not allow_none):
+                timestamp, value = now, func(*args, **kwargs)
+            return value
+
+        return wrapper
+
+    return decorator
+
+
 class Logger:
-    def setup_logging(self, cfg, module_name=None):
+    def init_log(self, cfg, module_name=None):
         # Reinit those to avoid races on the underlying streams
         sys.stdout = io.TextIOWrapper(io.FileIO(1, mode='wb', closefd=False))
         sys.stderr = io.TextIOWrapper(io.FileIO(2, mode='wb', closefd=False))
@@ -52,114 +68,73 @@ class HostResolver:
         local_host = self.cfg.get('local_host', '0.0.0.0')
         return random.choice(tuple(self.resolve_host(local_host, default_port)))
 
+    # DNS resolution interval could be parametrized, but it seems a bit involved.
+    # The hardcoded 180s seems to be reasonable.
+    @cached_with_timeout(timeout=180)
     def resolve_remote_hosts(self):
-        now = time.monotonic()
-        # DNS resolution interval could be parametrized, but it seems a bit involved to get it plugged
-        # efficiently into the mixin. The hardcoded 180s on the other hand seems to be reasonable.
-        if self.resolved_hosts is None or (now - self.resolved_hosts_timestamp) > 180:
-            resolved_hosts = set()
-            for host in self.cfg['remote_hosts']:
-                resolved_hosts.update(self.resolve_host(host, self.default_port))
-            self.resolved_hosts = resolved_hosts
-            self.resolved_hosts_timestamp = now
-        return self.resolved_hosts
+        resolved_hosts = set()
+        for host in self.cfg['remote_hosts']:
+            resolved_hosts.update(self.resolve_host(host, self.default_port))
+        return resolved_hosts
 
 
 class Connector:
-    def cleanup_socket(self):
-        if self.socket:
-            self.socket.close()
+    def close_socket(self):
+        if self.sock:
+            self.sock.close()
             self.log.debug('Closed socket')
-        self.socket = None
+        self.sock = None
 
 
 class UDPConnector(Connector, HostResolver):
-    def get_udp_socket(self, bind=False):
+    def open_socket(self, bind=False):
         # UDP sockets don't need the elaborate recycling TCP sockets do
-        if self.socket is None:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        if self.sock is None:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            if self.socket_timeout is not None:
+                self.sock.settimeout(self.socket_timeout)
             self.log.info('Created UDP socket')
             if bind:
-                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 if hasattr(socket, 'SO_REUSEPORT'):
-                    self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                    self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                 ip, port = self.resolve_local_host()
-                self.socket.bind((ip, port))
+                self.sock.bind((ip, port))
                 self.log.info("Bound UDP socket %s:%d", ip, port)
-        return self.socket
+        return self.sock
 
 
 class TCPConnector(Connector, HostResolver):
     # To provide load balancing, when pushing via TCP, we reopen the connection
     # at intervals (using a random host from the pool of resolved ones).
-    def get_tcp_connection(self):
-        now = time.monotonic()
-        if self.socket is None or (now - self.socket_timestamp) > 180:
-            self.cleanup_socket()
+    @cached_with_timeout(timeout=180)
+    def open_socket(self):
+        self.close_socket()
 
-            # TODO use socket.create_connection instead?
-            # In theory, DNS should do some sort of round-robin / randomization, but better be safe
-            resolved_hosts = list(self.resolve_remote_hosts())
-            random.shuffle(resolved_hosts)
+        # TODO use socket.create_connection instead?
+        # DNS does some sort of round-robin / randomization, but this way we
+        # reshuffle on every attempt rather than only on each DNS query.
+        # This seems to provide more randomness / spread in connections.
+        resolved_hosts = list(self.resolve_remote_hosts())
+        random.shuffle(resolved_hosts)
 
-            for remote_ip, remote_port in resolved_hosts:
-                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.log.info('Created TCP socket')
-                self.socket.settimeout(1)
-                try:
-                    # Connect failure is not fatal.
-                    self.socket.connect((remote_ip, remote_port))
-                    self.log.info('Connected TCP socket to %s:%d', remote_ip, remote_port)
-                except ConnectionError as e:
-                    self.log.warning('TCP connection to %s:%d failed', remote_ip, remote_port)
-                    self.cleanup_socket()
-                    continue
-                self.socket_timestamp = time.monotonic()
-                break
-        if self.socket is None:
-            raise ConnectionError("No connection")
-        return self.socket
-
-
-class ProcfsReader:
-    INTERFACE_FIELDS = ('rx_bytes', 'rx_packets', 'rx_errors', 'rx_dropped',
-                        None, None, None, None,
-                        'tx_bytes', 'tx_packets', 'tx_errors', 'tx_dropped')
-
-    def read_interfaces(self, path='/proc/net/dev'):
-        with open(path) as f:
-            for l in f:
-                tokens = l.strip().split()
-                if not tokens or len(tokens) != 17:
-                    continue
-                if not tokens[0].endswith(':'):
-                    continue
-                interface_name = tokens.pop(0)[:-1]
-                interface_stats = {k: int(v) for k, v in zip(self.INTERFACE_FIELDS, tokens) if k}
-                yield interface_name, interface_stats
-
-    MEMORY_FIELDS = {
-        'MemTotal:': 'total_bytes',
-        'MemFree:': 'free_bytes',
-        'MemAvailable:': 'available_bytes',
-        'Shmem:': 'shared_bytes',
-        'Cached:': 'cached_bytes',
-        'Slab:': 'slab_bytes',
-        'Mapped:': 'mapped_bytes',
-        'SwapTotal:': 'swap_total_bytes',
-        'SwapFree:': 'swap_free_bytes',
-        'SwapCached:': 'swap_cached_bytes',
-    }
-
-    def read_memory(self, path='/proc/meminfo'):
-        with open(path) as f:
-            for l in f:
-                tokens = l.strip().split()
-                if not tokens or len(tokens) != 3 or tokens[2].lower() != 'kb':
-                    continue
-                name = tokens[0]
-                if name in self.MEMORY_FIELDS:
-                    yield self.MEMORY_FIELDS[name], int(tokens[1]) * 1024
+        for remote_ip, remote_port in resolved_hosts:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            if self.socket_timeout is not None:
+                self.sock.settimeout(self.socket_timeout)
+            self.log.info('Created TCP socket')
+            try:
+                # Connect failure is not fatal.
+                self.sock.connect((remote_ip, remote_port))
+                self.log.info('Connected TCP socket to %s:%d', remote_ip, remote_port)
+            except (ConnectionError, socket.timeout) as e:
+                self.log.warning('TCP connection to %s:%d failed', remote_ip, remote_port)
+                self.close_socket()
+                continue
+            break
+        if self.sock is None:
+            raise ConnectionError("No connection could be found")
+        return self.sock
 
 
 class MetricsProcess(multiprocessing.Process, Logger):
@@ -168,36 +143,32 @@ class MetricsProcess(multiprocessing.Process, Logger):
         self.cfg = module_config
 
     def tick(self):
-        now = time.monotonic()
-        if now >= self.next_flush:
-            if self.flush(round(time.time(), 3)):
-                self.flush_interval = self.tick_interval
-            else:
-                self.flush_interval = min(self.flush_interval + self.flush_interval, 600)
-                self.log.warning("Flush error, next in %d secs", int(self.flush_interval))
-            # Occasionally, at least on macOS, kernel wakes up the process a few millis earlier
-            # then scheduled (most likely scheduling we do here is introducing some small slips),
-            # which triggers the condition at the top of the function and we miss a legit tick.
-            # The 0.03s is a harmless margin that seems to solve the problem.
-            self.next_flush = now + self.flush_interval - 0.03
-        if self.self_report:
-            self.take_self_report()
+        self.log.debug("Flush")
+        if self.flush(round(time.time(), 3)):
+            self.flush_interval = self.tick_interval
+        else:
+            self.flush_interval = min(self.flush_interval + self.flush_interval, self.max_flush_interval)
+            self.log.warning("Flush error, next in %d secs", int(self.flush_interval))
 
-    def init_config(self):
-        self.log = self.setup_logging(self.cfg, self.name)
+    def init_cfg(self):
+        self.log = self.init_log(self.cfg, self.name)
         self.randomize_startup = self.cfg.get('randomize_startup', True)
         self.buffer = []
         self.buffer_lock = threading.Lock()
         self.buffer_limit = max(self.cfg.get('buffer_limit', 10000), 100)
+        self.socket_timeout = self.cfg.get('socket_timeout', None)
+        if self.socket_timeout is not None:
+            self.socket_timeout = max(self.socket_timeout, 1)
         self.chunk_size = max(self.cfg.get('chunk_size', 300), 1)
-        self.tick_interval = self.flush_interval = max(self.cfg['flush_interval'], 0.1)
+        self.tick_interval = self.flush_interval = max(self.cfg['flush_interval'], 1)
+        self.max_flush_interval = max(self.flush_interval, self.cfg.get('max_flush_interval', 600))
         self.next_tick = self.next_flush = 0
         self.metadata = self.cfg.get('metadata', {})
         self.metric_postprocessor = self.cfg.get('metric_postprocessor')
         self.add_timestamps = self.cfg.get('add_timestamps', False)
         self.self_report = self.cfg.get('self_report', False)
-        self.self_report_timestamp = 0
-        self.init_time = time.monotonic()
+        self.init_timestamp = time.monotonic()
+        self.threads = []
 
     def run(self):
         def termination_handler(signal_number, stack_frame):
@@ -208,44 +179,62 @@ class MetricsProcess(multiprocessing.Process, Logger):
         signal.signal(signal.SIGTERM, termination_handler)
         signal.signal(signal.SIGHUP, termination_handler)
 
-        self.init_config()
+        self.init_cfg()
         self.log.info("Set up")
         if self.randomize_startup and self.tick_interval > 3:
             # If randomization is configured (it's default) do it asap
             time.sleep(random.randint(0, min(self.tick_interval - 1, 15)))
         self.loop()
 
+    def ended_threads(self):
+        ended = False
+        for thread in (thread for thread in self.threads if not thread.is_alive()):
+            self.log.error("Thread %s exited", thread.name)
+            ended = True
+        return ended
+
     def loop(self):
         self.next_tick = time.monotonic()
         while True:
             try:
-                self.log.debug("Loop tick")
-                self.tick()
+                self.log.debug("Tick")
+                now = time.monotonic()
+                if now >= self.next_flush:
+                    self.tick()
+                    # Occasionally, at least on macOS, kernel wakes up the process a few millis earlier
+                    # then scheduled (most likely scheduling we do here is introducing some small slips),
+                    # which triggers the condition at the top of the function and we miss a legit tick.
+                    # The 0.03s is a harmless margin that seems to solve the problem.
+                    self.next_flush = now + self.flush_interval - 0.03
+                if self.ended_threads():
+                    self.log.error("Aborting")
+                    sys.exit(1)
+                if self.self_report:
+                    self.take_self_report()
                 now = time.monotonic()
                 while now + 0.3 >= self.next_tick:
                     self.next_tick += self.tick_interval
-                time.sleep(self.next_tick - now)
+                sleep_duration = self.next_tick - now
+                if sleep_duration > 4:
+                    sleep_duration = 3
+                time.sleep(sleep_duration)
             except InterruptedError:
                 pass
 
+    @cached_with_timeout(timeout=60, allow_none=True)
     def take_self_report(self):
         now = time.monotonic()
-        if now - self.self_report_timestamp >= 60:
-            self.self_report_timestamp = now
-            usage = resource.getrusage(resource.RUSAGE_SELF)
-            self.process_self_report(
-                "bucky3",
-                dict(
-                    cpu=round(usage.ru_utime + usage.ru_stime, 3),
-                    memory=usage.ru_maxrss,
-                    uptime=round(now - self.init_time, 3),
-                ),
-                None,
-                dict(name=self.name),
-            )
-
-    def process_self_report(self, bucket, stats, timestamp, metadata):
-        raise NotImplementedError()
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        self.process_self_report(
+            "bucky3",
+            dict(
+                cpu=round(usage.ru_utime + usage.ru_stime, 3),
+                memory=usage.ru_maxrss,
+                uptime=round(now - self.init_timestamp, 3),
+            ),
+            None,
+            dict(name=self.name),
+        )
 
     def merge_dict(self, dst, src=None):
         if src is None:
@@ -254,14 +243,19 @@ class MetricsProcess(multiprocessing.Process, Logger):
             dst.update((k, v) for k, v in src.items() if k not in dst)
         return dst
 
+    def start_thread(self, name, target):
+        thread = threading.Thread(name=name, target=target, daemon=True)
+        thread.start()
+        self.threads.append(thread)
+
 
 class MetricsSrcProcess(MetricsProcess):
     def __init__(self, module_name, module_config, dst_pipes):
         super().__init__(module_name, module_config)
         self.dst_pipes = dst_pipes
 
-    def init_config(self):
-        super().init_config()
+    def init_cfg(self):
+        super().init_cfg()
         self.log.info('Destination modules: ' + ', '.join(m[0] for m in self.cfg['destination_modules']))
 
     def buffer_metric(self, bucket, stats, timestamp, metadata):
@@ -274,17 +268,15 @@ class MetricsSrcProcess(MetricsProcess):
             del metadata['bucket']
         if self.metric_postprocessor:
             postprocessed_tuple = self.metric_postprocessor(bucket, stats, timestamp, metadata)
-            if postprocessed_tuple is None:
-                return
-            with self.buffer_lock:
-                self.buffer.append(postprocessed_tuple)
+            if postprocessed_tuple is not None:
+                with self.buffer_lock:
+                    self.buffer.append(postprocessed_tuple)
         else:
             with self.buffer_lock:
                 self.buffer.append((bucket, stats, timestamp, metadata))
 
     def process_self_report(self, bucket, stats, timestamp, metadata):
         self.buffer_metric(bucket, stats, timestamp, metadata)
-        MetricsSrcProcess.flush(self, round(time.time(), 3))
 
     def flush(self, system_timestamp):
         while self.buffer:
@@ -309,10 +301,9 @@ class MetricsDstProcess(MetricsProcess):
         err = 0
         while True:
             tmp = False
-            for pipe in multiprocessing.connection.wait(self.src_pipes, min(self.tick_interval, 60)):
+            for pipe in multiprocessing.connection.wait(self.src_pipes):
                 try:
-                    batch = pipe.recv()
-                    self.process_batch(round(time.time(), 3), batch)
+                    self.process_batch(round(time.time(), 3), pipe.recv())
                 except InterruptedError:
                     pass
                 except EOFError:
@@ -325,12 +316,12 @@ class MetricsDstProcess(MetricsProcess):
                 err = 0
             if err > 10:
                 self.log.error("Input(s) not ready, quitting")
-                sys.exit(1)
-            elif err:
+                return
+            if err:
                 time.sleep(1)
 
     def loop(self):
-        threading.Thread(name='SrcReadThread', target=self.read_loop).start()
+        self.start_thread('SrcReadThread', self.read_loop)
         super().loop()
 
     def process_batch(self, recv_timestamp, batch):
@@ -340,28 +331,17 @@ class MetricsDstProcess(MetricsProcess):
     def process_self_report(self, bucket, stats, timestamp, metadata):
         self.process_values(round(time.time(), 3), bucket, stats, timestamp, self.merge_dict(metadata))
 
-    def process_values(self, recv_timestamp, bucket, values, metric_timestamp, metadata):
-        raise NotImplementedError()
-
 
 class MetricsPushProcess(MetricsDstProcess, Connector):
     def __init__(self, *args, default_port=None):
         super().__init__(*args)
-        self.socket = None
+        self.sock = None
         self.default_port = default_port
-        self.resolved_hosts = None
-        self.resolved_hosts_timestamp = 0
-        self.socket = None
-        self.socket_timestamp = 0
 
-    def init_config(self):
-        super().init_config()
+    def init_cfg(self):
+        super().init_cfg()
         self.push_count_limit = self.cfg.get('push_count_limit', self.buffer_limit)
         self.push_time_limit = self.cfg.get('push_time_limit', max(self.tick_interval / 3, 0.1))
-
-    def process_batch(self, recv_timestamp, batch):
-        super().process_batch(recv_timestamp, batch)
-        self.tick()
 
     def tick(self):
         super().tick()
@@ -374,12 +354,15 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
                 self.buffer = self.buffer[-int(self.buffer_limit / 2):]
                 self.log.warning("Buffer trimmed from %d to %d entries", buffer_len, len(self.buffer))
 
+    def buffer_output(self, data):
+        with self.buffer_lock:
+            self.buffer.append(data)
+
     def flush(self, system_timestamp):
         if not self.buffer:
             return True
         self.log.debug('%d entries in buffer to be pushed', len(self.buffer))
-        push_start, push_counter = time.monotonic(), 0
-        failed_entries = []
+        push_start, push_counter, failed_entries = time.monotonic(), 0, []
         try:
             while self.buffer:
                 if push_counter >= self.push_count_limit:
@@ -397,7 +380,7 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
             return push_counter > len(failed_entries)
         except (ConnectionError, socket.timeout) as e:
             self.log.exception(e)
-            self.cleanup_socket()
+            self.close_socket()
             return False
         finally:
             if failed_entries:

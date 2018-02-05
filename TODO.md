@@ -9,11 +9,8 @@
 
 ##### Medium priority
 
-* Perhaps add gzip compression for Elasticsearch module (it isn't better
-  than the already added zlib but quite common, too)
 * Compression for JSON module (similarly, zlib and gzip)
-* ProcfsReader shouldn't be in the common code, it is Linux specific.
-* Isolate out code for network utilities (host resolver, connections handling).
+* IPv6 support.
 
 
 ##### Low priority

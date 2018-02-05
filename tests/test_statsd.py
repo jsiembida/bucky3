@@ -44,7 +44,7 @@ def statsd_setup(timestamps, **extra_cfg):
                 system_time_mock, monotonic_time_mock = itertools.tee(timestamps, 2)
             system_time_mock, monotonic_time_mock = iter(system_time_mock), iter(monotonic_time_mock)
             monotonic_time0 = next(monotonic_time_mock)
-            # Statsd module consumes one monotonic tick for self.init_time, we need to inject it
+            # Statsd module consumes one monotonic tick for self.init_timestamp, we need to inject it
             monotonic_time_mock = itertools.chain(iter([monotonic_time0]), iter([monotonic_time0]), monotonic_time_mock)
             system_time.side_effect = system_time_mock
             monotonic_time.side_effect = monotonic_time_mock
@@ -64,7 +64,7 @@ def statsd_setup(timestamps, **extra_cfg):
             cfg.update(**extra_cfg)
             output_pipe = MagicMock()
             statsd_module = statsd.StatsDServer('statsd_test', cfg, [output_pipe])
-            statsd_module.init_config()
+            statsd_module.init_cfg()
             expected_output = fun(self, statsd_module)
             if expected_output is None:
                 return

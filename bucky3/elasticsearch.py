@@ -13,15 +13,21 @@ TZ = timezone(timedelta(hours=0))
 
 
 class ElasticsearchConnection(http.client.HTTPConnection):
-    def __init__(self, socket_getter, compression=None):
+    def __init__(self, open_socket, compression=None):
         super().__init__('elasticsearch')
-        self.socket_getter = socket_getter
+        self.open_socket = open_socket
         self.compression = compression
         self.compressor = dict(gzip=gzip.compress, deflate=zlib.compress).get(compression, lambda x: x)
 
     def connect(self):
-        self.sock = self.socket_getter()
-        self.host = self.sock.getpeername()
+        self.sock = self.open_socket()
+        try:
+            self.host = self.sock.getpeername()[0]
+        except OSError:
+            # This can happen if in between calls something happens to the socket.
+            # I.e. getpeername raises OSError when called on the closed socket,
+            # we only handle ConnectionError and socket.timeout in the calling code.
+            raise ConnectionError('Elasticsearch connection seems broken')
 
     # https://www.elastic.co/guide/en/elasticsearch/reference/5.6/docs-bulk.html
     # https://github.com/ndjson/ndjson-spec
@@ -53,8 +59,8 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
     def __init__(self, *args):
         super().__init__(*args, default_port=9200)
 
-    def init_config(self):
-        super().init_config()
+    def init_cfg(self):
+        super().init_cfg()
         self.index_name = self.cfg.get('index_name')
         if self.index_name is not None:
             if not callable(self.index_name):
@@ -69,9 +75,9 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
         self.elasticsearch_connection.bulk_upload(chunk)
         return []
 
-    def push_buffer(self):
-        self.elasticsearch_connection = ElasticsearchConnection(self.get_tcp_connection, self.compression)
-        return super().push_buffer()
+    def flush(self, system_timestamp):
+        self.elasticsearch_connection = ElasticsearchConnection(self.open_socket, self.compression)
+        return super().flush(system_timestamp)
 
     def process_values(self, recv_timestamp, bucket, values, timestamp, metadata):
         self.merge_dict(metadata)
@@ -103,5 +109,4 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
         # TODO ES6 deprecates types, ES7 will drop them - index/type handling needs revisiting
         req = {"index": {"_index": index_name, "_type": type_name, "_id": doc_id}}
         req_str = json.dumps(req, indent=None, separators=(',', ':'))
-        with self.buffer_lock:
-            self.buffer.append(req_str + '\n' + doc_str + '\n')
+        self.buffer_output(req_str + '\n' + doc_str + '\n')

@@ -32,7 +32,7 @@ def jsond_setup(timestamps, **extra_cfg):
                 system_time_mock, monotonic_time_mock = itertools.tee(timestamps, 2)
             system_time_mock, monotonic_time_mock = iter(system_time_mock), iter(monotonic_time_mock)
             monotonic_time0 = next(monotonic_time_mock)
-            # One monotonic tick for self.init_time, we need to inject it
+            # One monotonic tick for self.init_timestamp, we need to inject it
             monotonic_time_mock = itertools.chain(iter([monotonic_time0]), iter([monotonic_time0]), monotonic_time_mock)
             system_time.side_effect = system_time_mock
             monotonic_time.side_effect = monotonic_time_mock
@@ -47,7 +47,7 @@ def jsond_setup(timestamps, **extra_cfg):
             cfg.update(**extra_cfg)
             output_pipe = MagicMock()
             tested_module = jsond.JsonDServer('jsond_test', cfg, [output_pipe])
-            tested_module.init_config()
+            tested_module.init_cfg()
             expected_output = fun(self, tested_module)
             if expected_output is None:
                 return
