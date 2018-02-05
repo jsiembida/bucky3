@@ -24,12 +24,12 @@ class CarbonClient(module.MetricsPushProcess, module.TCPConnector):
 
     def push_chunk(self, chunk):
         payload = ''.join(chunk).encode("ascii")
-        self.socket.sendall(payload)
+        self.sock.sendall(payload)
         return []
 
-    def push_buffer(self):
-        self.get_tcp_connection()
-        return super().push_buffer()
+    def flush(self, system_timestamp):
+        self.open_socket()
+        return super().flush(system_timestamp)
 
     def translate_token(self, token):
         # TODO: Which chars we have to translate? There is much more to handle here.
@@ -49,5 +49,4 @@ class CarbonClient(module.MetricsPushProcess, module.TCPConnector):
             metadata['value'] = k
             name = self.build_name(metadata.copy())
             if name:
-                with self.buffer_lock:
-                    self.buffer.append("%s %s %s\n" % (name, v, int(timestamp or recv_timestamp)))
+                self.buffer_output("%s %s %s\n" % (name, v, int(timestamp or recv_timestamp)))

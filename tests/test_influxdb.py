@@ -23,7 +23,7 @@ def influxdb_setup(timestamps, **extra_cfg):
             cfg = dict(flush_interval=1)
             cfg.update(**extra_cfg)
             influxdb_module = influxdb.InfluxDBClient('influxdb_test', cfg, None)
-            influxdb_module.init_config()
+            influxdb_module.init_cfg()
             expected_output = fun(self, influxdb_module)
             if expected_output is None:
                 return

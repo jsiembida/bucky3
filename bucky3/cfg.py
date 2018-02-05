@@ -52,8 +52,25 @@ log_level = "INFO"
 #   In prometheus_exporter it defines the frequency of housekeeping wherein old metrics
 #   are being evicted from cache. Note, it is not the maximum age of data kept in prometheus
 #   module, see also add_timestamps option and prometheus exporter section below for more.
-#   In any case, flush_interval is enforced to be at least 0.1 sec.
+#   In any case, flush_interval is enforced to be at least 1 sec.
 flush_interval = 10
+
+
+# max_flush_interval
+# - float, limit on flush interval in case of failures (seconds)
+# - Optional, default: 600
+# - If module fails flushing its buffers, the flush_interval is being doubled on each
+#   failure (exponentially growing interval). This parameter limits this. If it's smaller
+#   than flush_interval, flush_interval is used as the limit, which means, there is no back off.
+# Example: max_flush_interval = 60
+
+
+# socket_timeout
+# - float, timeout for socket operations (when applicable), in seconds
+# - Optional, default: None
+# - If None, no timeouts are being set on sockets (which most likely defaults to some runtime
+#   specific value). If set, it will be enforced to be at least 1 sec.
+# Example: socket_timeout = 10
 
 
 # randomize_startup
@@ -186,7 +203,7 @@ linuxstats = dict(
     module_inactive=False,
 
     # destination_modules
-    # - array / tuple of names / references
+    # - list / tuple of names / references
     # - Optional, default: all
     # - This specifies which destination(s) will be receiving metrics from this source.
     #   These are either string names of the dictionaries or code level references

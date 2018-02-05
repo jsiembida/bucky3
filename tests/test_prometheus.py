@@ -42,7 +42,7 @@ def prometheus_setup(timestamps, **extra_cfg):
             cfg = dict(flush_interval=1, values_timeout=10)
             cfg.update(**extra_cfg)
             prometheus_module = prometheus.PrometheusExporter('prometheus_test', cfg, None)
-            prometheus_module.init_config()
+            prometheus_module.init_cfg()
             expected_output = fun(self, prometheus_module)
             if expected_output is None:
                 return

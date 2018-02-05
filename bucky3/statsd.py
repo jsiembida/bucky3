@@ -16,6 +16,7 @@
 
 
 import time
+import socket
 import threading
 import bucky3.module as module
 
@@ -23,7 +24,7 @@ import bucky3.module as module
 class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def __init__(self, *args):
         super().__init__(*args)
-        self.socket = None
+        self.sock = None
         self.timers = {}
         self.timers_lock = threading.Lock()
         self.histograms = {}
@@ -46,24 +47,24 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.last_timestamp = system_timestamp
         return super().flush(system_timestamp)
 
-    def init_config(self):
-        super().init_config()
+    def init_cfg(self):
+        super().init_cfg()
         percentile_thresholds = self.cfg.get('percentile_thresholds', ())
         self.percentile_thresholds = sorted(set(round(float(t), 2) for t in percentile_thresholds if t > 0 and t <= 100))
         self.histogram_selector = self.cfg.get('histogram_selector')
         self.timestamp_window = self.cfg.get('timestamp_window', 600)
 
     def read_loop(self):
-        socket = self.get_udp_socket(bind=True)
+        sock = self.open_socket(bind=True)
         while True:
             try:
-                data, addr = socket.recvfrom(65535)
+                data, addr = sock.recvfrom(65535)
                 self.handle_packet(data, addr)
-            except InterruptedError:
+            except (InterruptedError, socket.timeout):
                 pass
 
     def loop(self):
-        threading.Thread(name='UdpReadThread', target=self.read_loop).start()
+        self.start_thread('UdpReadThread', self.read_loop)
         super().loop()
 
     def enqueue_timers(self, system_timestamp):

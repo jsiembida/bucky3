@@ -34,9 +34,9 @@ MODULES = {
     'prometheus_exporter': ('bucky3.prometheus', 'PrometheusExporter'),
     'statsd_server': ('bucky3.statsd', 'StatsDServer'),
     'jsond_server': ('bucky3.jsond', 'JsonDServer'),
-    'linux_stats': ('bucky3.linuxstats', 'LinuxStatsCollector'),
-    'docker_stats': ('bucky3.dockerstats', 'DockerStatsCollector'),
-    'systemd_journal': ('bucky3.systemd', 'SystemDJournal'),
+    'linux_stats': ('bucky3.linux', 'LinuxStatsCollector'),
+    'docker_stats': ('bucky3.docker', 'DockerStatsCollector'),
+    'systemd_journal': ('bucky3.journal', 'SystemdJournal'),
 }
 
 
@@ -73,8 +73,6 @@ class Manager(module.Logger):
                     src_modules.append((module_name, module_class, module_config))
                 elif issubclass(module_class, module.MetricsDstProcess):
                     dst_modules.append((module_name, module_class, module_config))
-                else:
-                    raise ValueError("Invalid module class %s", module_class)
 
         for module_name, module_class, module_config in src_modules + dst_modules:
             for k, v in new_config.items():
@@ -166,7 +164,7 @@ class Manager(module.Logger):
 
     def init(self):
         new_config, src_modules, dst_modules = self.load_config(self.config_file)
-        self.log = self.setup_logging(new_config, 'bucky3')
+        self.log = self.init_log(new_config, 'bucky3')
         self.src_group, self.dst_group, pipes = {}, {}, []
 
         # Using shared pipes leads to data from multiple source modules being occasionally interleaved
@@ -193,20 +191,17 @@ class Manager(module.Logger):
         signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
         while True:
-            try:
-                err = self.healthcheck(self.dst_group) + self.healthcheck(self.src_group)
-                if err:
-                    self.terminate_and_exit(err)
-                time.sleep(1)
-            except InterruptedError:
-                pass
+            err = self.healthcheck(self.dst_group) + self.healthcheck(self.src_group)
+            if err:
+                self.terminate_and_exit(err)
+            time.sleep(3)
 
 
 def main(argv=sys.argv):
     parser = argparse.ArgumentParser()
-    parser.add_argument("config_file", help="An optional config file", nargs='?', default=None)
+    parser.add_argument("cfg_file", help="An optional cfg file", nargs='?', default=None)
     args = parser.parse_args(argv[1:])
-    Manager(args.config_file).run()
+    Manager(args.cfg_file).run()
 
 
 if __name__ == '__main__':

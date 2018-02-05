@@ -5,12 +5,11 @@ import select
 import syslog
 import logging
 import platform
-import threading
 from systemd import journal
 import bucky3.module as module
 
 
-class SystemDJournal(module.MetricsSrcProcess):
+class SystemdJournal(module.MetricsSrcProcess):
     default_event_map = {
         'MESSAGE': 'message',
         'SYSLOG_IDENTIFIER': 'identifier',
@@ -51,8 +50,8 @@ class SystemDJournal(module.MetricsSrcProcess):
         assert platform.system() == 'Linux' and platform.release() >= '3'
         super().__init__(*args)
 
-    def init_config(self):
-        super().init_config()
+    def init_cfg(self):
+        super().init_cfg()
         # Imitate Python logging levels, to stay consistent with other modules.
         log_level_map = {
             logging.getLevelName(logging.CRITICAL): syslog.LOG_CRIT,
@@ -89,7 +88,7 @@ class SystemDJournal(module.MetricsSrcProcess):
                     pass
 
     def loop(self):
-        threading.Thread(name='JournalReadThread', target=self.read_journal).start()
+        self.start_thread('JournalReadThread', self.read_journal)
         super().loop()
 
     def handle_event(self, event):

@@ -23,7 +23,7 @@ def carbon_setup(timestamps, **extra_cfg):
             cfg = dict(flush_interval=1, name_mapping=('bucket', 'foo', 'value'))
             cfg.update(**extra_cfg)
             carbon_module = carbon.CarbonClient('carbon_test', cfg, None)
-            carbon_module.init_config()
+            carbon_module.init_cfg()
             expected_output = fun(self, carbon_module)
             if expected_output is None:
                 return

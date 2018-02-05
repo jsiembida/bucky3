@@ -10,12 +10,12 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
     def push_chunk(self, chunk):
         payload = '\n'.join(chunk).encode("ascii")
         for ip, port in self.resolve_remote_hosts():
-            self.socket.sendto(payload, (ip, port))
+            self.sock.sendto(payload, (ip, port))
         return []
 
-    def push_buffer(self):
-        self.get_udp_socket()
-        return super().push_buffer()
+    def flush(self, system_timestamp):
+        self.open_socket()
+        return super().flush(system_timestamp)
 
     def process_values(self, recv_timestamp, bucket, values, timestamp, metadata):
         # https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_tutorial/
@@ -39,5 +39,4 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
         if timestamp is not None:
             # So, the lower timestamp precisions don't seem to work with line protocol...
             line += ' ' + str(int(timestamp * 1000000000))
-        with self.buffer_lock:
-            self.buffer.append(line)
+        self.buffer_output(line)

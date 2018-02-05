@@ -22,6 +22,7 @@ import json
 import socket
 import http.client
 import bucky3.module as module
+import bucky3.linux as linux
 
 
 class DockerConnection(http.client.HTTPConnection):
@@ -48,13 +49,13 @@ class DockerConnection(http.client.HTTPConnection):
         return self._get_json('/containers/' + str(container_id) + '/json?size=true')
 
 
-class DockerStatsCollector(module.MetricsSrcProcess, module.ProcfsReader):
+class DockerStatsCollector(module.MetricsSrcProcess, linux.ProcfsReader):
     def __init__(self, *args):
         super().__init__(*args)
         self.env_regex = re.compile('^([a-zA-Z][a-zA-Z0-9_]*)=([a-zA-Z0-9_:=\-\+\@\?\#\.\/\%\<\>\*\;\&\[\]]+)$', re.ASCII)
 
-    def init_config(self):
-        super().init_config()
+    def init_cfg(self):
+        super().init_cfg()
         self.api_version = self.cfg.get('api_version', '1.22')
         self.docker_socket = self.cfg.get('docker_socket', '/var/run/docker.sock')
         self.env_mapping = self.cfg.get('env_mapping')

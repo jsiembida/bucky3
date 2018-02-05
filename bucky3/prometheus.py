@@ -1,7 +1,6 @@
 
 
 import gzip
-import threading
 import http.server
 import bucky3.module as module
 
@@ -10,8 +9,8 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
     def __init__(self, *args):
         super().__init__(*args)
 
-    def init_config(self):
-        super().init_config()
+    def init_cfg(self):
+        super().init_cfg()
         self.buffer = {}
         self.compression = self.cfg.get('compression')
         if self.compression != 'gzip':
@@ -54,12 +53,11 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
                 # With the wbufsize>0 the buffered socket IO is used and that seems to work fine.
                 # Which is weird because in recent Pythons all interrupted calls should restart.
                 'wbufsize': 256*1024,
-                'timeout': 3
+                'timeout': self.socket_timeout
             }
         )
         http_server = http.server.HTTPServer((ip, port), handler)
-        http_thread = threading.Thread(target=http_server.serve_forever)
-        http_thread.start()
+        self.start_thread('HttpServerThread', http_server.serve_forever)
         self.log.info("Started server at http://%s:%d/%s", ip, port, path)
 
     def get_line(self, bucket, value, metadata, timestamp):
