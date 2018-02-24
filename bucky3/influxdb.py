@@ -30,10 +30,9 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
         value_buf = []
         for k in sorted(values.keys()):
             v = values[k]
-            t = type(v)
-            if t is float or t is int or t is bool:
+            if isinstance(v, (float, int, bool)):
                 value_buf.append(str(k) + '=' + str(v))
-            elif t is str:
+            elif isinstance(v, str):
                 value_buf.append(str(k) + '="' + v.replace('"', r'\"') + '"')
         line = ' '.join((','.join(metadata_buf), ','.join(value_buf)))
         if timestamp is not None:

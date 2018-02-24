@@ -87,12 +87,11 @@ protocol debugging can be done with tools like `netcat` or `tcpdump`.
 * Bucky has an option to use pickle protocol with Graphite (and it uses batch transfers
 for it as opposed to the plaintext protocol) - Bucky3 drops the pickle protocol, retains
 the plaintext protocol and uses batch transfers across the board.
-* Bucky uses multiprocess architecture with threading in StatsD, Bucky3 retains the
-multiprocess architecture and avoids threading by design. StatsD got single threaded.
-The only exception is Prometheus exporter with HTTP server running in a dedicated thread.
 * Option of having multiple "metric streams" was introduced into Bucky3. I.e. multiple
 StatsD instances with different settings can be run and configured to feed their output
 to separate destinations.
+* Modules that push data (InfluxDB, Elasticsearch and Graphite) follow network topology
+changes and handle multiple endpoints thus allowing for load balancing.
 * The main process in Bucky passes messages from sources to Graphite module. The main
 process in Bucky3 takes no part in IPC, all IPC stays between source and destination
 modules.
@@ -101,4 +100,4 @@ everywhere, more efficient and conceptually closer to its data model.
 * Bucky imports modules at source level, Bucky3 does it dynamically. This is to avoid
 dependencies in the main process. Moreover, to improve isolation, Bucky3 delays modules
 initialization (i.e. socket / file operations) until after fork.
-* Codebase has got reduced from `~2600 loc` to `~1600 loc`
+* Codebase has got reduced from `~2600 loc` to `~1900 loc`

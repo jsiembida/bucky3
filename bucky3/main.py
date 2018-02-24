@@ -62,7 +62,7 @@ class Manager(module.Logger):
 
         for k in list(new_config.keys()):
             v = new_config[k]
-            if not k.startswith('_') and type(v) == dict and 'module_type' in v:
+            if not k.startswith('_') and isinstance(v, dict) and 'module_type' in v:
                 module_name, module_type, module_config = k, v['module_type'], new_config.pop(k)
                 if module_config.get('module_inactive', False):
                     continue
@@ -84,7 +84,7 @@ class Manager(module.Logger):
             if destination_modules:
                 tmp = []
                 for m in destination_modules:
-                    if type(m) is str:
+                    if isinstance(m, str):
                         found_destinations = tuple(filter(lambda i: i[0] == m, dst_modules))
                     else:
                         found_destinations = tuple(filter(lambda i: id(i[2]) == id(m), dst_modules))

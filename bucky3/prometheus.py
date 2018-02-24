@@ -101,11 +101,9 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
 
     def process_values(self, recv_timestamp, bucket, values, metrics_timestamp, metadata):
         for k, v in values.items():
-            t = type(v)
-            if t is bool:
-                v = int(bool)
-                t = int
-            if t is int or t is float:
+            if isinstance(v, bool):
+                v = int(v)
+            if isinstance(v, (int, float)):
                 metadata['value'] = k
                 metadata_tuple = tuple((k, metadata[k]) for k in sorted(metadata.keys()))
                 metric_line = self.get_line(bucket, v, metadata_tuple, metrics_timestamp)
