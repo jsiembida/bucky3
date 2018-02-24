@@ -56,8 +56,11 @@ class HostResolver:
             host, port = bits[0], int(bits[1])
         else:
             raise ValueError("Address %s is invalid" % (address,))
-        hostname, aliaslist, ipaddrlist = socket.gethostbyname_ex(host)
-        return {(ip, port) for ip in ipaddrlist}
+        try:
+            hostname, aliaslist, ipaddrlist = socket.gethostbyname_ex(host)
+            return {(ip, port) for ip in ipaddrlist}
+        except socket.gaierror:
+            return set()
 
     def resolve_host(self, host, default_port):
         for ip, port in self.parse_address(host, default_port):
@@ -66,7 +69,11 @@ class HostResolver:
 
     def resolve_local_host(self, default_port=0):
         local_host = self.cfg.get('local_host', '0.0.0.0')
-        return random.choice(tuple(self.resolve_host(local_host, default_port)))
+        resolved_hosts = tuple(self.resolve_host(local_host, default_port))
+        if resolved_hosts:
+            return random.choice(resolved_hosts)
+        # Resolution failure for local host should be fatal (most likely misconfiguration)
+        raise ValueError("Could not resolve local host " + str(local_host))
 
     # DNS resolution interval could be parametrized, but it seems a bit involved.
     # The hardcoded 180s seems to be reasonable.
@@ -75,6 +82,7 @@ class HostResolver:
         resolved_hosts = set()
         for host in self.cfg['remote_hosts']:
             resolved_hosts.update(self.resolve_host(host, self.default_port))
+        # Resolution failure for remote hosts should not be fatal (i.e. temporary DNS issue)
         return resolved_hosts
 
 
@@ -112,26 +120,27 @@ class TCPConnector(Connector, HostResolver):
         self.close_socket()
 
         # TODO use socket.create_connection instead?
-        # DNS does some sort of round-robin / randomization, but this way we
-        # reshuffle on every attempt rather than only on each DNS query.
-        # This seems to provide more randomness / spread in connections.
         resolved_hosts = list(self.resolve_remote_hosts())
-        random.shuffle(resolved_hosts)
+        if resolved_hosts:
+            # DNS does some sort of round-robin / randomization, but this way we
+            # reshuffle on every attempt rather than only on each DNS query.
+            # This seems to provide more randomness / spread in connections.
+            random.shuffle(resolved_hosts)
 
-        for remote_ip, remote_port in resolved_hosts:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            if self.socket_timeout is not None:
-                self.sock.settimeout(self.socket_timeout)
-            self.log.info('Created TCP socket')
-            try:
-                # Connect failure is not fatal.
-                self.sock.connect((remote_ip, remote_port))
-                self.log.info('Connected TCP socket to %s:%d', remote_ip, remote_port)
-            except (ConnectionError, socket.timeout) as e:
-                self.log.warning('TCP connection to %s:%d failed', remote_ip, remote_port)
-                self.close_socket()
-                continue
-            break
+            for remote_ip, remote_port in resolved_hosts:
+                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                if self.socket_timeout is not None:
+                    self.sock.settimeout(self.socket_timeout)
+                self.log.info('Created TCP socket')
+                try:
+                    # Connect failure is not fatal.
+                    self.sock.connect((remote_ip, remote_port))
+                    self.log.info('Connected TCP socket to %s:%d', remote_ip, remote_port)
+                except (ConnectionError, socket.timeout) as e:
+                    self.log.warning('TCP connection to %s:%d failed', remote_ip, remote_port)
+                    self.close_socket()
+                    continue
+                break
         if self.sock is None:
             raise ConnectionError("No connection could be found")
         return self.sock

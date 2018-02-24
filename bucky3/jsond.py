@@ -3,6 +3,8 @@
 import json
 import time
 import socket
+import zlib
+import gzip
 import bucky3.module as module
 
 
@@ -17,6 +19,13 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
         while True:
             try:
                 data, addr = sock.recvfrom(65535)
+                try:
+                    data = zlib.decompress(data)
+                except zlib.error:
+                    try:
+                        data = gzip.decompress(data)
+                    except OSError:
+                        pass
                 self.handle_packet(data, addr)
             except (InterruptedError, socket.timeout):
                 pass
@@ -27,7 +36,7 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
 
     def handle_packet(self, data, addr=None):
         try:
-            recv_timestamp, data = round(time.time(), 3), data.decode('utf-8-sig')
+            recv_timestamp, data = round(time.time(), 3), data.decode('utf-8')
         except UnicodeDecodeError:
             return
         # http://ndjson.org/
@@ -40,9 +49,9 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
         try:
             # TODO there is no protection against malicious / malformed lines
             obj, end = self.decoder.raw_decode(line)
-        except ValueError as e:
+        except ValueError:
             return
-        if end == len(line) and type(obj) is dict:
+        if end == len(line) and isinstance(obj, dict):
             self.handle_obj(recv_timestamp, obj)
 
     def handle_obj(self, recv_timestamp, obj):

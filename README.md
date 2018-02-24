@@ -12,7 +12,7 @@ and biggest conceptual difference between Bucky3 and original Bucky.
 has been retained, Graphite naming style is built as a mapping on top of the underlying metadata.
 * Python 3.4+ only.
 * [MetricsD](https://github.com/mojodna/metricsd) protocol has been dropped in favor
-of [extended StatsD protocol.](https://docs.datadoghq.com/guides/dogstatsd/#datagram-format).
+of [extended StatsD protocol.](https://docs.datadoghq.com/guides/dogstatsd/#datagram-format)
 See `PROTOCOL.md` for a comprehensive description of StatsD protocol implementation in Bucky3.
 * [CollectD](https://collectd.org) protocol has been dropped in favor of dedicated modules and integration
 via StatsD protocol.
@@ -73,6 +73,7 @@ modules (subprocesses). The following modules are available:
 * `jsond_server` - source module that takes [newline delimited JSON objects](http://ndjson.org/)
 via UDP protocol.
 * `linux_stats` - source module that collects Linux metrics via `/proc` filesystem.
+* `systemd_journal` - source module that collects logs from Systemd journal.
 * `docker_stats` - source module that collects metrics from running docker containers.
 * `influxdb_client` - destination module that sends data to InfluxDB via
 [UDP line protocol.](https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_reference/)

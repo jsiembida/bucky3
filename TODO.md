@@ -9,7 +9,6 @@
 
 ##### Medium priority
 
-* Compression for JSON module (similarly, zlib and gzip)
 * IPv6 support.
 
 
