@@ -146,7 +146,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess, ProcfsReader):
                     if len(name) <= 3:
                         continue
                     cpu_stats = {k: int(v) for k, v in zip(self.CPU_FIELDS, tokens)}
-                    buffer.append(("system_cpu", cpu_stats, timestamp, dict(name=name)))
+                    buffer.append(("system_cpu", cpu_stats, timestamp, {'name': name}))
         with open('/proc/loadavg') as f:
             for l in f:
                 tokens = l.strip().split()
@@ -181,14 +181,14 @@ class LinuxStatsCollector(module.MetricsSrcProcess, ProcfsReader):
                         'total_inodes': total_inodes
                     }
                     buffer.append(("system_filesystem", df_stats, timestamp,
-                                   dict(device=mount_target, name=mount_path, type=mount_filesystem)))
+                                   {'device': mount_target, 'name': mount_path, 'type': mount_filesystem}))
                 except OSError:
                     pass
 
     def read_interface_stats(self, buffer, timestamp):
         for interface_name, interface_stats in self.read_interfaces():
             if self.check_lists(interface_name, self.interface_blacklist, self.interface_whitelist):
-                buffer.append(("system_interface", interface_stats, timestamp, dict(name=interface_name)))
+                buffer.append(("system_interface", interface_stats, timestamp, {'name': interface_name}))
 
     def read_memory_stats(self, buffer, timestamp):
         memory_stats = dict(self.read_memory())
@@ -207,7 +207,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess, ProcfsReader):
                 disk_stats = {k: int(v) for k, v in zip(self.DISK_FIELDS, tokens[3:])}
                 disk_stats['read_bytes'] = disk_stats['read_sectors'] * 512
                 disk_stats['write_bytes'] = disk_stats['write_sectors'] * 512
-                buffer.append(("system_disk", disk_stats, timestamp, dict(name=disk_name)))
+                buffer.append(("system_disk", disk_stats, timestamp, {'name': disk_name}))
 
     def read_protocol_stats(self, buffer, timestamp):
         # TODO: IPv6? (/proc/net/snmp6 has a different syntax)
@@ -231,7 +231,7 @@ class LinuxStatsCollector(module.MetricsSrcProcess, ProcfsReader):
                     else:
                         param_map[name] = tokens
         for k, v in proto_stats.items():
-            buffer.append(("system_protocol", v, timestamp, dict(name=k)))
+            buffer.append(("system_protocol", v, timestamp, {'name': k}))
 
     def flush(self, system_timestamp):
         timestamp = system_timestamp if self.add_timestamps else None

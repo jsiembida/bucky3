@@ -17,7 +17,12 @@ class ElasticsearchConnection(http.client.HTTPConnection):
         super().__init__('elasticsearch')
         self.open_socket = open_socket
         self.compression = compression
-        self.compressor = dict(gzip=gzip.compress, deflate=zlib.compress).get(compression, lambda x: x)
+        if compression == 'gzip':
+            self.compressor = gzip.compress
+        elif compression == 'deflate':
+            self.compressor = zlib.compress
+        else:
+            self.compressor = lambda x: x
 
     def connect(self):
         self.sock = self.open_socket()
