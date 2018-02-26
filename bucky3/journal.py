@@ -68,7 +68,7 @@ class SystemdJournal(module.MetricsSrcProcess):
 
     def read_journal(self):
         with journal.Reader() as j:
-            j.log_level(self.log_level)
+            j.log_level(self.journal_log_level)
             j.this_boot()
             j.this_machine()
             j.seek_realtime(time.time() - self.timestamp_window)
@@ -80,7 +80,7 @@ class SystemdJournal(module.MetricsSrcProcess):
 
             while True:
                 try:
-                    if p.poll(1000):
+                    if p.poll(3000):
                         if j.process() == journal.APPEND:
                             for event in j:
                                 self.handle_event(event)
@@ -111,7 +111,12 @@ class SystemdJournal(module.MetricsSrcProcess):
 
         event_facility = event.get('SYSLOG_FACILITY')
         if event_facility is not None:
-            obj['facility'] = self.syslog_facility_map.get(event_facility, self.syslog_default_facility)
+            # We see things like [b'DHCP4', b'DHCP6'] or b'RFKILL' for event_facility.
+            # TODO: should we map those to a default one or pass them along untouched?
+            if isinstance(event_facility, int):
+                obj['facility'] = self.syslog_facility_map.get(event_facility, self.syslog_default_facility)
+            else:
+                obj['facility'] = self.syslog_default_facility
         if event_severity is not None:
             obj['severity'] = event_severity
 
