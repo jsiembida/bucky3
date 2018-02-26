@@ -136,7 +136,7 @@ class TCPConnector(Connector, HostResolver):
                     # Connect failure is not fatal.
                     self.sock.connect((remote_ip, remote_port))
                     self.log.info('Connected TCP socket to %s:%d', remote_ip, remote_port)
-                except (ConnectionError, socket.timeout) as e:
+                except (ConnectionError, socket.timeout):
                     self.log.warning('TCP connection to %s:%d failed', remote_ip, remote_port)
                     self.close_socket()
                     continue
@@ -150,6 +150,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
     def __init__(self, module_name, module_config):
         super().__init__(name=module_name, daemon=True)
         self.cfg = module_config
+        self.flush_errors = 0
 
     def tick(self):
         self.log.debug("Flush")
@@ -158,6 +159,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
         else:
             self.flush_interval = min(self.flush_interval + self.flush_interval, self.max_flush_interval)
             self.log.warning("Flush error, next in %d secs", int(self.flush_interval))
+            self.flush_errors += 1
 
     def init_cfg(self):
         self.log = self.init_log(self.cfg, self.name)
@@ -230,17 +232,23 @@ class MetricsProcess(multiprocessing.Process, Logger):
             except InterruptedError:
                 pass
 
-    @cached_with_timeout(timeout=60, allow_none=True)
-    def take_self_report(self):
+    def produce_self_report(self):
         now = time.monotonic()
         usage = resource.getrusage(resource.RUSAGE_SELF)
+        return dict(
+            cpu=round(usage.ru_utime + usage.ru_stime, 3),
+            memory=usage.ru_maxrss,
+            uptime=round(now - self.init_timestamp, 3),
+            flush_errors=self.flush_errors,
+        )
+
+    @cached_with_timeout(timeout=60, allow_none=True)
+    def take_self_report(self):
+        # Source modules will push their self reported metrics to their respective destination modules.
+        # But destination modules only expose their metrics to what consumes their output.
         self.process_self_report(
             "bucky3",
-            dict(
-                cpu=round(usage.ru_utime + usage.ru_stime, 3),
-                memory=usage.ru_maxrss,
-                uptime=round(now - self.init_timestamp, 3),
-            ),
+            self.produce_self_report(),
             None,
             dict(name=self.name),
         )
@@ -262,6 +270,8 @@ class MetricsSrcProcess(MetricsProcess):
     def __init__(self, module_name, module_config, dst_pipes):
         super().__init__(module_name, module_config)
         self.dst_pipes = dst_pipes
+        self.metrics_produced = 0
+        self.metrics_dropped = 0
 
     def init_cfg(self):
         super().init_cfg()
@@ -277,12 +287,22 @@ class MetricsSrcProcess(MetricsProcess):
             del metadata['bucket']
         if self.metric_postprocessor:
             postprocessed_tuple = self.metric_postprocessor(bucket, stats, timestamp, metadata)
-            if postprocessed_tuple is not None:
+            if postprocessed_tuple is None:
+                self.metrics_dropped += 1
+            else:
                 with self.buffer_lock:
                     self.buffer.append(postprocessed_tuple)
+                    self.metrics_produced += 1
         else:
             with self.buffer_lock:
                 self.buffer.append((bucket, stats, timestamp, metadata))
+                self.metrics_produced += 1
+
+    def produce_self_report(self):
+        self_report = super().produce_self_report()
+        self_report['metrics_produced'] = self.metrics_produced
+        self_report['metrics_dropped'] = self.metrics_dropped
+        return self_report
 
     def process_self_report(self, bucket, stats, timestamp, metadata):
         self.buffer_metric(bucket, stats, timestamp, metadata)
@@ -305,6 +325,7 @@ class MetricsDstProcess(MetricsProcess):
     def __init__(self, module_name, module_config, src_pipes):
         super().__init__(module_name, module_config)
         self.src_pipes = src_pipes
+        self.metrics_received = 0
 
     def read_loop(self):
         err = 0
@@ -336,6 +357,7 @@ class MetricsDstProcess(MetricsProcess):
     def process_batch(self, recv_timestamp, batch):
         for bucket, values, timestamp, metadata in batch:
             self.process_values(recv_timestamp, bucket, values, timestamp, metadata)
+            self.metrics_received += 1
 
     def process_self_report(self, bucket, stats, timestamp, metadata):
         self.process_values(round(time.time(), 3), bucket, stats, timestamp, self.merge_dict(metadata))
@@ -346,6 +368,10 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
         super().__init__(*args)
         self.sock = None
         self.default_port = default_port
+        self.metrics_sent = 0
+        self.metrics_rejected = 0
+        self.metrics_dropped = 0
+        self.connection_errors = 0
 
     def init_cfg(self):
         super().init_cfg()
@@ -362,38 +388,50 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
             if buffer_len > self.buffer_limit:
                 self.buffer = self.buffer[-int(self.buffer_limit / 2):]
                 self.log.warning("Buffer trimmed from %d to %d entries", buffer_len, len(self.buffer))
+                self.metrics_dropped += (buffer_len - len(self.buffer))
 
     def buffer_output(self, data):
         with self.buffer_lock:
             self.buffer.append(data)
 
+    def produce_self_report(self):
+        self_report = super().produce_self_report()
+        self_report['metrics_received'] = self.metrics_received
+        self_report['metrics_sent'] = self.metrics_sent
+        self_report['metrics_rejected'] = self.metrics_rejected
+        self_report['connection_errors'] = self.connection_errors
+        return self_report
+
     def flush(self, system_timestamp):
         if not self.buffer:
             return True
         self.log.debug('%d entries in buffer to be pushed', len(self.buffer))
-        push_start, push_counter, failed_entries = time.monotonic(), 0, []
+        push_start, push_counter, rejected_entries = time.monotonic(), 0, []
         try:
             while self.buffer:
                 if push_counter >= self.push_count_limit:
                     break
                 if time.monotonic() - push_start >= self.push_time_limit:
                     break
-                with self.buffer_lock:
-                    chunk = self.buffer[:self.chunk_size]
-                    chunk_len = len(chunk)
-                failed_entries.extend(self.push_chunk(chunk))
+                chunk = self.buffer[:self.chunk_size]
+                chunk_len = len(chunk)
+                # TODO we don't use the rejected metrics logic anywhere, remove it? Make it work?
+                rejected_chunk = self.push_chunk(chunk)
+                rejected_entries.extend(rejected_chunk)
+                self.metrics_rejected += len(rejected_chunk)
                 with self.buffer_lock:
                     del self.buffer[:chunk_len]
                 push_counter += chunk_len  # Include all entries, even the failed ones
             # If we manage to push something then report success. Ok?
-            return push_counter > len(failed_entries)
+            return push_counter > len(rejected_entries)
         except (ConnectionError, socket.timeout) as e:
             self.log.exception(e)
             self.close_socket()
+            self.connection_errors += 1
             return False
         finally:
-            if failed_entries:
+            if rejected_entries:
                 with self.buffer_lock:
-                    self.buffer = failed_entries + self.buffer
+                    self.buffer = rejected_entries + self.buffer
             if self.buffer:
                 self.log.warning('%d entries left over in buffer', len(self.buffer))

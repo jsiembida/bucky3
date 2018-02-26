@@ -8,6 +8,7 @@ import bucky3.module as module
 class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
     def __init__(self, *args):
         super().__init__(*args)
+        self.http_requests = 0
 
     def init_cfg(self):
         super().init_cfg()
@@ -38,6 +39,7 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
                     flush()
                 if close:
                     close()
+            self.http_requests += 1
 
         def log_message(req, format, *args):
             self.log.info(format, *args)
@@ -98,6 +100,12 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
             for k in old_keys:
                 del self.buffer[k]
             return True
+
+    def produce_self_report(self):
+        self_report = super().produce_self_report()
+        self_report['metrics_received'] = self.metrics_received
+        self_report['http_requests'] = self.http_requests
+        return self_report
 
     def process_values(self, recv_timestamp, bucket, values, metrics_timestamp, metadata):
         for k, v in values.items():

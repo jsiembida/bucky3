@@ -36,6 +36,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.sets = {}
         self.sets_lock = threading.Lock()
         self.last_timestamp = 0
+        self.metrics_received = 0
 
     def flush(self, system_timestamp):
         self.enqueue_timers(system_timestamp)
@@ -43,7 +44,6 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.enqueue_counters(system_timestamp)
         self.enqueue_gauges(system_timestamp)
         self.enqueue_sets(system_timestamp)
-        # TODO revisit the first flush & last_timestamp - seems to be buggy / uninitialized
         self.last_timestamp = system_timestamp
         return super().flush(system_timestamp)
 
@@ -56,6 +56,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
 
     def read_loop(self):
         sock = self.open_socket(bind=True)
+        self.last_timestamp = round(time.time(), 3)
         while True:
             try:
                 data, addr = sock.recvfrom(65535)
@@ -66,6 +67,11 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def loop(self):
         self.start_thread('UdpReadThread', self.read_loop)
         super().loop()
+
+    def produce_self_report(self):
+        self_report = super().produce_self_report()
+        self_report['metrics_received'] = self.metrics_received
+        return self_report
 
     def enqueue_timers(self, system_timestamp):
         interval = system_timestamp - self.last_timestamp
@@ -199,6 +205,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                     self.handle_set(cust_timestamp, key, metadata, valstr, ratestr)
                 else:
                     self.handle_counter(cust_timestamp, key, metadata, valstr, ratestr)
+                self.metrics_received += 1
             except ValueError:
                 pass
 
