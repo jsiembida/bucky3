@@ -2,7 +2,7 @@
 
 ##### High priority
 
-* Tests for Elasticsearch client and JSONd server.
+* Tests for Elasticsearch client.
 * More tests, especially for common modules code and the main process.
 * Statsd tests for non timestamped metrics.
 
@@ -10,6 +10,7 @@
 ##### Medium priority
 
 * IPv6 support.
+* Stacktrace handling in systemd journal module would be a nice feature.
 
 
 ##### Low priority
