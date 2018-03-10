@@ -62,7 +62,7 @@ flush_interval = 10
 # - If module fails flushing its buffers, the flush_interval is being doubled on each
 #   failure (exponentially growing interval). This parameter limits this. If it's smaller
 #   than flush_interval, flush_interval is used as the limit, which means, there is no back off.
-# Example: max_flush_interval = 60
+# - Example: max_flush_interval = 60
 
 
 # socket_timeout
@@ -70,7 +70,7 @@ flush_interval = 10
 # - Optional, default: None
 # - If None, no timeouts are being set on sockets (which most likely defaults to some runtime
 #   specific value). If set, it will be enforced to be at least 1 sec.
-# Example: socket_timeout = 10
+# - Example: socket_timeout = 10
 
 
 # randomize_startup
@@ -89,9 +89,9 @@ flush_interval = 10
 # - Optional, default: {}
 # - Source modules merge this metadata into the produced metrics. Having the host name
 #   injected is very helpful, other helpful could be "env", "location" or "team".
-metadata = dict(
-    host="${BUCKY3_HOST}",
-)
+metadata = {
+    'host': "${BUCKY3_HOST}",
+}
 
 
 # buffer_limit
@@ -185,7 +185,7 @@ def ignore_test_environment(bucket, values, timestamp, metadata):
 # The name "linuxstats" doesn't matter as such, but should be descriptive
 # as it is included by default in the log formatter.
 # The module inherits all options defined in the global context.
-linuxstats = dict(
+linuxstats = {
     # module_type
     # - str, defines the type of module to be started (see description at the top).
     # - Required
@@ -193,14 +193,14 @@ linuxstats = dict(
     #   limited application. I.e. you may need duplicated Prometheus exporters running
     #   on different ports. In extreme cases, you may want to run multiple statsd_server
     #   instances to make use of multiple cores.
-    module_type="linux_stats",
+    'module_type': "linux_stats",
 
     # module_inactive
     # - bool, de/activates the module config.
     # - Optional, default: False
     # - On non-Linux this module will fail, set the "module_inactive=True" to disable it.
     #   Or delete the whole section. This option is a convenience.
-    module_inactive=False,
+    'module_inactive': False,
 
     # destination_modules
     # - list / tuple of names / references
@@ -209,7 +209,7 @@ linuxstats = dict(
     #   These are either string names of the dictionaries or code level references
     #   (in that case, order of definitions matters). By default, metrics are fanned out
     #   to all destination modules configured.
-    # - Example: destination_modules = ('prometheus', influxdb)
+    # - Example: 'destination_modules': ('prometheus', influxdb),
 
     # disk_whitelist, disk_blacklist
     # - set of str, block devices to include/exclude
@@ -222,8 +222,8 @@ linuxstats = dict(
     #   only a specific set of disks, put them in a whitelist and leave the blacklist out.
     #   If you want to exclude a specific set of disks, put them in a blacklist and leave
     #   the whitelist out. The strings are used as fully anchored regular expressions.
-    # - Example: disk_whitelist = {"sd[a-z]", "xvd.+"}
-    disk_blacklist={
+    # - Example: 'disk_whitelist': {"sd[a-z]", "xvd.+"},
+    'disk_blacklist': {
         r"loop\d+", r"ram\d+", r"sr\d+",
     },
 
@@ -231,8 +231,8 @@ linuxstats = dict(
     # - set of str, filesystems to include/exclude
     # - Optional, default: None
     # - See the disk_whitelist, disk_blacklist for details
-    # - Example: filesystem_whitelist = {"ext[234]"}
-    filesystem_blacklist={
+    # - Example: 'filesystem_whitelist': {"ext[234]"},
+    'filesystem_blacklist': {
         "tmpfs", "devtmpfs", "rootfs",
     },
 
@@ -240,15 +240,15 @@ linuxstats = dict(
     # - set of str, network interfaces to include/exclude
     # - Optional, default: None
     # - See the disk_whitelist, disk_blacklist for details
-    # - Example: interface_blacklist = {"lo", "veth.+"}
-)
+    # - Example: 'interface_blacklist': {"lo", "veth.+"},
+}
 
 
 # This module only works on linux as it uses /proc & /sys to collect containers' metrics.
 # Set "module_inactive=False" (or remove the line) to enable it.
-dockerstats = dict(
-    module_type="docker_stats",
-    module_inactive=True,
+dockerstats = {
+    'module_type': "docker_stats",
+    'module_inactive': True,
 
     # api_version
     # - str, defines the docker API version to use (not the same as Docker version)
@@ -256,13 +256,13 @@ dockerstats = dict(
     # - More here: https://docs.docker.com/engine/api/v1.32/#section/Versioning
     #   Note that a newer docker daemon will likely handle older API calls, but the reverse
     #   will fail. See "docker version | grep API".
-    # - Example: api_version = "1.22"
+    # - Example: 'api_version': "1.22",
 
     # docker_socket
     # - str, unix socket for docker
     # - Optional, default: '/var/run/docker.sock'
     # - Note that this module can only use local unix sockets for docker API calls.
-    # - Example: docker_socket = '/var/run/docker.sock'
+    # - Example: 'docker_socket': '/var/run/docker.sock',
 
     # env_mapping
     # - dict of str:str
@@ -276,8 +276,8 @@ dockerstats = dict(
     #   labels baked into the image. All the labels are unconditionally injected and take
     #   precedence over the ENV variables. See:
     #      https://docs.docker.com/engine/userguide/labels-custom-metadata/
-    # - Example: env_mapping={'TEAM_NAME': 'team'}
-)
+    # - Example: 'env_mapping': {'TEAM_NAME': 'team'},
+}
 
 
 # This is a histogram bin constructor, it receives the metric value
@@ -290,15 +290,15 @@ def myapp_response_histogram(x):
     return 'over_300ms'
 
 
-statsd = dict(
-    module_type="statsd_server",
+statsd = {
+    'module_type': "statsd_server",
 
     # local_host
     # - str, UDP endpoint to bind at
     # - Optional, default: '0.0.0.0:0'
     # - The default will bind to a random local port, most likely you want the typical 8125.
     #   You can use IP or hostname, port number has to be numeric though.
-    local_host='127.0.0.1:8125',
+    'local_host': '127.0.0.1:8125',
 
     # timers_bucket
     # - str, defines the metrics namespace/bucket for StatsD timers
@@ -307,16 +307,16 @@ statsd = dict(
     #   it will end up in prometheus exporter as 'stats_timers{name="foo", hello="world"} 123'
     #   The namespace/bucket can be overridden as in "foo:123|ms|#hello=world,bucket=mystuff",
     #   which will produce 'mystuff{name="foo", hello="world"} 123'
-    timers_bucket="stats_timers",
+    'timers_bucket': "stats_timers",
 
     # histograms_bucket, sets_bucket, gauges_bucket, counters_bucket
     # - str, define the respective metrics namespaces/buckets
     # - Required
     # - See the timers_bucket above
-    histograms_bucket="stats_histograms",
-    sets_bucket="stats_sets",
-    gauges_bucket="stats_gauges",
-    counters_bucket="stats_counters",
+    'histograms_bucket': "stats_histograms",
+    'sets_bucket': "stats_sets",
+    'gauges_bucket': "stats_gauges",
+    'counters_bucket': "stats_counters",
 
     # percentile_thresholds, percentile ranges for timers
     # - tuple of float
@@ -325,7 +325,7 @@ statsd = dict(
     #   to do so. The setting below will give you the stats for median, 90th percentile and
     #   the totals (the 100th percentile). For each configured percentile range, the stats
     #   calculated are: lower, upper, mean, count, count_ps, and stdev.
-    percentile_thresholds=(50, 90, 100),
+    'percentile_thresholds': (50, 90, 100),
 
     # histogram_selector, histogram bins for timers
     # - callable
@@ -334,9 +334,9 @@ statsd = dict(
     #   histogram bins, see the myapp_response_histogram above. The selector receives
     #   the metadata dict which can be used to provide different histogram constructors
     #   depending on metrics metadata. I.e. for the packet "foo:123|h|#hello=world",
-    #   the selector will receive dict(name="foo", hello="world")
+    #   the selector will receive {'name': "foo", 'hello': "world"}
     #   For each bin, the stats calculated are: lower, upper, mean, count, count_ps, and stdev.
-    histogram_selector=lambda metadata: myapp_response_histogram,
+    'histogram_selector': lambda metadata: myapp_response_histogram,
 
     # timestamp_window, acceptable time window (in seconds) for custom timestamps
     # - int
@@ -345,8 +345,8 @@ statsd = dict(
     #   the system "now". The custom timestamp however, is only accepted within a given time
     #   window configured here: now - timestamp_window ... now + timestamp_window
     #   Metrics with custom timestamp outside of the window are ignored.
-    # - Example: timestamp_window = 60
-)
+    # - Example: 'timestamp_window': 60,
+}
 
 
 # This module consumes via UDP protocol newline delimited JSON objects (and only objects)
@@ -356,23 +356,23 @@ statsd = dict(
 # flushed to the destination modules at the configured flush_interval.
 # Note there is no protection against malicious payloads, it is as secure as Python's
 # built-in json module.
-jsond = dict(
-    module_type="jsond_server",
-    module_inactive=True,
+jsond = {
+    'module_type': "jsond_server",
+    'module_inactive': True,
 
     # local_host
     # - str, UDP endpoint to bind at
     # - Optional, default: '0.0.0.0:0'
     # - See local_host description statsd, you most likely want to specify this option.
-    local_host='127.0.0.1:8181',
-)
+    'local_host': '127.0.0.1:8181',
+}
 
 
 # This is linux specific module. It reads systemd journal events. See:
 # https://www.freedesktop.org/software/systemd/python-systemd/journal.html
-systemd = dict(
-    module_type="systemd_journal",
-    module_inactive=True,
+systemd = {
+    'module_type': "systemd_journal",
+    'module_inactive': True,
 
     # journal_log_level, event severity level threshold
     # - str
@@ -380,7 +380,7 @@ systemd = dict(
     # - This parameter is similar to log_level. It however applies to events coming from
     #   the system journal. Note that you provide Python's log levels here, they are being
     #   mapped by the module to syslog levels (because that's what journal events use).
-    # - Example: journal_log_level = 'ERROR'
+    # - Example: 'journal_log_level': 'ERROR',
 
     # event_map
     # - dict of str:str
@@ -399,21 +399,21 @@ systemd = dict(
     #         }
     # - Keys that are not in the map are being dropped from the incoming event objects.
     #   The existing ones are renamed according to the map.
-    # - Example: event_map = {'MESSAGE': 'msg'}
+    # - Example: 'event_map': {'MESSAGE': 'msg'},
 
     # timestamp_window, time window (in seconds) for past events
     # - int
     # - Optional, default: 600
     # - You may want to receive events from before Bucky3 was started (i.e. boot messages)
     #   This parameter defines how far back should the module read the events from journal.
-    # - Example: timestamp_window = 60
-)
+    # - Example: 'timestamp_window': 60,
+}
 
 
 # Note that InfluxDB module is disabled (it would produce UDP traffic)
-influxdb = dict(
-    module_type="influxdb_client",
-    module_inactive=True,
+influxdb = {
+    'module_type': "influxdb_client",
+    'module_inactive': True,
 
     # remote_hosts, InfluxDB endpoints
     # - tuple of str
@@ -422,17 +422,17 @@ influxdb = dict(
     #   resolved every 3min, so DNS changes are automatically picked up. Like for local_host,
     #   you can use IPs or hostnames but port number has to be numeric. If you don't specify
     #   the port, it defaults to 8086.
-    # - Example: remote_hosts=("influxdb1", "influxdb2:1234")
-    remote_hosts=(
+    # - Example: 'remote_hosts': ("influxdb1", "influxdb2:1234"),
+    'remote_hosts': (
         "localhost",
     ),
 
     # flush_interval should be short for this module so it overrides the value from
     # the global context. Also, flush_interval<=3 implies randomize_startup=False
-    flush_interval=1,
+    'flush_interval': 1,
     # As describe above, this module should use small chunk_size
-    chunk_size=5,
-)
+    'chunk_size': 5,
+}
 
 
 # This is an example of a dynamic ES index name generator.
@@ -443,9 +443,9 @@ def elasticsearch_index_generator(bucket, values, timestamp):
     return datetime.utcfromtimestamp(timestamp).strftime('metrics_%Y_%m_%d')
 
 
-elasticsearch = dict(
-    module_type="elasticsearch_client",
-    module_inactive=True,
+elasticsearch = {
+    'module_type': "elasticsearch_client",
+    'module_inactive': True,
 
     # index_name, Elasticsearch index name
     # - str or callable
@@ -454,13 +454,13 @@ elasticsearch = dict(
     #   https://www.elastic.co/blog/index-type-parent-child-join-now-future-in-elasticsearch
     #   https://www.elastic.co/guide/en/elasticsearch/guide/current/mapping.html
     #   Note, that this can be a function, see elasticsearch_index_generator above.
-    # - Example: index_name="graylog_deflector"
+    # - Example: 'index_name': "graylog_deflector",
 
     # type_name, Elasticsearch type name
     # - str
     # - Optional, default: None
     # - If not provided, the destination type names are bucket names, see also index_name.
-    # - Example: type_name="message"
+    # - Example: 'type_name': "message",
 
     # remote_hosts, Elasticsearch endpoints
     # - tuple of str
@@ -469,37 +469,37 @@ elasticsearch = dict(
     #   client sends data to a randomly picked one from the pool of resolved endpoints.
     #   The connection is recycled every 3min. This is to provide load balancing that
     #   follows topology changes. The default port is 9200.
-    # - Example: remote_hosts=("es1", "es2:1234")
-    remote_hosts=(
+    # - Example: 'remote_hosts': ("es1", "es2:1234"),
+    'remote_hosts': (
         "localhost",
     ),
 
-    flush_interval=1,
+    'flush_interval': 1,
 
     # compression, whether to compress HTTP payload in Elasticsearch API calls
     # - str
     # - Optional, default: None
     # - In heavy load setups, compressing JSON bulk uploads can save a lot of bandwidth.
     #   Acceptable values are: 'deflate' and 'gzip'
-    # - Example: compression='deflate',
-)
+    # - Example: 'compression': 'deflate',
+}
 
 
 # Note that Prometheus exporter is implicitly enabled
-prometheus = dict(
-    module_type="prometheus_exporter",
+prometheus = {
+    'module_type': "prometheus_exporter",
 
     # local_host, TCP endpoint to bind at
     # - str
     # - Optional, default: "0.0.0.0:9103"
-    # - Example: local_host="127.0.0.1:9090"
+    # - Example: 'local_host': "127.0.0.1:9090",
 
     # http_path
     # - str
     # - Optional, default: "metrics"
     # - This module only replies to GETs for /http_path, by default it is GET /metrics
     #   Other requests receive 404. If you use http_path="", the endpoint will be GET /
-    # Example: http_path=""
+    # - Example: 'http_path': "",
 
     # flush_interval in combination with values_timeout define the metrics retention
     # in prometheus exporter. Prometheus1 has a long staleness (configured to a point)
@@ -508,7 +508,7 @@ prometheus = dict(
     # you need to tune flush_interval and values_timeout to your scraping interval.
     # Here, "flush_interval=5" and "values_timeout=14" are set so that statsd module
     # drops metrics before 20s - which will work with 10s scraping interval.
-    flush_interval=5,
+    'flush_interval': 5,
 
     # values_timeout, data retention (in seconds)
     # - int
@@ -516,30 +516,29 @@ prometheus = dict(
     # - Every flush_interval seconds this module runs a housekeeping task. The task
     #   finds all metrics that has not been refreshed (received from source modules)
     #   in values_timeout seconds and removes them.
-    values_timeout=14,
+    'values_timeout': 14,
 
     # As described above, you likely want this module start up asap.
-    randomize_startup=False,
+    'randomize_startup': False,
 
     # compression, whether to compress HTTP response
     # - str
     # - Optional, default: None
     # - Note that unlike Elasticsearch, Prometheus can only accept 'gzip' encoding.
     #   Also, the module will only use gzip when client offers it with 'Accept-Encoding'.
-    # - Example: compression='gzip',
-    compression='gzip',
-)
+    'compression': 'gzip',
+}
 
 
 # Consider the Graphite module deprecated. It is not actively maintained,
 # it is provided only for backward compatibility.
-carbon = dict(
-    module_type="carbon_client",
-    module_inactive=True,
-    remote_hosts=(
+carbon = {
+    'module_type': "carbon_client",
+    'module_inactive': True,
+    'remote_hosts': (
         "127.0.0.1:2003",
     ),
-    flush_interval=1,
+    'flush_interval': 1,
 
     # name_mapping
     # - tuple of str
@@ -556,7 +555,7 @@ carbon = dict(
     #   *  system_cpu(value="user", name="0", host="foo", location="bar", env="test") = 24
     #   Since "bucket" is "system_cpu", Graphite receives:
     #   *  system_cpu.foo.0.user.test.bar 24
-    name_mapping=(
+    'name_mapping': (
         "bucket", "team", "app", "host", "name", "value",
     ),
-)
+}

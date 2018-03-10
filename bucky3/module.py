@@ -235,12 +235,12 @@ class MetricsProcess(multiprocessing.Process, Logger):
     def produce_self_report(self):
         now = time.monotonic()
         usage = resource.getrusage(resource.RUSAGE_SELF)
-        return dict(
-            cpu=round(usage.ru_utime + usage.ru_stime, 3),
-            memory=usage.ru_maxrss,
-            uptime=round(now - self.init_timestamp, 3),
-            flush_errors=self.flush_errors,
-        )
+        return {
+            'cpu': round(usage.ru_utime + usage.ru_stime, 3),
+            'memory': usage.ru_maxrss,
+            'uptime': round(now - self.init_timestamp, 3),
+            'flush_errors': self.flush_errors,
+        }
 
     @cached_with_timeout(timeout=60, allow_none=True)
     def take_self_report(self):
@@ -250,7 +250,7 @@ class MetricsProcess(multiprocessing.Process, Logger):
             "bucky3",
             self.produce_self_report(),
             None,
-            dict(name=self.name),
+            {'name': self.name},
         )
 
     def merge_dict(self, dst, src=None):

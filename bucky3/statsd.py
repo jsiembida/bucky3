@@ -92,14 +92,14 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                         vsum_squares += x * x
                         while i >= next_i - 1:
                             mean = vsum / vlen
-                            stats = dict(count=vlen, count_ps=vlen / interval, lower=v[0], upper=x, mean=mean)
+                            stats = {'count': vlen, 'count_ps': vlen / interval, 'lower': v[0], 'upper': x, 'mean': mean}
                             if vlen > 1:
                                 var = (vsum_squares - 2 * mean * vsum + vlen * mean * mean) / (vlen - 1)
                                 # FP rounding can lead to negative variance and in consequence complex stdev.
                                 # I.e. three samples of [0.003, 0.003, 0.003]
                                 var = max(var, 0)
                                 stats['stdev'] = var ** 0.5
-                            metadata = dict(percentile=str(next_t))
+                            metadata = {'percentile': str(next_t)}
                             metadata.update(k)
                             self.buffer_metric(bucket, stats, cust_timestamp or timestamp, metadata)
                             next_i, next_t = next(thresholds)
@@ -115,12 +115,12 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             for k, (cust_timestamp, selector, buckets) in self.histograms.items():
                 for histogram_bucket, (vlen, vsum, vsum_squares, vmin, vmax) in buckets.items():
                     mean = vsum / vlen
-                    stats = dict(count=vlen, count_ps=vlen / interval, lower=vmin, upper=vmax, mean=mean)
+                    stats = {'count': vlen, 'count_ps': vlen / interval, 'lower': vmin, 'upper': vmax, 'mean': mean}
                     if vlen > 1:
                         var = (vsum_squares - 2 * mean * vsum + vlen * mean * mean) / (vlen - 1)
                         var = max(var, 0)
                         stats['stdev'] = var ** 0.5
-                    metadata = dict(histogram=str(histogram_bucket))
+                    metadata = {'histogram': str(histogram_bucket)}
                     metadata.update(k)
                     self.buffer_metric(bucket, stats, cust_timestamp or timestamp, metadata)
             self.histograms = {}
