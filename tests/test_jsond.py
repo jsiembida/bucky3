@@ -8,6 +8,7 @@ import unittest
 import itertools
 from unittest.mock import patch, MagicMock
 import bucky3.jsond as jsond
+import time
 
 
 def jsond_verify(output_pipe, expected_values):
@@ -148,7 +149,7 @@ class TestJsonDServer(unittest.TestCase):
         module.tick()
         jsond_verify(pipe, [])
 
-    @jsond_setup(timestamps=(2, 4, 6, 8, 10, 12, 14, 16, 18, 20))
+    @jsond_setup(timestamps=(time.time(), time.time() + 10, time.time() + 20, time.time() + 30, time.time() + 40))
     def test_timestamped_lines(self, module):
         pipe = module.dst_pipes[0]
         payload_obj = self.randdict()
@@ -157,30 +158,28 @@ class TestJsonDServer(unittest.TestCase):
         module.handle_line(0, payload_str)
         del payload_obj['timestamp']
         module.tick()
-        jsond_verify(pipe, [
-            ('metrics', payload_obj, 0, {}),
-        ])
+        jsond_verify(pipe, [])
 
         payload_obj = self.randdict()
-        now = datetime.datetime.utcnow()
-        payload_obj['timestamp'] = now.timestamp()
-        payload_str = json.dumps(payload_obj)
-        module.handle_line(0, payload_str)
-        del payload_obj['timestamp']
-        module.tick()
-        jsond_verify(pipe, [
-            ('metrics', payload_obj, now.timestamp(), {}),
-        ])
-
-        payload_obj = self.randdict()
-        now = int(datetime.datetime.utcnow().timestamp() * 1000)
+        now = time.time()
         payload_obj['timestamp'] = now
         payload_str = json.dumps(payload_obj)
-        module.handle_line(0, payload_str)
+        module.handle_line(now, payload_str)
         del payload_obj['timestamp']
         module.tick()
         jsond_verify(pipe, [
-            ('metrics', payload_obj, now / 1000, {}),
+            ('metrics', payload_obj, now, {}),
+        ])
+
+        payload_obj = self.randdict()
+        now = round(time.time(), 1)
+        payload_obj['timestamp'] = now * 1000
+        payload_str = json.dumps(payload_obj)
+        module.handle_line(now, payload_str)
+        del payload_obj['timestamp']
+        module.tick()
+        jsond_verify(pipe, [
+            ('metrics', payload_obj, now, {}),
         ])
 
 
