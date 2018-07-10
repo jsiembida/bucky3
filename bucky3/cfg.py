@@ -365,6 +365,12 @@ jsond = {
     # - Optional, default: '0.0.0.0:0'
     # - See local_host description statsd, you most likely want to specify this option.
     'local_host': '127.0.0.1:8181',
+
+    # timestamp_window, acceptable time window (in seconds) for custom timestamps
+    # - int
+    # - Optional, default: 600
+    # - See timestamp_window in statsd module.
+    # - Example: 'timestamp_window': 60,
 }
 
 

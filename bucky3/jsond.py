@@ -14,6 +14,10 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.sock = None
         self.decoder = json.JSONDecoder()
 
+    def init_cfg(self):
+        super().init_cfg()
+        self.timestamp_window = self.cfg.get('timestamp_window', 600)
+
     def read_loop(self):
         sock = self.open_socket(bind=True)
         while True:
@@ -49,10 +53,10 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
         try:
             # TODO there is no protection against malicious / malformed lines
             obj, end = self.decoder.raw_decode(line)
+            if end == len(line) and isinstance(obj, dict):
+                self.handle_obj(recv_timestamp, obj)
         except ValueError:
             return
-        if end == len(line) and isinstance(obj, dict):
-            self.handle_obj(recv_timestamp, obj)
 
     def handle_obj(self, recv_timestamp, obj):
         # Only flat objects with basic types
@@ -63,18 +67,11 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
         # and fast. So let's accept only a sensible number of secs / millis from epoch.
         cust_timestamp = None
         if 'timestamp' in obj:
-            cust_timestamp = obj['timestamp']
-            # TODO Here we accept custom timestamps from roughly 2000 to 2060,
-            # this is inconsistent with statsd module that only accepts those
-            # in a very small, configurable window (i.e. +/- 10mins from now).
-            if isinstance(cust_timestamp, (int, float)):
-                if 1000000000 < cust_timestamp < 3000000000:  # Looks like seconds
-                    pass
-                elif 1000000000000 < cust_timestamp < 3000000000000:  # Looks like millis
-                    cust_timestamp = cust_timestamp / 1000
-                else:
-                    cust_timestamp = None
-            else:
-                cust_timestamp = None
+            cust_timestamp = float(obj['timestamp'])
+            # Assume millis not secs if the timestamp >= 2^31
+            if cust_timestamp > 2147483647:
+                cust_timestamp /= 1000
+            if abs(recv_timestamp - cust_timestamp) > self.timestamp_window:
+                return
             del obj['timestamp']
         self.buffer_metric('metrics', obj, cust_timestamp or recv_timestamp, None)

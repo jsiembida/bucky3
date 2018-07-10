@@ -227,8 +227,8 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 raise ValueError()
             if k == 'timestamp':
                 cust_timestamp = float(v)
-                # 2524608000 = secs from epoch to 1 Jan 2050
-                if cust_timestamp > 2524608000:
+                # Assume millis not secs if the timestamp >= 2^31
+                if cust_timestamp > 2147483647:
                     cust_timestamp /= 1000
                 if abs(recv_timestamp - cust_timestamp) > self.timestamp_window:
                     raise ValueError()
