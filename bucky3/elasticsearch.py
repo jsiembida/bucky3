@@ -48,11 +48,11 @@ class ElasticsearchConnection(http.client.HTTPConnection):
         headers['Content-Encoding'] = headers['Accept-Encoding'] = self.compression
         self.request('POST', '/_bulk', body=body, headers=headers)
         resp = self.getresponse()
+        body = resp.read()
         if resp.status != 200:
             raise ConnectionError('Elasticsearch error code {}'.format(resp.status))
         # This is to pull the data in from the socket.
         # TODO: find out how errors are being reported by elasticsearch and implement proper retry logic.
-        body = resp.read()
         # Needed? Is HTTP code not enough?
         # if resp.headers['Content-Encoding'] == 'deflate':
         #     body = zlib.decompress(body)
