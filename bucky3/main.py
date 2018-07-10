@@ -37,6 +37,7 @@ MODULES = {
     'linux_stats': ('bucky3.linux', 'LinuxStatsCollector'),
     'docker_stats': ('bucky3.docker', 'DockerStatsCollector'),
     'systemd_journal': ('bucky3.journal', 'SystemdJournal'),
+    'debug_output': ('bucky3.debug', 'DebugOutput'),
 }
 
 
