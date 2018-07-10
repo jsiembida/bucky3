@@ -5,14 +5,15 @@ import select
 import syslog
 import logging
 import platform
+import datetime
 from systemd import journal
 import bucky3.module as module
+import bucky3.tracing as tracing
 
 
-class SystemdJournal(module.MetricsSrcProcess):
-    default_event_map = {
+class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
+    event_map = {
         'MESSAGE': 'message',
-        'SYSLOG_IDENTIFIER': 'identifier',
         '_EXE': 'command',
         '_HOSTNAME': 'host',
         '_MACHINE_ID': 'machine_id',
@@ -48,7 +49,8 @@ class SystemdJournal(module.MetricsSrcProcess):
 
     def __init__(self, *args):
         assert platform.system() == 'Linux' and platform.release() >= '3'
-        super().__init__(*args)
+        module.MetricsSrcProcess.__init__(self, *args)
+        tracing.Tracer.__init__(self)
 
     def init_cfg(self):
         super().init_cfg()
@@ -63,27 +65,35 @@ class SystemdJournal(module.MetricsSrcProcess):
         }
         journal_log_level = self.cfg.get('journal_log_level', 'INFO')
         self.journal_log_level = log_level_map.get(journal_log_level, syslog.LOG_INFO)
-        self.timestamp_window = self.cfg.get('timestamp_window', 600)
-        self.event_map = self.cfg.get('event_map', self.default_event_map)
+        self.timestamp_window = self.cfg.get('timestamp_window', 60)
+
+    def flush(self, system_timestamp):
+        ret1 = module.MetricsSrcProcess.flush(self, system_timestamp)
+        ret2 = tracing.Tracer.flush(self, system_timestamp)
+        return ret1 and ret2
 
     def read_journal(self):
+        # https://www.g-loaded.eu/2016/11/26/how-to-tail-log-entries-through-the-systemd-journal-using-python/
         with journal.Reader() as j:
             j.log_level(self.journal_log_level)
             j.this_boot()
             j.this_machine()
-            j.seek_realtime(time.time() - self.timestamp_window)
-            # https://www.g-loaded.eu/2016/11/26/how-to-tail-log-entries-through-the-systemd-journal-using-python/
-            # The article says this call is needed
-            # j.get_previous()
+
+            if self.timestamp_window > 0:
+                j.seek_realtime(datetime.datetime.utcfromtimestamp(time.time() - self.timestamp_window))
+                recv_timestamp = time.time()
+                for event in j:
+                    self.handle_event(recv_timestamp, event)
+
             p = select.poll()
             p.register(j.fileno(), j.get_events())
-
             while True:
                 try:
                     if p.poll(3000):
                         if j.process() == journal.APPEND:
+                            recv_timestamp = time.time()
                             for event in j:
-                                self.handle_event(event)
+                                self.handle_event(recv_timestamp, event)
                 except InterruptedError:
                     pass
 
@@ -91,7 +101,7 @@ class SystemdJournal(module.MetricsSrcProcess):
         self.start_thread('JournalReadThread', self.read_journal)
         super().loop()
 
-    def handle_event(self, event):
+    def handle_event(self, recv_timestamp, event):
         event_severity = event.get('PRIORITY')
         if event_severity is not None:
             if event_severity > self.journal_log_level:
@@ -102,7 +112,7 @@ class SystemdJournal(module.MetricsSrcProcess):
         for k, v in self.event_map.items():
             if k in event:
                 tmp = event[k]
-                if isinstance(tmp, (int, float, bool)) or tmp is None:
+                if isinstance(tmp, (str, int, float, bool)) or tmp is None:
                     obj[v] = tmp
                 else:
                     obj[v] = str(tmp)
@@ -122,8 +132,11 @@ class SystemdJournal(module.MetricsSrcProcess):
 
         event_timestamp = event.get('_SOURCE_REALTIME_TIMESTAMP') or event.get('__REALTIME_TIMESTAMP')
         if event_timestamp is None:
-            event_timestamp = time.time()
+            event_timestamp = recv_timestamp
         else:
             event_timestamp = event_timestamp.timestamp()
 
-        self.buffer_metric('logs', obj, event_timestamp, None)
+        self.input(recv_timestamp, event_timestamp, obj)
+
+    def output(self, recv_timestamp, event_timestamp, event):
+        self.buffer_metric('logs', event, event_timestamp, None)
