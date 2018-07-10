@@ -52,7 +52,9 @@ class DockerConnection(http.client.HTTPConnection):
 class DockerStatsCollector(module.MetricsSrcProcess, linux.ProcfsReader):
     def __init__(self, *args):
         super().__init__(*args)
-        self.env_regex = re.compile('^([a-zA-Z][a-zA-Z0-9_]*)=([a-zA-Z0-9_:=\-\+\@\?\#\.\/\%\<\>\*\;\&\[\]]+)$', re.ASCII)
+        self.meta_name_regex = re.compile(r'([a-zA-Z][a-zA-Z0-9_]*)', re.ASCII)
+        self.meta_value_regex = re.compile(r'([a-zA-Z0-9_:=\-\+\@\?\#\.\/\%\<\>\*\;\&\[\]]+)', re.ASCII)
+        self.env_regex = re.compile(self.meta_name_regex.pattern + '=' + self.meta_value_regex.pattern, re.ASCII)
 
     def init_cfg(self):
         super().init_cfg()
@@ -107,14 +109,19 @@ class DockerStatsCollector(module.MetricsSrcProcess, linux.ProcfsReader):
         container_metadata = {}
         if self.env_mapping:
             for l in inspect_config.get('Env', []):
-                m = self.env_regex.match(l)
+                m = self.env_regex.fullmatch(l)
                 if m:
                     env_name, env_value = m.group(1), m.group(2)
                     if env_name in self.env_mapping:
                         container_metadata[self.env_mapping[env_name]] = env_value
-        if container_info.get('Names'):
-            container_metadata['docker_name'] = container_info['Names'][0]
-        container_metadata.update(inspect_config.get('Labels', {}))
+        for k, v in inspect_config.get('Labels', {}).items():
+            if not self.meta_name_regex.fullmatch(k) or not self.meta_value_regex.fullmatch(v):
+                continue
+            container_metadata[k] = v
+        for name in container_info.get('Names', []):
+            if self.meta_value_regex.fullmatch(name):
+                container_metadata['docker_name'] = name
+                break
         container_metadata['docker_id'] = container_id[:12]
         return container_metadata
 
