@@ -12,7 +12,7 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
     def __init__(self, *args):
         super().__init__(*args)
         self.sock = None
-        self.decoder = json.JSONDecoder()
+        self.json_decoder = json.JSONDecoder()
 
     def init_cfg(self):
         super().init_cfg()
@@ -52,8 +52,8 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
     def handle_line(self, recv_timestamp, line):
         try:
             # TODO there is no protection against malicious / malformed lines
-            obj, end = self.decoder.raw_decode(line)
-            if end == len(line) and isinstance(obj, dict):
+            obj, end = self.json_decoder.raw_decode(line)
+            if end == len(line) and isinstance(obj, dict) and obj:
                 self.handle_obj(recv_timestamp, obj)
         except ValueError:
             return

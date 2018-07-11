@@ -354,6 +354,8 @@ statsd = {
 # the metadata configured is still merged into the objects as for other source modules.
 # There is no aggregation carried out on the JSON objects, they are only buffered and
 # flushed to the destination modules at the configured flush_interval.
+# There are limits as to what is going to be accepted. Only an object and only string,
+# number, boolean and null values in it - this implies no nested structures.
 # Note there is no protection against malicious payloads, it is as secure as Python's
 # built-in json module.
 jsond = {
@@ -395,6 +397,13 @@ systemd = {
     #   This parameter defines how far back should the module read the events from journal.
     #   Set it to zero, to disable fetching the past events.
     # - Example: 'timestamp_window': 180,
+
+    # parse_as_json
+    # - bool
+    # - Optional, default: False
+    # - If True, the module will try to parse messages received from journal as json payload,
+    #   and if succeeds in doing so, the result will be flattened. Same caveats as in jsond_server.
+    # - Example: 'parse_as_json': True,
 }
 
 

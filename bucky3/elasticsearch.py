@@ -89,15 +89,9 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
         self.merge_dict(metadata)
         self.merge_dict(values, metadata)
         timestamp = timestamp or recv_timestamp
-        # ES can be configured otherwise, but by default it only takes a space separated string
-        # with millisecond precision without a TZ (i.e. '2017-11-08 11:04:48.102').
-        # Python's datetime.isoformat on the other hand, only produces microsecond precision
-        # (optional parameter to control it was introduced in Python 3.6) and has the edge case
-        # where it is skipping the fraction part altogether if microseconds==0.
+        # ES parses the following as 'epoch_millis', see:
         # https://www.elastic.co/guide/en/elasticsearch/reference/current/date.html
-        # https://docs.python.org/3/library/datetime.html#datetime.datetime.isoformat
-        timestamp_str = datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        values['timestamp'] = timestamp_str
+        values['timestamp'] = round(timestamp * 1000)
 
         if self.index_name:
             values['bucket'] = bucket

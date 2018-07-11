@@ -9,6 +9,7 @@ import datetime
 from systemd import journal
 import bucky3.module as module
 import bucky3.tracing as tracing
+import json
 
 
 class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
@@ -22,6 +23,8 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
         '_UID': 'uid',
         '_GID': 'gid',
         '_SYSTEMD_UNIT': 'systemd_unit',
+        'CONTAINER_NAME': 'container_name',
+        'CONTAINER_ID': 'container_id'
     }
 
     syslog_facility_map = {
@@ -51,6 +54,7 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
         assert platform.system() == 'Linux' and platform.release() >= '3'
         module.MetricsSrcProcess.__init__(self, *args)
         tracing.Tracer.__init__(self)
+        self.json_decoder = json.JSONDecoder()
 
     def init_cfg(self):
         super().init_cfg()
@@ -66,6 +70,8 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
         journal_log_level = self.cfg.get('journal_log_level', 'INFO')
         self.journal_log_level = log_level_map.get(journal_log_level, syslog.LOG_INFO)
         self.timestamp_window = self.cfg.get('timestamp_window', 60)
+        if self.cfg.get('parse_as_json', False):
+            self.process_event = self.decode_json
 
     def flush(self, system_timestamp):
         ret1 = module.MetricsSrcProcess.flush(self, system_timestamp)
@@ -101,6 +107,28 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
         self.start_thread('JournalReadThread', self.read_journal)
         super().loop()
 
+    def process_event(self, event):
+        return event
+
+    def decode_json(self, event):
+        try:
+            message = event['message'].strip()
+            processed_event = dict(event)
+            del processed_event['message']
+            obj, end = self.json_decoder.raw_decode(message)
+            if end == len(message) and isinstance(obj, dict) and obj:
+                for k, v in obj.items():
+                    if k in processed_event:
+                        continue
+                    if not isinstance(v, (int, float, bool, str)) and v is not None:
+                        return event
+                    processed_event[k] = v
+                return processed_event
+        except ValueError:
+            pass
+
+        return event
+
     def handle_event(self, recv_timestamp, event):
         event_severity = event.get('PRIORITY')
         if event_severity is not None:
@@ -116,8 +144,11 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
                     obj[v] = tmp
                 else:
                     obj[v] = str(tmp)
-        if not obj:
+
+        message = obj.get('message', '').rstrip()
+        if not message:
             return
+        obj['message'] = message
 
         event_facility = event.get('SYSLOG_FACILITY')
         if event_facility is not None:
@@ -139,4 +170,5 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
         self.input(recv_timestamp, event_timestamp, obj)
 
     def output(self, recv_timestamp, event_timestamp, event):
+        event = self.process_event(event)
         self.buffer_metric('logs', event, event_timestamp, None)
