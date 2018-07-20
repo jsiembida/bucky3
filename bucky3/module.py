@@ -418,6 +418,7 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
                 # TODO we don't use the rejected metrics logic anywhere, remove it? Make it work?
                 rejected_chunk = self.push_chunk(chunk)
                 rejected_entries.extend(rejected_chunk)
+                self.metrics_sent += chunk_len - len(rejected_chunk)
                 self.metrics_rejected += len(rejected_chunk)
                 with self.buffer_lock:
                     del self.buffer[:chunk_len]
