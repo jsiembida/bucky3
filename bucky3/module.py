@@ -361,6 +361,7 @@ class MetricsDstProcess(MetricsProcess):
 
     def process_self_report(self, bucket, stats, timestamp, metadata):
         self.process_values(round(time.time(), 3), bucket, stats, timestamp, self.merge_dict(metadata))
+        self.metrics_received += 1
 
 
 class MetricsPushProcess(MetricsDstProcess, Connector):
