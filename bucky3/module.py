@@ -131,7 +131,7 @@ class TCPConnector(Connector, HostResolver):
                 self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 if self.socket_timeout is not None:
                     self.sock.settimeout(self.socket_timeout)
-                self.log.info('Created TCP socket')
+                self.log.debug('Created TCP socket')
                 try:
                     # Connect failure is not fatal.
                     self.sock.connect((remote_ip, remote_port))
