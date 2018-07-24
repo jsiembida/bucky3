@@ -42,7 +42,7 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
             self.http_requests += 1
 
         def log_message(req, format, *args):
-            self.log.info(format, *args)
+            self.log.debug(format, *args)
 
         handler = type(
             'PrometheusHandler',
