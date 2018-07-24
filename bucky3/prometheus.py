@@ -44,10 +44,17 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
         def log_message(req, format, *args):
             self.log.debug(format, *args)
 
+        def handle(req):
+            try:
+                http.server.BaseHTTPRequestHandler.handle(req)
+            except ConnectionResetError:
+                pass
+
         handler = type(
             'PrometheusHandler',
             (http.server.BaseHTTPRequestHandler,),
             {
+                'handle': handle,
                 'do_GET': do_GET,
                 'log_message': log_message,
                 # With the default wbufsize=0 the _SocketWriter() is used in StreamRequestHandler
