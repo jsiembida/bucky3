@@ -70,6 +70,7 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
         journal_log_level = self.cfg.get('journal_log_level', 'INFO')
         self.journal_log_level = log_level_map.get(journal_log_level, syslog.LOG_INFO)
         self.timestamp_window = self.cfg.get('timestamp_window', 60)
+        self.bucket_name = self.cfg.get('journal_bucket', 'logs')
         if self.cfg.get('parse_as_json', False):
             self.process_event = self.decode_json
 
@@ -171,4 +172,4 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
 
     def output(self, recv_timestamp, event_timestamp, event):
         event = self.process_event(event)
-        self.buffer_metric('logs', event, event_timestamp, None)
+        self.buffer_metric(self.bucket_name, event, event_timestamp, None)

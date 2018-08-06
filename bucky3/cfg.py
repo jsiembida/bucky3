@@ -404,6 +404,13 @@ systemd = {
     # - If True, the module will try to parse messages received from journal as json payload,
     #   and if succeeds in doing so, the result will be flattened. Same caveats as in jsond_server.
     # - Example: 'parse_as_json': True,
+
+    # journal_bucket
+    # - str
+    # - Optional, default: 'logs'
+    # - This parameter allows to customize the 'bucket' metadata attached to the data produced
+    #   by this module.
+    # - Example: 'journal_bucket': 'my-systemd-logs'
 }
 
 
