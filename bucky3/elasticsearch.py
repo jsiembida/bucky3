@@ -5,7 +5,7 @@ import uuid
 import zlib
 import gzip
 import http.client
-from datetime import datetime, timezone, timedelta
+from datetime import timezone, timedelta
 import bucky3.module as module
 
 
@@ -48,17 +48,11 @@ class ElasticsearchConnection(http.client.HTTPConnection):
         headers['Content-Encoding'] = headers['Accept-Encoding'] = self.compression
         self.request('POST', '/_bulk', body=body, headers=headers)
         resp = self.getresponse()
+        # This is to pull the data in from the socket.
         body = resp.read()
+        # TODO: find out how errors are being reported by elasticsearch and implement proper retry logic.
         if resp.status != 200:
             raise ConnectionError('Elasticsearch error code {}'.format(resp.status))
-        # This is to pull the data in from the socket.
-        # TODO: find out how errors are being reported by elasticsearch and implement proper retry logic.
-        # Needed? Is HTTP code not enough?
-        # if resp.headers['Content-Encoding'] == 'deflate':
-        #     body = zlib.decompress(body)
-        # elif resp.headers['Content-Encoding'] == 'gzip':
-        #     body = gzip.decompress(body)
-        # return json.loads(body.decode('utf-8'))
 
 
 class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
