@@ -401,6 +401,7 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
         self_report['metrics_sent'] = self.metrics_sent
         self_report['metrics_rejected'] = self.metrics_rejected
         self_report['connection_errors'] = self.connection_errors
+        self_report['metrics_buffered'] = len(self.buffer)
         return self_report
 
     def flush(self, system_timestamp):
