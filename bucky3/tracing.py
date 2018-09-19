@@ -75,7 +75,7 @@ class JavaTracer:
     """
 
     # This doesn't catch all legal exception names, catching all would produce tonnes of false positives.
-    first_line_regex = re.compile(r'[a-zA-Z][a-zA-Z0-9]*(\.[a-zA-Z][a-zA-Z0-9$]*)*:')
+    first_line_regex = re.compile(r'[a-zA-Z][a-zA-Z0-9]*(\.[a-zA-Z][a-zA-Z0-9$]*)+:')
     backtrace_line_regex = re.compile(r'\s+at ')
     backtrace_last_line_regex = re.compile(r'\s+\.\.\.\s+\d+\s+more')
     caused_by_line_regex = re.compile(r'\s*Caused by:')
