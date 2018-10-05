@@ -34,13 +34,11 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
         syslog.LOG_DAEMON: 'daemon',
         syslog.LOG_KERN: 'kernel',
         syslog.LOG_LPR: 'daemon',
-        syslog.LOG_MAIL: 'mail',
-        syslog.LOG_NEWS: 'mail',
-        syslog.LOG_SYSLOG: 'syslog',
+        syslog.LOG_SYSLOG: 'daemon',
     }
     syslog_default_facility = 'user'
 
-    syslog_severity_map = {
+    syslog_level_map = {
         syslog.LOG_EMERG: 'critical',
         syslog.LOG_ALERT: 'critical',
         syslog.LOG_CRIT: 'critical',
@@ -48,7 +46,7 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
         syslog.LOG_WARNING: 'warning',
         syslog.LOG_DEBUG: 'debug',
     }
-    syslog_default_severity = 'info'
+    syslog_default_level = 'info'
 
     def __init__(self, *args):
         assert platform.system() == 'Linux' and platform.release() >= '3'
@@ -65,18 +63,24 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
             logging.getLevelName(logging.WARNING): syslog.LOG_WARNING,
             logging.getLevelName(logging.INFO): syslog.LOG_INFO,
             logging.getLevelName(logging.DEBUG): syslog.LOG_DEBUG,
-            logging.getLevelName(logging.NOTSET): syslog.LOG_DEBUG
         }
         journal_log_level = self.cfg.get('journal_log_level', 'INFO')
+        assert journal_log_level in log_level_map
         self.journal_log_level = log_level_map.get(journal_log_level, syslog.LOG_INFO)
+        trace_log_level = self.cfg.get('trace_log_level')
+        if trace_log_level is not None:
+            assert trace_log_level in log_level_map
+            self.journal_log_level = log_level_map[trace_log_level]
+        else:
+            self.trace_log_level = None
         self.timestamp_window = self.cfg.get('timestamp_window', 60)
         self.bucket_name = self.cfg.get('journal_bucket', 'logs')
         if self.cfg.get('parse_as_json', False):
             self.process_event = self.decode_json
 
     def flush(self, system_timestamp):
-        ret1 = module.MetricsSrcProcess.flush(self, system_timestamp)
-        ret2 = tracing.Tracer.flush(self, system_timestamp)
+        ret1 = tracing.Tracer.flush(self, system_timestamp)
+        ret2 = module.MetricsSrcProcess.flush(self, system_timestamp)
         return ret1 and ret2
 
     def read_journal(self):
@@ -131,11 +135,11 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
         return event
 
     def handle_event(self, recv_timestamp, event):
-        event_severity = event.get('PRIORITY')
-        if event_severity is not None:
-            if event_severity > self.journal_log_level:
+        event_level = event.get('PRIORITY')
+        if event_level is not None:
+            # Do we have to check it? We do j.log_level(self.journal_log_level) before
+            if event_level > self.journal_log_level:
                 return
-            event_severity = self.syslog_severity_map.get(event_severity, self.syslog_default_severity)
 
         obj = {}
         for k, v in self.event_map.items():
@@ -159,8 +163,8 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
                 obj['facility'] = self.syslog_facility_map.get(event_facility, self.syslog_default_facility)
             else:
                 obj['facility'] = self.syslog_default_facility
-        if event_severity is not None:
-            obj['severity'] = event_severity
+        if event_level is not None:
+            obj['level'] = event_level
 
         event_timestamp = event.get('_SOURCE_REALTIME_TIMESTAMP') or event.get('__REALTIME_TIMESTAMP')
         if event_timestamp is None:
@@ -171,5 +175,12 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
         self.input(recv_timestamp, event_timestamp, obj)
 
     def output(self, recv_timestamp, event_timestamp, event):
+        event_level = event.get('level')
+        if event_level is not None:
+            # It can happen that tracer returns event with level below the threshold
+            if event_level > self.journal_log_level:
+                return
+            event_level = self.syslog_level_map.get(event_level, self.syslog_default_level)
+            event['level'] = event_level
         event = self.process_event(event)
         self.buffer_metric(self.bucket_name, event, event_timestamp, None)
