@@ -18,7 +18,7 @@ See `PROTOCOL.md` for a comprehensive description of StatsD protocol implementat
 via StatsD protocol.
 * Linux [Systemd Journal](https://www.freedesktop.org/software/systemd/man/systemd-journald.service.html)
 integration is included. Bucky3 recognizes Python and Java stacktraces in the stream of lines coming from
-system journal and stitches them back together as well as extra fields added by docker logging.
+system journal and stitches them back together, it also recognizes extra fields added by docker logging.
 
 For a more complete list of differences and design choices, see `DESIGN.md`
 
