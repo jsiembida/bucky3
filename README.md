@@ -16,6 +16,9 @@ of [extended StatsD protocol.](https://docs.datadoghq.com/guides/dogstatsd/#data
 See `PROTOCOL.md` for a comprehensive description of StatsD protocol implementation in Bucky3.
 * [CollectD](https://collectd.org) protocol has been dropped in favor of dedicated modules and integration
 via StatsD protocol.
+* Linux [Systemd Journal](https://www.freedesktop.org/software/systemd/man/systemd-journald.service.html)
+integration is included. Bucky3 recognizes Python and Java stacktraces in the stream of lines coming from
+system journal and stitches them back together as well as extra fields added by docker logging.
 
 For a more complete list of differences and design choices, see `DESIGN.md`
 
@@ -82,6 +85,7 @@ via UDP protocol.
 * `elasticsearch_client` - destination module that sends data to Elasticsearch via
 [bulk document upload.](https://www.elastic.co/guide/en/elasticsearch/reference/5.6/docs-bulk.html)
 * `carbon_client` - destination module that sends data to Graphite via TCP.
+* `debug_output` - pprints metrics, as the name suggests, intended for debugging.
 
 ##### Installation
 
@@ -115,7 +119,6 @@ Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
-Alias=bucky3.service
 ```
 
 ##### Signals
