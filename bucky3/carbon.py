@@ -25,7 +25,6 @@ class CarbonClient(module.MetricsPushProcess, module.TCPConnector):
     def push_chunk(self, chunk):
         payload = ''.join(chunk).encode("ascii")
         self.sock.sendall(payload)
-        return []
 
     def flush(self, system_timestamp):
         self.open_socket()

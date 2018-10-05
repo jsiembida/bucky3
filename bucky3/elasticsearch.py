@@ -48,8 +48,7 @@ class ElasticsearchConnection(http.client.HTTPConnection):
         headers['Content-Encoding'] = headers['Accept-Encoding'] = self.compression
         self.request('POST', '/_bulk', body=body, headers=headers)
         resp = self.getresponse()
-        # This is to pull the data in from the socket.
-        body = resp.read()
+        resp.read()  # This is to pull the data in from the socket.
         # TODO: find out how errors are being reported by elasticsearch and implement proper retry logic.
         if resp.status != 200:
             raise ConnectionError('Elasticsearch error code {}'.format(resp.status))
@@ -73,7 +72,6 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
 
     def push_chunk(self, chunk):
         self.elasticsearch_connection.bulk_upload(chunk)
-        return []
 
     def flush(self, system_timestamp):
         self.elasticsearch_connection = ElasticsearchConnection(self.open_socket, self.compression)

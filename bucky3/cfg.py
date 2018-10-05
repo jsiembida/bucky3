@@ -150,7 +150,7 @@ metadata = {
 
 # push_time_limit
 # - float, time limit in seconds for a single flush
-# - Optional, default: = flush_interval / 3
+# - Optional, default: = flush_interval / 2
 # - It can happen that sending the data out takes too long. This parameter sets a total time
 #   limit a single flush operation can take. This is only required for influxdb_client,
 #   carbon_client and elasticsearch_client and should be reasonably shorter than flush_interval.

@@ -11,7 +11,6 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
         payload = '\n'.join(chunk).encode("ascii")
         for ip, port in self.resolve_remote_hosts():
             self.sock.sendto(payload, (ip, port))
-        return []
 
     def flush(self, system_timestamp):
         self.open_socket()
