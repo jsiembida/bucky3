@@ -370,14 +370,13 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
         self.sock = None
         self.default_port = default_port
         self.metrics_sent = 0
-        self.metrics_rejected = 0
         self.metrics_dropped = 0
         self.connection_errors = 0
 
     def init_cfg(self):
         super().init_cfg()
         self.push_count_limit = self.cfg.get('push_count_limit', self.buffer_limit)
-        self.push_time_limit = self.cfg.get('push_time_limit', max(self.tick_interval / 3, 0.1))
+        self.push_time_limit = self.cfg.get('push_time_limit', max(self.tick_interval / 2, 0.1))
 
     def tick(self):
         super().tick()
@@ -399,7 +398,6 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
         self_report = super().produce_self_report()
         self_report['metrics_received'] = self.metrics_received
         self_report['metrics_sent'] = self.metrics_sent
-        self_report['metrics_rejected'] = self.metrics_rejected
         self_report['connection_errors'] = self.connection_errors
         self_report['metrics_buffered'] = len(self.buffer)
         return self_report
@@ -408,7 +406,7 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
         if not self.buffer:
             return True
         self.log.debug('%d entries in buffer to be pushed', len(self.buffer))
-        push_start, push_counter, rejected_entries = time.monotonic(), 0, []
+        push_start, push_counter = time.monotonic(), 0
         try:
             while self.buffer:
                 if push_counter >= self.push_count_limit:
@@ -417,24 +415,19 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
                     break
                 chunk = self.buffer[:self.chunk_size]
                 chunk_len = len(chunk)
-                # TODO we don't use the rejected metrics logic anywhere, remove it? Make it work?
-                rejected_chunk = self.push_chunk(chunk)
-                rejected_entries.extend(rejected_chunk)
-                self.metrics_sent += chunk_len - len(rejected_chunk)
-                self.metrics_rejected += len(rejected_chunk)
+                # Subclass must raise an exception to signal an issue.
+                self.push_chunk(chunk)
+                self.metrics_sent += chunk_len
                 with self.buffer_lock:
                     del self.buffer[:chunk_len]
-                push_counter += chunk_len  # Include all entries, even the failed ones
-            # If we manage to push something then report success. Ok?
-            return push_counter > len(rejected_entries)
+                push_counter += chunk_len
+            # Report success if we managed to push something.
+            return push_counter > 0
         except (ConnectionError, socket.timeout) as e:
             self.log.exception(e)
             self.close_socket()
             self.connection_errors += 1
             return False
         finally:
-            if rejected_entries:
-                with self.buffer_lock:
-                    self.buffer = rejected_entries + self.buffer
             if self.buffer:
                 self.log.warning('%d entries left over in buffer', len(self.buffer))
