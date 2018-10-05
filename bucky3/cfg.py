@@ -390,6 +390,13 @@ systemd = {
     #   mapped by the module to syslog levels (because that's what journal events use).
     # - Example: 'journal_log_level': 'ERROR',
 
+    # trace_log_level, severity level for reassembled traces
+    # - str
+    # - Optional, default: None
+    # - If not None, this parameter defines the level of stack traces reassembled from
+    #   journal line stream. If None, traces have level coming from the first line.
+    # - Example: 'trace_log_level': 'ERROR',
+
     # timestamp_window, time window (in seconds) for past events
     # - int
     # - Optional, default: 60

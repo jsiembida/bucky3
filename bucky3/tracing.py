@@ -112,6 +112,7 @@ class JavaTracer:
 
 class Tracer:
     def __init__(self):
+        self.trace_log_level = None
         self.streams = {}
         self.tracers = (PythonTracer(), JavaTracer())
 
@@ -119,6 +120,8 @@ class Tracer:
         stream_event = dict(stream[0][2])
         coalesced_message = '\n'.join(i[2]['message'] for i in stream)
         stream_event['message'] = coalesced_message
+        if self.trace_log_level is not None:
+            stream_event['level'] = self.trace_log_level
         return stream[0][1], stream_event
 
     def _find_tracer(self, message):
