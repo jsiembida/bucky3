@@ -29,7 +29,7 @@ On Linux with Python3 the default configuration should start out of the box:
 
 ```
 git clone https://github.com/jsiembida/bucky3.git
-BUCKY3_HOST="$(hostname)" PYTHONPATH=bucky3 python3 bucky3/bucky3/main.py
+PYTHONPATH=bucky3 python3 bucky3/bucky3/main.py
 ```
 
 After a couple of seconds, you can harvest metrics:
@@ -84,7 +84,7 @@ via UDP protocol.
 [Prometheus text exposition format.](https://prometheus.io/docs/instrumenting/exposition_formats/)
 * `elasticsearch_client` - destination module that sends data to Elasticsearch via
 [bulk document upload.](https://www.elastic.co/guide/en/elasticsearch/reference/5.6/docs-bulk.html)
-* `carbon_client` - destination module that sends data to Graphite via TCP.
+* `carbon_client` - destination module that sends data to Graphite via OnlyTCP.
 * `debug_output` - pprints metrics, as the name suggests, intended for debugging.
 
 ##### Installation
@@ -99,8 +99,9 @@ Dedicated virtual environment is a recommended way of installing and running:
 
 ##### Running
 
-Bucky3 is intended to be run as an unprivileged service / daemon. Only docker module requires access
-to docker socket. Bucky3 doesn't store any data on filesystem, nor does it create any log files.
+Bucky3 is intended to be run as an unprivileged service, however, docker_stats module requires access
+to docker socket and systemd_journal module requires access journal files which can be granted via respective
+group membership. Bucky3 doesn't store any data on filesystem, nor does it create any log files.
 All logs go to stdout / stderr. Assuming the installation location as above, an example
 [SystemD unit file](https://www.freedesktop.org/software/systemd/man/systemd.unit.html) could be:
 
@@ -112,7 +113,8 @@ After=network-online.target
 [Service]
 User=bucky3
 Group=bucky3
-Environment=BUCKY3_HOST=%H
+SupplementaryGroups=docker
+SupplementaryGroups=systemd-journal
 ExecStart=/usr/local/bucky3/bin/bucky3 /etc/bucky3.conf
 KillMode=control-group
 Restart=on-failure
