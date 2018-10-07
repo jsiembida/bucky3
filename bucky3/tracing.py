@@ -139,6 +139,7 @@ class Tracer:
             str(event.get('pid') or ''),
             str(event.get('command') or ''),
             str(event.get('systemd_unit') or ''),
+            str(event.get('container_id') or ''),
         ))
 
     def output(self, recv_timestamp, event_timestamp, event):
