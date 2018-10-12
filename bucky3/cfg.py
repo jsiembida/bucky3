@@ -388,6 +388,8 @@ systemd = {
     # - This parameter is similar to log_level. It however applies to events coming from
     #   the system journal. Note that you provide Python's log levels here, they are being
     #   mapped by the module to syslog levels (because that's what journal events use).
+    #   Journal events coming without log level are getting this level assigned by default,
+    #   and then get processed, too.
     # - Example: 'journal_log_level': 'ERROR',
 
     # trace_log_level, severity level for reassembled traces
