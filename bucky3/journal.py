@@ -73,6 +73,8 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
             self.journal_log_level = log_level_map[trace_log_level]
         else:
             self.trace_log_level = None
+        self.level_field_name = self.cfg.get('level_field_name', 'level')
+        self.facility_field_name = self.cfg.get('facility_field_name', 'facility')
         self.timestamp_window = self.cfg.get('timestamp_window', 60)
         self.bucket_name = self.cfg.get('journal_bucket', 'logs')
         if self.cfg.get('decode_json', False):
@@ -155,18 +157,20 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
             return
         obj['message'] = message
 
-        event_facility = event.get('SYSLOG_FACILITY')
-        if event_facility is not None:
-            # We see things like [b'DHCP4', b'DHCP6'] or b'RFKILL' for event_facility.
-            # TODO: should we map those to a default one or pass them along untouched?
-            if isinstance(event_facility, int):
-                obj['facility'] = self.syslog_facility_map.get(event_facility, self.syslog_default_facility)
-            else:
-                obj['facility'] = self.syslog_default_facility
+        if self.facility_field_name:
+            event_facility = event.get('SYSLOG_FACILITY')
+            if event_facility is not None:
+                # We see things like [b'DHCP4', b'DHCP6'] or b'RFKILL' for event_facility.
+                # TODO: should we map those to a default one or pass them along untouched?
+                if isinstance(event_facility, int):
+                    obj[self.facility_field_name] = self.syslog_facility_map.get(event_facility, self.syslog_default_facility)
+                else:
+                    obj[self.facility_field_name] = self.syslog_default_facility
+
         if event_level is not None:
-            obj['level'] = event_level
+            obj[self.level_field_name] = event_level
         else:
-            obj['level'] = self.journal_log_level
+            obj[self.level_field_name] = self.journal_log_level
 
         event_timestamp = event.get('_SOURCE_REALTIME_TIMESTAMP') or event.get('__REALTIME_TIMESTAMP')
         if event_timestamp is None:
@@ -184,11 +188,11 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
             self.output(recv_timestamp, event_timestamp, processed_event)
 
     def output(self, recv_timestamp, event_timestamp, event):
-        event_level = event.get('level')
+        event_level = event.get(self.level_field_name)
         if event_level is not None:
             # It can happen that tracer returns event with level below the threshold
             if event_level > self.journal_log_level:
                 return
             event_level = self.syslog_level_map.get(event_level, self.syslog_default_level)
-            event['level'] = event_level
+            event[self.level_field_name] = event_level
         self.buffer_metric(self.bucket_name, event, event_timestamp, None)

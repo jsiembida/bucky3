@@ -392,12 +392,27 @@ systemd = {
     #   and then get processed, too.
     # - Example: 'journal_log_level': 'ERROR',
 
-    # trace_log_level, severity level for reassembled traces
+    # trace_log_level, severity/priority level for reassembled traces
     # - str
     # - Optional, default: None
     # - If not None, this parameter defines the level of stack traces reassembled from
     #   journal line stream. If None, traces have level coming from the first line.
     # - Example: 'trace_log_level': 'ERROR',
+
+    # level_field_name, custom field name
+    # - str
+    # - Optional, default: 'level'
+    # - This module always injects level/severity/priority to the produced events
+    #   (see journal_log_level above). This parameter defines the name under which it is being injected.
+    # - Example: 'level_field_name': 'severity',
+
+    # facility_field_name, custom field name
+    # - str
+    # - Optional, default: 'facility'
+    # - This module can inject facility to the produced events. This parameter defines the name
+    #   under which it is being injected, if set to None, facility is not being injected.
+    #   under is defined here.
+    # - Example: 'level_field_name': None,
 
     # timestamp_window, time window (in seconds) for past events
     # - int
