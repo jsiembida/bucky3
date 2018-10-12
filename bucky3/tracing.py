@@ -75,7 +75,7 @@ class JavaTracer:
     """
 
     # This doesn't catch all legal exception names, catching all would produce tonnes of false positives.
-    first_line_regex = re.compile(r'[a-zA-Z][a-zA-Z0-9]*(\.[a-zA-Z][a-zA-Z0-9$]*)+:')
+    first_line_regex = re.compile(r'[a-zA-Z][_a-zA-Z0-9]*(\.[a-zA-Z][_a-zA-Z0-9$]*)+:')
     backtrace_line_regex = re.compile(r'\s+at ')
     backtrace_last_line_regex = re.compile(r'\s+\.\.\.\s+\d+\s+more')
     caused_by_line_regex = re.compile(r'\s*Caused by:')
@@ -110,12 +110,64 @@ class JavaTracer:
             return self._first_line
 
 
+class NodejsTracer:
+    """
+    https://github.com/v8/v8/wiki/Stack-Trace-API#basic-stack-traces
+    https://codeforgeek.com/2015/04/extract-stacktrace-information-in-node-js/
+
+    /home/unixroot/Desktop/node-debug/app.js:10
+        var stack = new traceback();
+                        ^
+    ReferenceError: traceback is not defined
+        at demo.callNext (/home/unixroot/Desktop/node-debug/app.js:10:18)
+        at new demo (/home/unixroot/Desktop/node-debug/app.js:5:7)
+        at Object.<anonymous> (/home/unixroot/Desktop/node-debug/app.js:14:1)
+        at Module._compile (module.js:456:26)
+        at Object.Module._extensions..js (module.js:474:10)
+        at Module.load (module.js:356:32)
+        at Function.Module._load (module.js:312:12)
+        at Function.Module.runMain (module.js:497:10)
+        at startup (node.js:119:16)
+        at node.js:906:3
+    """
+
+    file_line_regex = re.compile(r'/.+:\d+$')
+    first_line_regex = re.compile(r'[a-zA-Z][_a-zA-Z0-9]*:')  # Can this be in the form of a.b.c?
+    backtrace_line_regex = re.compile(r'\s+at ')
+
+    def __call__(self, line):
+        # Initial matcher cannot raise CancelTrace, only subsequent matchers can.
+        if self.file_line_regex.match(line):
+            return self._error_line
+        if self.first_line_regex.match(line):
+            return self._backtrace_line
+
+    def _error_line(self, line):
+        if line:
+            return self._indicator_line
+        raise CancelTrace()
+
+    def _indicator_line(self, line):
+        if line.strip() == '^':
+            return self._first_line
+        raise CancelTrace()
+
+    def _first_line(self, line):
+        if self.first_line_regex.match(line):
+            return self._backtrace_line
+        raise CancelTrace()
+
+    def _backtrace_line(self, line):
+        if self.backtrace_line_regex.match(line):
+            return self._backtrace_line
+
+
 class Tracer:
     def __init__(self):
         self.trace_log_level = None
         self.streams = {}
         # TODO: Make it configurable trying all tracers every time can be expensive.
-        self.tracers = (PythonTracer(), JavaTracer())
+        self.tracers = (PythonTracer(), JavaTracer(), NodejsTracer())
 
     def _coalesce_events(self, stream):
         stream_event = dict(stream[0][2])

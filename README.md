@@ -17,8 +17,8 @@ See `PROTOCOL.md` for a comprehensive description of StatsD protocol implementat
 * [CollectD](https://collectd.org) protocol has been dropped in favor of dedicated modules and integration
 via StatsD protocol.
 * Linux [Systemd Journal](https://www.freedesktop.org/software/systemd/man/systemd-journald.service.html)
-integration is included. Bucky3 recognizes Python and Java stacktraces in the stream of lines coming from
-system journal and stitches them back together, it also recognizes extra fields added by docker logging.
+integration is included. Bucky3 recognizes Python, Java and Node.js stacktraces in the stream of lines coming
+from system journal and stitches them back together, it also recognizes extra fields added by docker logging.
 
 For a more complete list of differences and design choices, see `DESIGN.md`
 
