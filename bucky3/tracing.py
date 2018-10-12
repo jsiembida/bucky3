@@ -114,6 +114,7 @@ class Tracer:
     def __init__(self):
         self.trace_log_level = None
         self.streams = {}
+        # TODO: Make it configurable trying all tracers every time can be expensive.
         self.tracers = (PythonTracer(), JavaTracer())
 
     def _coalesce_events(self, stream):

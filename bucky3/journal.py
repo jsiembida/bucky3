@@ -75,7 +75,7 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
             self.trace_log_level = None
         self.timestamp_window = self.cfg.get('timestamp_window', 60)
         self.bucket_name = self.cfg.get('journal_bucket', 'logs')
-        if self.cfg.get('parse_as_json', False):
+        if self.cfg.get('decode_json', False):
             self.process_event = self.decode_json
 
     def flush(self, system_timestamp):
@@ -117,7 +117,7 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
 
     def decode_json(self, event):
         try:
-            message = event['message'].strip()
+            message = event['message'].lstrip()  # rstrip is done already
             processed_event = dict(event)
             del processed_event['message']
             obj, end = self.json_decoder.raw_decode(message)
@@ -172,7 +172,14 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
         else:
             event_timestamp = event_timestamp.timestamp()
 
-        self.input(recv_timestamp, event_timestamp, obj)
+        # Optimization: We have only one processor, JSON. It is a fast native parser and it fails fast.
+        # If JSON parsing passes, we don't try to parse stack traces (which is expensive), it goes
+        # straight to output. If it doesn't parse as JSON (still cheap), only then we make the extra effort.
+        processed_event = self.process_event(event)
+        if processed_event is event:
+            self.input(recv_timestamp, event_timestamp, obj)
+        else:
+            self.output(recv_timestamp, event_timestamp, obj)
 
     def output(self, recv_timestamp, event_timestamp, event):
         event_level = event.get('level')
@@ -182,5 +189,4 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
                 return
             event_level = self.syslog_level_map.get(event_level, self.syslog_default_level)
             event['level'] = event_level
-        event = self.process_event(event)
         self.buffer_metric(self.bucket_name, event, event_timestamp, None)
