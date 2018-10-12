@@ -165,6 +165,8 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
                 obj['facility'] = self.syslog_default_facility
         if event_level is not None:
             obj['level'] = event_level
+        else:
+            obj['level'] = self.journal_log_level
 
         event_timestamp = event.get('_SOURCE_REALTIME_TIMESTAMP') or event.get('__REALTIME_TIMESTAMP')
         if event_timestamp is None:
@@ -175,11 +177,11 @@ class SystemdJournal(module.MetricsSrcProcess, tracing.Tracer):
         # Optimization: We have only one processor, JSON. It is a fast native parser and it fails fast.
         # If JSON parsing passes, we don't try to parse stack traces (which is expensive), it goes
         # straight to output. If it doesn't parse as JSON (still cheap), only then we make the extra effort.
-        processed_event = self.process_event(event)
-        if processed_event is event:
+        processed_event = self.process_event(obj)
+        if processed_event is obj:
             self.input(recv_timestamp, event_timestamp, obj)
         else:
-            self.output(recv_timestamp, event_timestamp, obj)
+            self.output(recv_timestamp, event_timestamp, processed_event)
 
     def output(self, recv_timestamp, event_timestamp, event):
         event_level = event.get('level')
