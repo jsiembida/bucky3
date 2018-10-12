@@ -405,12 +405,12 @@ systemd = {
     #   Set it to zero, to disable fetching the past events.
     # - Example: 'timestamp_window': 180,
 
-    # parse_as_json
+    # decode_json
     # - bool
     # - Optional, default: False
     # - If True, the module will try to parse messages received from journal as json payload,
     #   and if succeeds in doing so, the result will be flattened. Same caveats as in jsond_server.
-    # - Example: 'parse_as_json': True,
+    # - Example: 'decode_json': True,
 
     # journal_bucket
     # - str

@@ -10,7 +10,8 @@
 ##### Medium priority
 
 * IPv6 support.
-* Stacktrace handling in systemd journal module would be a nice feature.
+* Stack tracer use a lot of regular expressions, perhaps some of that could be optimized.
+  I.e. can /^\s*at / be replaced with s.lstrip().startswith('at ')?
 
 
 ##### Low priority
