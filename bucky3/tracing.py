@@ -163,7 +163,8 @@ class NodejsTracer:
 
 
 class Tracer:
-    def __init__(self):
+    def __init__(self, level_field_name='level'):
+        self.level_field_name = level_field_name
         self.trace_log_level = None
         self.streams = {}
         # TODO: Make it configurable trying all tracers every time can be expensive.
@@ -174,7 +175,7 @@ class Tracer:
         coalesced_message = '\n'.join(i[2]['message'] for i in stream)
         stream_event['message'] = coalesced_message
         if self.trace_log_level is not None:
-            stream_event['level'] = self.trace_log_level
+            stream_event[self.level_field_name] = self.trace_log_level
         return stream[0][1], stream_event
 
     def _find_tracer(self, message):
