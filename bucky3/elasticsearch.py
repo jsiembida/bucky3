@@ -90,6 +90,7 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
         self.compression = self.cfg.get('compression')
         if self.compression not in {'gzip', 'deflate'}:
             self.compression = 'identity'
+        self.timestamp_field_name = self.cfg.get('timestamp_field_name', 'timestamp')
         self.docs_rejected = 0
 
     def push_chunk(self, chunk):
@@ -105,7 +106,8 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
         timestamp = timestamp or recv_timestamp
         # ES parses the following as 'epoch_millis', see:
         # https://www.elastic.co/guide/en/elasticsearch/reference/current/date.html
-        values['timestamp'] = round(timestamp * 1000)
+        if self.timestamp_field_name:
+            values[self.timestamp_field_name] = round(timestamp * 1000)
 
         if self.index_name:
             values['bucket'] = bucket
