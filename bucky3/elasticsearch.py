@@ -56,7 +56,7 @@ class ElasticsearchConnection(http.client.HTTPConnection):
         elif resp.headers.get('Content-Encoding') == 'gzip':
             body = gzip.decompress(body)
 
-        rejected_docs = 0
+        docs_rejected = 0
 
         try:
             body = body.decode('UTF-8')
@@ -66,13 +66,13 @@ class ElasticsearchConnection(http.client.HTTPConnection):
                     for i in body.get('items', []):
                         doc_status = i.get('status', 200)
                         if doc_status >= 300 or doc_status < 200:
-                            rejected_docs += 1
+                            docs_rejected += 1
             except json.decoder.JSONDecodeError:
                 raise ConnectionError('Elasticsearch response is not JSON')
         except UnicodeDecodeError:
             raise ConnectionError('Elasticsearch response is not UTF-8')
 
-        return rejected_docs
+        return docs_rejected
 
 
 class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
@@ -90,10 +90,10 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
         self.compression = self.cfg.get('compression')
         if self.compression not in {'gzip', 'deflate'}:
             self.compression = 'identity'
-        self.rejected_docs = 0
+        self.docs_rejected = 0
 
     def push_chunk(self, chunk):
-        self.rejected_docs += self.elasticsearch_connection.bulk_upload(chunk)
+        self.docs_rejected += self.elasticsearch_connection.bulk_upload(chunk)
 
     def flush(self, system_timestamp):
         self.elasticsearch_connection = ElasticsearchConnection(self.open_socket, self.compression)
@@ -127,5 +127,5 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
 
     def produce_self_report(self):
         self_report = super().produce_self_report()
-        self_report['rejected_docs'] = self.rejected_docs
+        self_report['docs_rejected'] = self.docs_rejected
         return self_report
