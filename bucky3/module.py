@@ -398,6 +398,7 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
         self_report = super().produce_self_report()
         self_report['metrics_received'] = self.metrics_received
         self_report['metrics_sent'] = self.metrics_sent
+        self_report['metrics_dropped'] = self.metrics_dropped
         self_report['connection_errors'] = self.connection_errors
         self_report['metrics_buffered'] = len(self.buffer)
         return self_report
