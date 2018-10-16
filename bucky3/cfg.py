@@ -490,6 +490,14 @@ elasticsearch = {
     # - If not provided, the destination type names are bucket names, see also index_name.
     # - Example: 'type_name': "message",
 
+    # timestamp_field_name, custom field name
+    # - str
+    # - Optional, default: 'timestamp'
+    # - If not None, this module will add a field with millis since epoch. The name of the field
+    #   is defined by this parameter. You want some form of timestamping in your Elasticsearch
+    #   documents, but you can provide it in your docs and switch timestamping in this module off.
+    # - Example: 'timestamp_field_name': '@timestamp',
+
     # remote_hosts, Elasticsearch endpoints
     # - tuple of str
     # - Required
