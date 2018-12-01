@@ -72,14 +72,19 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
     def get_line(self, bucket, value, metadata, timestamp):
         # https://prometheus.io/docs/instrumenting/exposition_formats/
         metadata_str = ','.join(
-            k + '="' + v.replace('\\', '\\\\').replace('"', '\\"') + '"' for k, v in metadata
+            k + '="' + metadata[k].replace('\\', '\\\\').replace('"', '\\"') + '"' for k in sorted(metadata)
         )
+        # metric_str is a canonical part of the metric, used as a key, too
+        metric_str = bucket
+        if metadata_str:
+            metric_str += '{' + metadata_str + '}'
+        line_str = metric_str + ' ' + str(value)
+        if timestamp is not None:
+            line_str += ' ' + str(int(timestamp * 1000))
         # Lines MUST end with \n (not \r\n), the last line MUST also end with \n
         # Otherwise, Prometheus will reject the whole scrape!
-        line = bucket + '{' + metadata_str + '} ' + str(value)
-        if timestamp is not None:
-            line += ' ' + str(int(timestamp * 1000))
-        return line + '\n'
+        line_str += '\n'
+        return metric_str, line_str
 
     def get_chunks(self):
         with self.buffer_lock:
@@ -120,7 +125,6 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
                 v = int(v)
             if isinstance(v, (int, float)):
                 metadata['value'] = k
-                metadata_tuple = tuple((k, metadata[k]) for k in sorted(metadata.keys()))
-                metric_line = self.get_line(bucket, v, metadata_tuple, metrics_timestamp)
+                metric_str, line_str = self.get_line(bucket, v, metadata, metrics_timestamp)
                 with self.buffer_lock:
-                    self.buffer[(bucket,) + metadata_tuple] = recv_timestamp, metric_line
+                    self.buffer[metric_str] = recv_timestamp, line_str
