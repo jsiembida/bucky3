@@ -90,7 +90,7 @@ flush_interval = 10
 # - Source modules merge this metadata into the produced metrics. Having the host name
 #   injected is very helpful, other helpful could be "env", "location" or "team".
 metadata = {
-    'host': "${BUCKY3_HOST}",
+    'env': 'default-config',
 }
 
 
