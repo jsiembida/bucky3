@@ -128,6 +128,15 @@ class TestPrometheusExporter(unittest.TestCase):
         prometheus_module.flush(5)
         prometheus_verify(prometheus_module, [])
 
+    @prometheus_setup(values_timeout=2, timestamps=range(1, 100))
+    def test_duplicate_values(self, prometheus_module):
+        prometheus_module.process_values(1, 'val1', dict(x=1, y=2), 1, dict(a='b', b='123'))
+        prometheus_module.process_values(1, 'val1', dict(x=10, y=20), 1, dict(a='b', b='123'))
+        prometheus_verify(prometheus_module, [
+            ('val1', dict(value='x', a='b', b='123'), 10, 1),
+            ('val1', dict(value='y', a='b', b='123'), 20, 1),
+        ])
+
 
 if __name__ == '__main__':
     unittest.main()
