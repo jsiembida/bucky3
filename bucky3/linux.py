@@ -49,21 +49,12 @@ class ProcfsReader:
 
 class LinuxStatsCollector(module.MetricsSrcProcess, ProcfsReader):
     CPU_FIELDS = ('user', 'nice', 'system', 'idle', 'wait', 'interrupt', 'softirq', 'steal')
+    # See Documentation/admin-guide/iostats.rst
     DISK_FIELDS = ('read_ops', 'read_merged', 'read_sectors', 'read_time',
                    'write_ops', 'write_merged', 'write_sectors', 'write_time',
-                   'in_progress', 'io_time', 'weighted_time')
-    MEMORY_FIELDS = {
-        'MemTotal:': 'total_bytes',
-        'MemFree:': 'free_bytes',
-        'MemAvailable:': 'available_bytes',
-        'Shmem:': 'shared_bytes',
-        'Cached:': 'cached_bytes',
-        'Slab:': 'slab_bytes',
-        'Mapped:': 'mapped_bytes',
-        'SwapTotal:': 'swap_total_bytes',
-        'SwapFree:': 'swap_free_bytes',
-        'SwapCached:': 'swap_cached_bytes',
-    }
+                   'in_progress', 'io_time', 'weighted_time',
+                   'discard_ops', 'discard_merged', 'discard_sectors', 'discard_time',
+                   'flush_ops', 'flush_time')
     PROTOCOL_FIELDS = {
         'Ip:InReceives': ('ip', 'rx_packets'),
         'Ip:InDiscards': ('ip', 'rx_dropped'),
@@ -199,14 +190,15 @@ class LinuxStatsCollector(module.MetricsSrcProcess, ProcfsReader):
         with open('/proc/diskstats') as f:
             for l in f:
                 tokens = l.strip().split()
-                if not tokens or len(tokens) != 14:
+                if not tokens or len(tokens) < 3:
                     continue
                 disk_name = tokens[2]
                 if not self.check_lists(disk_name, self.disk_blacklist, self.disk_whitelist):
                     continue
                 disk_stats = {k: int(v) for k, v in zip(self.DISK_FIELDS, tokens[3:])}
-                disk_stats['read_bytes'] = disk_stats['read_sectors'] * 512
-                disk_stats['write_bytes'] = disk_stats['write_sectors'] * 512
+                for k in self.DISK_FIELDS:
+                    if k.endswith('_sectors') and k in disk_stats:
+                        disk_stats[k[:-7] + 'bytes'] = disk_stats[k] * 512
                 buffer.append(("system_disk", disk_stats, timestamp, {'name': disk_name}))
 
     def read_protocol_stats(self, buffer, timestamp):

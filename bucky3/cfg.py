@@ -30,7 +30,7 @@ log_level = "INFO"
 
 # log_format
 # - str
-# - Optional, default: '[%(asctime)-15s][%(levelname)s] %(name)s(%(threadName)s@%(process)d) - %(message)s'
+# - Optional, default: '%(asctime)s %(levelname)s %(name)s %(threadName)s@%(process)d %(message)s'
 # - More here: https://docs.python.org/3/library/logging.html#logrecord-attributes
 #   Note that the "ps" command will show identical command lines for all modules, to work
 #   around it, the default log format includes PID.
@@ -233,7 +233,7 @@ linuxstats = {
     # - See the disk_whitelist, disk_blacklist for details
     # - Example: 'filesystem_whitelist': {"ext[234]"},
     'filesystem_blacklist': {
-        "tmpfs", "devtmpfs", "rootfs",
+        "tmpfs", "devtmpfs", "rootfs", "squashfs",
     },
 
     # interface_whitelist, interface_blacklist

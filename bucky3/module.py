@@ -40,7 +40,8 @@ class Logger:
         root.setLevel(cfg.get('log_level', 'INFO'))
         handler = logging.StreamHandler()
         formatter = logging.Formatter(
-            cfg.get('log_format', "[%(asctime)-15s][%(levelname)s] %(name)s(%(threadName)s@%(process)d) - %(message)s")
+            cfg.get('log_format', "%(asctime)s %(levelname)s %(name)s %(threadName)s@%(process)d %(message)s"),
+            datefmt='%Y-%m-%d %H:%M:%S'
         )
         handler.setFormatter(formatter)
         root.addHandler(handler)
