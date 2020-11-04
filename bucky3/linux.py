@@ -52,18 +52,6 @@ class LinuxStatsCollector(module.MetricsSrcProcess, ProcfsReader):
     DISK_FIELDS = ('read_ops', 'read_merged', 'read_sectors', 'read_time',
                    'write_ops', 'write_merged', 'write_sectors', 'write_time',
                    'in_progress', 'io_time', 'weighted_time')
-    MEMORY_FIELDS = {
-        'MemTotal:': 'total_bytes',
-        'MemFree:': 'free_bytes',
-        'MemAvailable:': 'available_bytes',
-        'Shmem:': 'shared_bytes',
-        'Cached:': 'cached_bytes',
-        'Slab:': 'slab_bytes',
-        'Mapped:': 'mapped_bytes',
-        'SwapTotal:': 'swap_total_bytes',
-        'SwapFree:': 'swap_free_bytes',
-        'SwapCached:': 'swap_cached_bytes',
-    }
     PROTOCOL_FIELDS = {
         'Ip:InReceives': ('ip', 'rx_packets'),
         'Ip:InDiscards': ('ip', 'rx_dropped'),
