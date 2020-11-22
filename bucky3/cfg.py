@@ -482,13 +482,33 @@ elasticsearch = {
     #   https://www.elastic.co/blog/index-type-parent-child-join-now-future-in-elasticsearch
     #   https://www.elastic.co/guide/en/elasticsearch/guide/current/mapping.html
     #   Note, that this can be a function, see elasticsearch_index_generator above.
+    #   If the function returns None instead of str, the datapoint is dropped.
     # - Example: 'index_name': "graylog_deflector",
 
-    # type_name, Elasticsearch type name
+    # add_type
+    # - bool
+    # - Optional, default: False
+    # - If True, _type field will be added as defined by type_name.
+    #   Note, that ES7 drops supports for _type and ES6 deprecates it. You should be using
+    #   this option only when you are using ES5 or older, see:
+    #   https://www.elastic.co/guide/en/elasticsearch/reference/current/removal-of-types.html
+    # - Example: 'add_type': True,
+
+    # type_name, Elasticsearch type name, see also add_type
     # - str
     # - Optional, default: None
     # - If not provided, the destination type names are bucket names, see also index_name.
+    #   Note, if add_type is False, this option is ignored and type name is never added.
     # - Example: 'type_name': "message",
+
+    # bucket_field_name
+    # - str
+    # - Optional, default: 'bucket'
+    # - If not None, an extra field with the datapoint bucket name is added. The name of the field
+    #   is defined by this parameter. It is intended as a replacement for _type (see add_type and type_name).
+    #   You should only be using this option when you are using ES6 or newer. In ES5 it duplicates the function
+    #   of the required _type field anyway, so you most likely should set this option to None.
+    # - Example: 'bucket_field_name': None,
 
     # timestamp_field_name, custom field name
     # - str
@@ -496,6 +516,8 @@ elasticsearch = {
     # - If not None, this module will add a field with millis since epoch. The name of the field
     #   is defined by this parameter. You want some form of timestamping in your Elasticsearch
     #   documents, but you can provide it in your docs and switch timestamping in this module off.
+    #   Note, the timestamp produced by this option is a number of millis from epoch, in ES configuration
+    #   known as epoch_millis. See: https://www.elastic.co/guide/en/elasticsearch/reference/current/date.html
     # - Example: 'timestamp_field_name': '@timestamp',
 
     # remote_hosts, Elasticsearch endpoints
