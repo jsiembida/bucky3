@@ -12,10 +12,6 @@ parameters are module specific. All modules (including the main module) ignore
 unknown params, so it is safe to define module specific params in global context.
 - By design, there is no way to "live reload" or "test" the config. You have to
 do the full stop/start sequence.
-- Source modules:
-    statsd_server, jsond_server, linux_stats, docker_stats
-- Destination modules:
-    influxdb_client, prometheus_exporter, carbon_client, elasticsearch_client
 
 """
 
@@ -284,14 +280,18 @@ dockerstats = {
 # and returns a bin name (str), or None if value belongs to no bin.
 # See statsd_server below for details about histogram selector.
 def myapp_response_histogram(x):
-    if x < 0: return None
-    if x < 100: return 'under_100ms'
-    if x < 300: return 'under_300ms'
+    if x < 0:
+        return None
+    if x < 100:
+        return 'under_100ms'
+    if x < 300:
+        return 'under_300ms'
     return 'over_300ms'
 
 
 statsd = {
     'module_type': "statsd_server",
+    'module_inactive': False,
 
     # local_host
     # - str, UDP endpoint to bind at
@@ -358,6 +358,8 @@ statsd = {
 # number, boolean and null values in it - this implies no nested structures.
 # Note there is no protection against malicious payloads, it is as secure as Python's
 # built-in json module.
+# Packets can be compressed with zlib / deflate, as json is highly compressible
+# this allows to transport much more data within the boundaries of a single MTU.
 jsond = {
     'module_type': "jsond_server",
     'module_inactive': True,
@@ -466,9 +468,10 @@ influxdb = {
 # This is an example of a dynamic ES index name generator.
 # It should return a str or None, in the latter case, the metric will be dropped.
 # See index_name option in the elasticsearch module below.
-def elasticsearch_index_generator(bucket, values, timestamp):
-    from datetime import datetime
-    return datetime.utcfromtimestamp(timestamp).strftime('metrics_%Y_%m_%d')
+def elasticsearch_index_generator():
+    import datetime
+    utcfromtimestamp = datetime.datetime.utcfromtimestamp
+    return lambda bucket, values, timestamp: utcfromtimestamp(timestamp).strftime('metrics-%Y-%m-%d')
 
 
 elasticsearch = {
@@ -482,8 +485,8 @@ elasticsearch = {
     #   https://www.elastic.co/blog/index-type-parent-child-join-now-future-in-elasticsearch
     #   https://www.elastic.co/guide/en/elasticsearch/guide/current/mapping.html
     #   Note, that this can be a function, see elasticsearch_index_generator above.
-    #   If the function returns None instead of str, the datapoint is dropped.
     # - Example: 'index_name': "graylog_deflector",
+    'index_name': elasticsearch_index_generator(),
 
     # add_type
     # - bool
@@ -532,7 +535,7 @@ elasticsearch = {
         "localhost",
     ),
 
-    'flush_interval': 1,
+    'flush_interval': 5,
 
     # compression, whether to compress HTTP payload in Elasticsearch API calls
     # - str
@@ -546,6 +549,7 @@ elasticsearch = {
 # Note that Prometheus exporter is implicitly enabled
 prometheus = {
     'module_type': "prometheus_exporter",
+    'module_inactive': False,
 
     # local_host, TCP endpoint to bind at
     # - str
