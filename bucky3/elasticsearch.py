@@ -87,9 +87,11 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
                 static_index_name = self.index_name
                 self.index_name = lambda *args: static_index_name
         self.type_name = self.cfg.get('type_name')
+        self.add_type = self.cfg.get('add_type', False)
         self.compression = self.cfg.get('compression')
         if self.compression not in {'gzip', 'deflate'}:
             self.compression = 'identity'
+        self.bucket_field_name = self.cfg.get('bucket_field_name', 'bucket')
         self.timestamp_field_name = self.cfg.get('timestamp_field_name', 'timestamp')
         self.docs_rejected = 0
 
@@ -104,26 +106,30 @@ class ElasticsearchClient(module.MetricsPushProcess, module.TCPConnector):
         self.merge_dict(metadata)
         self.merge_dict(values, metadata)
         timestamp = timestamp or recv_timestamp
-        # ES parses the following as 'epoch_millis', see:
-        # https://www.elastic.co/guide/en/elasticsearch/reference/current/date.html
-        if self.timestamp_field_name:
-            values[self.timestamp_field_name] = round(timestamp * 1000)
 
         if self.index_name:
-            values['bucket'] = bucket
             index_name = self.index_name(bucket, values, timestamp)
         else:
             index_name = bucket
         if not index_name:
             return
-        type_name = self.type_name or bucket
+
+        if self.timestamp_field_name:
+            values[self.timestamp_field_name] = round(timestamp * 1000)
+
+        if self.bucket_field_name:
+            values[self.bucket_field_name] = bucket
 
         # Try to produce consistent hashing, it is as consistent as json serializer inner workings.
         # I.e. serialization of floats or unicode. Should be more then enough in our case though.
         doc_str = json.dumps(values, sort_keys=True, indent=None, separators=(',', ':'))
         doc_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, doc_str))
-        # TODO ES6 deprecates types, ES7 will drop them - index/type handling needs revisiting
-        req = {"index": {"_index": index_name, "_type": type_name, "_id": doc_id}}
+
+        if self.add_type:
+            req = {"index": {"_index": index_name, "_type": self.type_name or bucket, "_id": doc_id}}
+        else:
+            req = {"index": {"_index": index_name, "_id": doc_id}}
+
         req_str = json.dumps(req, indent=None, separators=(',', ':'))
         self.buffer_output(req_str + '\n' + doc_str + '\n')
 

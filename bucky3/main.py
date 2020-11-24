@@ -28,7 +28,6 @@ import bucky3.module as module
 
 
 MODULES = {
-    'carbon_client': ('bucky3.carbon', 'CarbonClient'),
     'influxdb_client': ('bucky3.influxdb', 'InfluxDBClient'),
     'elasticsearch_client': ('bucky3.elasticsearch', 'ElasticsearchClient'),
     'prometheus_exporter': ('bucky3.prometheus', 'PrometheusExporter'),
@@ -99,26 +98,27 @@ class Manager(module.Logger):
 
         return new_config, src_modules, dst_modules
 
-    def terminate_process(self, proc):
+    def terminate_group(self, group):
+        procs = []
+        for module_config, timestamps, proc, args in group.values():
+            if not proc:
+                continue
+            if proc.exitcode is None:
+                self.log.info("Stopping %s", proc.name)
+                proc.terminate()
+                procs.append(proc)
+            else:
+                self.log.info("%s has already exited", proc.name)
+
         err = 0
-        if proc.exitcode is None:
-            self.log.info("Stopping %s", proc.name)
-            proc.terminate()
-            proc.join(1)
+        for proc in procs:
+            proc.join(5)
             if proc.exitcode is None:
                 self.log.warning("%s still running, killing", proc.name)
                 err += 1
                 os.kill(proc.pid, 9)
                 proc.join()
-        else:
-            self.log.info("%s has already exited", proc.name)
-        return err
 
-    def terminate_group(self, group):
-        err = 0
-        for module_config, timestamps, proc, args in group.values():
-            if proc:
-                err += self.terminate_process(proc)
         return err
 
     def terminate_and_exit(self, err=0):

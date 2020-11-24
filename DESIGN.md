@@ -51,15 +51,15 @@ difficult to fit into the picture.
 
 ### Bucky3
 
-is a rework of Bucky which drops the legacies and brings in metadata, InfluxDB and
-Prometheus support as first-class citizens. It also drops a couple of features for
+is a rework of Bucky which drops the legacies and brings in metadata, InfluxDB, Prometheus
+and Elasticsearch support as first-class citizens. It also drops a couple of features for
 the sake of simplicity. Below is a non-exhaustive list of differences between Bucky
 and Bucky3 as well highlights of some of Bucky3 features:
 
 * Python3 is the target platform. 
 * Bucky has a dedicated subprocess for custom metrics processor, Bucky3 drops that
-and uses a configurable hook for filtering. Also, backends like InfluxDB / Prometheus
-offer rich data processing and custom data postprocessing is most likely redundant.
+and uses a configurable hook for filtering. Also, modern backends offer rich data
+processing so it is most likely redundant.
 * CollectD protocol has been dropped. Linux metrics are implemented in ~200 lines
 of Python code to provide replacement for some of the lost CollectD functionality.
 * Docker containers' metrics collection got implemented in a similar amount of code.
@@ -82,15 +82,12 @@ a different but uniform way of evicting old data.
 `daemontools`, `systemd`, etc provide those and much more.
 * The legacy naming style in StatsD is gone, no effort is made to stay compatible with
 the old StatsD in favor of clean design with metadata.
-* Bucky has an option for debugging Graphite plaintext protocol, it is dropped as
-protocol debugging can be done with tools like `netcat` or `tcpdump`.
-* Bucky has an option to use pickle protocol with Graphite (and it uses batch transfers
-for it as opposed to the plaintext protocol) - Bucky3 drops the pickle protocol, retains
-the plaintext protocol and uses batch transfers across the board.
+* Graphite support was dropped in favour of systems like Prometheus, Elasticsearch
+and InfluxDB.
 * Option of having multiple "metric streams" was introduced into Bucky3. I.e. multiple
 StatsD instances with different settings can be run and configured to feed their output
 to separate destinations.
-* Modules that push data (InfluxDB, Elasticsearch and Graphite) follow network topology
+* Modules that push data (InfluxDB and Elasticsearch) follow network topology
 changes and handle multiple endpoints thus allowing for load balancing.
 * The main process in Bucky passes messages from sources to Graphite module. The main
 process in Bucky3 takes no part in IPC, all IPC stays between source and destination
@@ -100,4 +97,3 @@ everywhere, more efficient and conceptually closer to its data model.
 * Bucky imports modules at source level, Bucky3 does it dynamically. This is to avoid
 dependencies in the main process. Moreover, to improve isolation, Bucky3 delays modules
 initialization (i.e. socket / file operations) until after fork.
-* Codebase has got reduced from `~2600 loc` to `~2200 loc`

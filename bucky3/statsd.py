@@ -221,7 +221,6 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             # Due to how we parse the metadata, comma is the only illegal character
             # in tag values, everything else will be taken literally.
             # Prometheus and Influx modules handle escaping the special chars as needed.
-            # There is no special char handling in carbon module at all, i.e. it is flawed.
             k, _, v = i.partition('=')
             if not k.isidentifier() or not v:
                 raise ValueError()

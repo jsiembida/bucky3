@@ -12,10 +12,6 @@ parameters are module specific. All modules (including the main module) ignore
 unknown params, so it is safe to define module specific params in global context.
 - By design, there is no way to "live reload" or "test" the config. You have to
 do the full stop/start sequence.
-- Source modules:
-    statsd_server, jsond_server, linux_stats, docker_stats
-- Destination modules:
-    influxdb_client, prometheus_exporter, carbon_client, elasticsearch_client
 
 """
 
@@ -46,8 +42,8 @@ log_level = "INFO"
 #   pushed out to the destination module(s). Similarly, in jsond_server, although it does
 #   not do any aggregation.
 #   This depends on your needs, but 10 secs is typical for the source modules.
-#   In influxdb_client, carbon_client and elasticsearch_client it defines the maximum
-#   delay before the metrics received from the source modules are pushed out - for these,
+#   In influxdb_client and elasticsearch_client it defines the maximum delay before
+#   the metrics received from the source modules are pushed out - for these,
 #   it should stay rather low, perhaps 1-5 secs.
 #   In prometheus_exporter it defines the frequency of housekeeping wherein old metrics
 #   are being evicted from cache. Note, it is not the maximum age of data kept in prometheus
@@ -97,10 +93,9 @@ metadata = {
 # buffer_limit
 # - int, max number of entries in the output buffer
 # - Optional, default: 10000
-# - influxdb_client, carbon_client and elasticsearch_client modules buffer metrics
-#   before pushing them out to the destination host. This param is a safety measure. If for
-#   a reason data doesn't get pushed out and the buffer grows beyond buffer_limit, it is
-#   truncated to buffer_limit / 2.
+# - influxdb_client and elasticsearch_client modules buffer metrics before pushing them out
+#   to the destination host. This param is a safety measure. If for a reason data doesn't get
+#   pushed out and the buffer grows beyond buffer_limit, it is truncated to buffer_limit / 2.
 #   In any case, buffer_limit is enforced to be at least 100.
 # - Example: buffer_limit = 1000
 
@@ -112,8 +107,8 @@ metadata = {
 #   It is a balance between too granular and too "bursty" IPC. 100 - 1000 looks reasonable.
 #   In influxdb_client it defines the number of metrics sent out in single UDP packet,
 #   if you want to keep the UDP packets within MTU, the chunk_size should be low, i.e. 5-15.
-#   In carbon_client and prometheus_exporter it defines the number of metrics going into
-#   one TCP socket write, the default 300 seems to be a good value here.
+#   In prometheus_exporter it defines the number of metrics going into one TCP socket write,
+#   the default 300 seems to be a good value here.
 #   In elasticsearch_client it defines a number of entries in one bulk upload. Bigger bulk
 #   calls are significantly more efficient in Elasticsearch. The default 300 or bigger is fine.
 #   In any case, chunk_size is enforced to be at least 1.
@@ -140,8 +135,7 @@ metadata = {
 #   this option off.
 #   For InfluxDB and Prometheus that option doesn't matter much so long as the flush_window
 #   is relatively short. If unsure, switch it on.
-#   For Carbon and Elasticsearch, you want this option being on (but the modules will work
-#   regardless)
+#   For Elasticsearch, you want this option being on (but the module will work regardless)
 #   In any case, metrics coming via StatsD protocol with explicitly provided timestamps
 #   will always have timestamps included. This is to provide capability of backfilling
 #   late metrics and for those new Prometheus 2 semantics won't work anyway.
@@ -152,8 +146,8 @@ metadata = {
 # - float, time limit in seconds for a single flush
 # - Optional, default: = flush_interval / 2
 # - It can happen that sending the data out takes too long. This parameter sets a total time
-#   limit a single flush operation can take. This is only required for influxdb_client,
-#   carbon_client and elasticsearch_client and should be reasonably shorter than flush_interval.
+#   limit a single flush operation can take. This is only required for influxdb_client
+#   and elasticsearch_client and should be reasonably shorter than flush_interval.
 # - Example: push_time_limit = 0.3
 
 
@@ -161,7 +155,7 @@ metadata = {
 # - int, max number or records pushed in a single flush
 # - Optional, default: = buffer_limit
 # - Similarly to push_time_limit, this parameter sets a boundary on how much data we flush
-#   in one go. Also only applicable to influxdb_client, carbon_client and elasticsearch_client.
+#   in one go. Also only applicable to influxdb_client and elasticsearch_client.
 #   push_count_limit, buffer_limit and chunk_size define the buffering policy for those three
 #   modules and provide control over traffic generated and data retention.
 
@@ -284,14 +278,18 @@ dockerstats = {
 # and returns a bin name (str), or None if value belongs to no bin.
 # See statsd_server below for details about histogram selector.
 def myapp_response_histogram(x):
-    if x < 0: return None
-    if x < 100: return 'under_100ms'
-    if x < 300: return 'under_300ms'
+    if x < 0:
+        return None
+    if x < 100:
+        return 'under_100ms'
+    if x < 300:
+        return 'under_300ms'
     return 'over_300ms'
 
 
 statsd = {
     'module_type': "statsd_server",
+    'module_inactive': False,
 
     # local_host
     # - str, UDP endpoint to bind at
@@ -358,6 +356,8 @@ statsd = {
 # number, boolean and null values in it - this implies no nested structures.
 # Note there is no protection against malicious payloads, it is as secure as Python's
 # built-in json module.
+# Packets can be compressed with zlib / deflate, as json is highly compressible
+# this allows to transport much more data within the boundaries of a single MTU.
 jsond = {
     'module_type': "jsond_server",
     'module_inactive': True,
@@ -466,9 +466,10 @@ influxdb = {
 # This is an example of a dynamic ES index name generator.
 # It should return a str or None, in the latter case, the metric will be dropped.
 # See index_name option in the elasticsearch module below.
-def elasticsearch_index_generator(bucket, values, timestamp):
-    from datetime import datetime
-    return datetime.utcfromtimestamp(timestamp).strftime('metrics_%Y_%m_%d')
+def elasticsearch_index_generator():
+    import datetime
+    utcfromtimestamp = datetime.datetime.utcfromtimestamp
+    return lambda bucket, values, timestamp: utcfromtimestamp(timestamp).strftime('metrics-%Y-%m-%d')
 
 
 elasticsearch = {
@@ -483,12 +484,32 @@ elasticsearch = {
     #   https://www.elastic.co/guide/en/elasticsearch/guide/current/mapping.html
     #   Note, that this can be a function, see elasticsearch_index_generator above.
     # - Example: 'index_name': "graylog_deflector",
+    'index_name': elasticsearch_index_generator(),
 
-    # type_name, Elasticsearch type name
+    # add_type
+    # - bool
+    # - Optional, default: False
+    # - If True, _type field will be added as defined by type_name.
+    #   Note, that ES7 drops supports for _type and ES6 deprecates it. You should be using
+    #   this option only when you are using ES5 or older, see:
+    #   https://www.elastic.co/guide/en/elasticsearch/reference/current/removal-of-types.html
+    # - Example: 'add_type': True,
+
+    # type_name, Elasticsearch type name, see also add_type
     # - str
     # - Optional, default: None
     # - If not provided, the destination type names are bucket names, see also index_name.
+    #   Note, if add_type is False, this option is ignored and type name is never added.
     # - Example: 'type_name': "message",
+
+    # bucket_field_name
+    # - str
+    # - Optional, default: 'bucket'
+    # - If not None, an extra field with the datapoint bucket name is added. The name of the field
+    #   is defined by this parameter. It is intended as a replacement for _type (see add_type and type_name).
+    #   You should only be using this option when you are using ES6 or newer. In ES5 it duplicates the function
+    #   of the required _type field anyway, so you most likely should set this option to None.
+    # - Example: 'bucket_field_name': None,
 
     # timestamp_field_name, custom field name
     # - str
@@ -496,6 +517,8 @@ elasticsearch = {
     # - If not None, this module will add a field with millis since epoch. The name of the field
     #   is defined by this parameter. You want some form of timestamping in your Elasticsearch
     #   documents, but you can provide it in your docs and switch timestamping in this module off.
+    #   Note, the timestamp produced by this option is a number of millis from epoch, in ES configuration
+    #   known as epoch_millis. See: https://www.elastic.co/guide/en/elasticsearch/reference/current/date.html
     # - Example: 'timestamp_field_name': '@timestamp',
 
     # remote_hosts, Elasticsearch endpoints
@@ -510,7 +533,7 @@ elasticsearch = {
         "localhost",
     ),
 
-    'flush_interval': 1,
+    'flush_interval': 5,
 
     # compression, whether to compress HTTP payload in Elasticsearch API calls
     # - str
@@ -524,6 +547,7 @@ elasticsearch = {
 # Note that Prometheus exporter is implicitly enabled
 prometheus = {
     'module_type': "prometheus_exporter",
+    'module_inactive': False,
 
     # local_host, TCP endpoint to bind at
     # - str
@@ -563,35 +587,4 @@ prometheus = {
     # - Note that unlike Elasticsearch, Prometheus can only accept 'gzip' encoding.
     #   Also, the module will only use gzip when client offers it with 'Accept-Encoding'.
     'compression': 'gzip',
-}
-
-
-# Consider the Graphite module deprecated. It is not actively maintained,
-# it is provided only for backward compatibility.
-carbon = {
-    'module_type': "carbon_client",
-    'module_inactive': True,
-    'remote_hosts': (
-        "127.0.0.1:2003",
-    ),
-    'flush_interval': 1,
-
-    # name_mapping
-    # - tuple of str
-    # - Required
-    # - Bucky3 speaks metrics with metadata natively. Graphite doesn't. name_mapping
-    #   defines translation order from the key=value metadata to the dot separated
-    #   sequence of strings of Graphite. The metrics metadata keys are pulled out in the
-    #   order of name_mapping (not found keys are skipped), the keys remaining in metrics
-    #   metadata afterwards are appended alphabetically. Values of thus constructed list
-    #   of keys are concatenated into a dot separated Graphite string.
-    #   For example, for the name_mapping as below, if the linux stats module produces:
-    #   *  system_cpu(value="user", name="0") = 24
-    #   After merging with global metadata it might become:
-    #   *  system_cpu(value="user", name="0", host="foo", location="bar", env="test") = 24
-    #   Since "bucket" is "system_cpu", Graphite receives:
-    #   *  system_cpu.foo.0.user.test.bar 24
-    'name_mapping': (
-        "bucket", "team", "app", "host", "name", "value",
-    ),
 }

@@ -162,6 +162,10 @@ class MetricsProcess(multiprocessing.Process, Logger):
             self.log.warning("Flush error, next in %d secs", int(self.flush_interval))
             self.flush_errors += 1
 
+    def exit(self, exit_code):
+        self.log.info("Exiting with code %d", exit_code)
+        sys.exit(exit_code)
+
     def init_cfg(self):
         self.log = self.init_log(self.cfg, self.name)
         self.randomize_startup = self.cfg.get('randomize_startup', True)
@@ -184,8 +188,8 @@ class MetricsProcess(multiprocessing.Process, Logger):
 
     def run(self):
         def termination_handler(signal_number, stack_frame):
-            self.log.info("Received signal %d, exiting", signal_number)
-            sys.exit(0)
+            self.log.info("Received signal %d", signal_number)
+            self.exit(0)
 
         signal.signal(signal.SIGINT, termination_handler)
         signal.signal(signal.SIGTERM, termination_handler)
@@ -218,11 +222,11 @@ class MetricsProcess(multiprocessing.Process, Logger):
                     # which triggers the condition at the top of the function and we miss a legit tick.
                     # The 0.03s is a harmless margin that seems to solve the problem.
                     self.next_flush = now + self.flush_interval - 0.03
-                if self.ended_threads():
-                    self.log.error("Aborting")
-                    sys.exit(1)
                 if self.self_report:
                     self.take_self_report()
+                if self.ended_threads():
+                    self.log.error("Thread(s) unexpectedly ended, aborting")
+                    self.exit(1)
                 now = time.monotonic()
                 while now + 0.3 >= self.next_tick:
                     self.next_tick += self.tick_interval
@@ -308,6 +312,10 @@ class MetricsSrcProcess(MetricsProcess):
     def process_self_report(self, bucket, stats, timestamp, metadata):
         self.buffer_metric(bucket, stats, timestamp, metadata)
 
+    def exit(self, exit_code):
+        self.flush(round(time.time(), 3))
+        super().exit(exit_code)
+
     def flush(self, system_timestamp):
         while self.buffer:
             with self.buffer_lock:
@@ -383,6 +391,13 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
         super().tick()
         self.trim_buffer()
 
+    def exit(self, exit_code):
+        # Give source modules 1 extra sec to flush the buffers.
+        # Main module will wait up to 5s before killing straggling submodules.
+        time.sleep(1 + random.random())
+        self.flush(round(time.time(), 3))
+        super().exit(exit_code)
+
     def trim_buffer(self):
         with self.buffer_lock:
             buffer_len = len(self.buffer)
@@ -405,9 +420,9 @@ class MetricsPushProcess(MetricsDstProcess, Connector):
         return self_report
 
     def flush(self, system_timestamp):
+        self.log.debug('%d entries in buffer to be pushed', len(self.buffer))
         if not self.buffer:
             return True
-        self.log.debug('%d entries in buffer to be pushed', len(self.buffer))
         push_start, push_counter = time.monotonic(), 0
         try:
             while self.buffer:

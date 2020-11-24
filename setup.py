@@ -21,14 +21,14 @@ setup(
     name='bucky3',
     version=__version__,
 
-    description='Monitoring agent for Linux and Docker with StatsD, Carbon, InfluxDB and Prometheus support',
+    description='Monitoring agent for Linux and Docker with StatsD, InfluxDB, Prometheus and Elasticsearch support',
     author='Jarek Siembida',
     author_email='jarek.siembida@gmail.com',
     license='ASF2.0',
     url='http://github.com/jsiembida/bucky3.git',
 
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 5 - Stable',
         'Environment :: Other Environment',
         'Intended Audience :: Developers',
         'Intended Audience :: System Administrators',
