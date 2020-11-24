@@ -97,9 +97,9 @@ Dedicated virtual environment is a recommended way of installing and running:
 ##### Running
 
 Bucky3 is intended to be run as an unprivileged service, however, docker_stats module requires access
-to docker socket and systemd_journal module requires access journal files which can be granted via respective
-group membership. Bucky3 doesn't store any data on filesystem, nor does it create any log files.
-All logs go to stdout / stderr. Assuming the installation location as above, an example
+to the docker socket and systemd_journal module requires access to journal files, both can be granted
+via respective group memberships. Bucky3 doesn't store any data on filesystem, nor does it create any log files.
+All logs go to stderr. Assuming the installation location as above, an example
 [SystemD unit file](https://www.freedesktop.org/software/systemd/man/systemd.unit.html) could be:
 
 ```
@@ -114,6 +114,7 @@ SupplementaryGroups=docker
 SupplementaryGroups=systemd-journal
 ExecStart=/usr/local/bucky3/bin/bucky3 /etc/bucky3.conf
 KillMode=control-group
+TimeoutStopSec=10
 Restart=on-failure
 
 [Install]
@@ -122,10 +123,11 @@ WantedBy=multi-user.target
 
 ##### Signals
 
-When the main process receives `SIGTERM` or `SIGINT`, it sends `SIGTERM` to all modules, waits for them to finish
-and exits. The exit code in this case is zero. If any module had to be forcibly terminated with `SIGKILL`, the exit
-code is non-zero. The main process ignores `SIGHUP`, use a full stop / start sequence if you need to reload it.
+When the main process receives `SIGTERM` or `SIGINT`, it sends `SIGTERM` to all modules, waits up to 5s for them
+to finish and exits. The exit code in this case is zero. If any module had to be forcibly terminated with `SIGKILL`,
+the exit code is non-zero. The main process ignores `SIGHUP`, use a full stop / start sequence if you need to reload it.
 
-When a module (subprocess) receives `SIGTERM`, `SIGINT` or `SIGHUP` it exits. Then the main process restarts it.
-Note that the module is not being reimported, the originally loaded module is just being restarted. Use a full
-stop / start sequence if you need to reload modules from disk.
+When a module (subprocess) receives `SIGTERM`, `SIGINT` or `SIGHUP` it flushes its buffers and exits.
+When a module exits unexpectedly i.e. outside of the above shutdown sequence, the main module will restart it. 
+Note that in this case the module is not being reimported, the originally loaded module is just being restarted.
+Use a full stop / start sequence if you need to reload modules from disk.

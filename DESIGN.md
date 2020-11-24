@@ -51,15 +51,15 @@ difficult to fit into the picture.
 
 ### Bucky3
 
-is a rework of Bucky which drops the legacies and brings in metadata, InfluxDB and
-Prometheus support as first-class citizens. It also drops a couple of features for
+is a rework of Bucky which drops the legacies and brings in metadata, InfluxDB, Prometheus
+and Elasticsearch support as first-class citizens. It also drops a couple of features for
 the sake of simplicity. Below is a non-exhaustive list of differences between Bucky
 and Bucky3 as well highlights of some of Bucky3 features:
 
 * Python3 is the target platform. 
 * Bucky has a dedicated subprocess for custom metrics processor, Bucky3 drops that
-and uses a configurable hook for filtering. Also, backends like InfluxDB / Prometheus
-offer rich data processing and custom data postprocessing is most likely redundant.
+and uses a configurable hook for filtering. Also, modern backends offer rich data
+processing so it is most likely redundant.
 * CollectD protocol has been dropped. Linux metrics are implemented in ~200 lines
 of Python code to provide replacement for some of the lost CollectD functionality.
 * Docker containers' metrics collection got implemented in a similar amount of code.
@@ -97,4 +97,3 @@ everywhere, more efficient and conceptually closer to its data model.
 * Bucky imports modules at source level, Bucky3 does it dynamically. This is to avoid
 dependencies in the main process. Moreover, to improve isolation, Bucky3 delays modules
 initialization (i.e. socket / file operations) until after fork.
-* Codebase has got reduced from `~2600 loc` to `~2200 loc`
