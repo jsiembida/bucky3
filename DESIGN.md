@@ -82,15 +82,12 @@ a different but uniform way of evicting old data.
 `daemontools`, `systemd`, etc provide those and much more.
 * The legacy naming style in StatsD is gone, no effort is made to stay compatible with
 the old StatsD in favor of clean design with metadata.
-* Bucky has an option for debugging Graphite plaintext protocol, it is dropped as
-protocol debugging can be done with tools like `netcat` or `tcpdump`.
-* Bucky has an option to use pickle protocol with Graphite (and it uses batch transfers
-for it as opposed to the plaintext protocol) - Bucky3 drops the pickle protocol, retains
-the plaintext protocol and uses batch transfers across the board.
+* Graphite support was dropped in favour of systems like Prometheus, Elasticsearch
+and InfluxDB.
 * Option of having multiple "metric streams" was introduced into Bucky3. I.e. multiple
 StatsD instances with different settings can be run and configured to feed their output
 to separate destinations.
-* Modules that push data (InfluxDB, Elasticsearch and Graphite) follow network topology
+* Modules that push data (InfluxDB and Elasticsearch) follow network topology
 changes and handle multiple endpoints thus allowing for load balancing.
 * The main process in Bucky passes messages from sources to Graphite module. The main
 process in Bucky3 takes no part in IPC, all IPC stays between source and destination

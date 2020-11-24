@@ -21,7 +21,7 @@ setup(
     name='bucky3',
     version=__version__,
 
-    description='Monitoring agent for Linux and Docker with StatsD, Carbon, InfluxDB and Prometheus support',
+    description='Monitoring agent for Linux and Docker with StatsD, InfluxDB and Prometheus support',
     author='Jarek Siembida',
     author_email='jarek.siembida@gmail.com',
     license='ASF2.0',

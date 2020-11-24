@@ -8,8 +8,6 @@ is a rework of [Bucky](https://github.com/trbs/bucky). Major differences include
 * Metrics with metadata are designed into Bucky3 from the ground up. This is a shift towards systems like
 [InfluxDB](https://www.influxdata.com), [Prometheus](https://prometheus.io) or [Elasticsearch](https://www.elastic.co)
 and biggest conceptual difference between Bucky3 and original Bucky.
-* Consequently, while support of [Carbon protocol](http://graphite.readthedocs.io/en/latest/feeding-carbon.html)
-has been retained, Graphite naming style is built as a mapping on top of the underlying metadata.
 * Python 3.4+ only.
 * [MetricsD](https://github.com/mojodna/metricsd) protocol has been dropped in favor
 of [extended StatsD protocol.](https://docs.datadoghq.com/guides/dogstatsd/#datagram-format)
@@ -84,7 +82,6 @@ via UDP protocol.
 [Prometheus text exposition format.](https://prometheus.io/docs/instrumenting/exposition_formats/)
 * `elasticsearch_client` - destination module that sends data to Elasticsearch via
 [bulk document upload.](https://www.elastic.co/guide/en/elasticsearch/reference/5.6/docs-bulk.html)
-* `carbon_client` - destination module that sends data to Graphite via OnlyTCP.
 * `debug_output` - pprints metrics, as the name suggests, intended for debugging.
 
 ##### Installation

@@ -28,7 +28,6 @@ import bucky3.module as module
 
 
 MODULES = {
-    'carbon_client': ('bucky3.carbon', 'CarbonClient'),
     'influxdb_client': ('bucky3.influxdb', 'InfluxDBClient'),
     'elasticsearch_client': ('bucky3.elasticsearch', 'ElasticsearchClient'),
     'prometheus_exporter': ('bucky3.prometheus', 'PrometheusExporter'),

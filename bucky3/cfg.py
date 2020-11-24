@@ -42,8 +42,8 @@ log_level = "INFO"
 #   pushed out to the destination module(s). Similarly, in jsond_server, although it does
 #   not do any aggregation.
 #   This depends on your needs, but 10 secs is typical for the source modules.
-#   In influxdb_client, carbon_client and elasticsearch_client it defines the maximum
-#   delay before the metrics received from the source modules are pushed out - for these,
+#   In influxdb_client and elasticsearch_client it defines the maximum delay before
+#   the metrics received from the source modules are pushed out - for these,
 #   it should stay rather low, perhaps 1-5 secs.
 #   In prometheus_exporter it defines the frequency of housekeeping wherein old metrics
 #   are being evicted from cache. Note, it is not the maximum age of data kept in prometheus
@@ -93,10 +93,9 @@ metadata = {
 # buffer_limit
 # - int, max number of entries in the output buffer
 # - Optional, default: 10000
-# - influxdb_client, carbon_client and elasticsearch_client modules buffer metrics
-#   before pushing them out to the destination host. This param is a safety measure. If for
-#   a reason data doesn't get pushed out and the buffer grows beyond buffer_limit, it is
-#   truncated to buffer_limit / 2.
+# - influxdb_client and elasticsearch_client modules buffer metrics before pushing them out
+#   to the destination host. This param is a safety measure. If for a reason data doesn't get
+#   pushed out and the buffer grows beyond buffer_limit, it is truncated to buffer_limit / 2.
 #   In any case, buffer_limit is enforced to be at least 100.
 # - Example: buffer_limit = 1000
 
@@ -108,8 +107,8 @@ metadata = {
 #   It is a balance between too granular and too "bursty" IPC. 100 - 1000 looks reasonable.
 #   In influxdb_client it defines the number of metrics sent out in single UDP packet,
 #   if you want to keep the UDP packets within MTU, the chunk_size should be low, i.e. 5-15.
-#   In carbon_client and prometheus_exporter it defines the number of metrics going into
-#   one TCP socket write, the default 300 seems to be a good value here.
+#   In prometheus_exporter it defines the number of metrics going into one TCP socket write,
+#   the default 300 seems to be a good value here.
 #   In elasticsearch_client it defines a number of entries in one bulk upload. Bigger bulk
 #   calls are significantly more efficient in Elasticsearch. The default 300 or bigger is fine.
 #   In any case, chunk_size is enforced to be at least 1.
@@ -136,8 +135,7 @@ metadata = {
 #   this option off.
 #   For InfluxDB and Prometheus that option doesn't matter much so long as the flush_window
 #   is relatively short. If unsure, switch it on.
-#   For Carbon and Elasticsearch, you want this option being on (but the modules will work
-#   regardless)
+#   For Elasticsearch, you want this option being on (but the module will work regardless)
 #   In any case, metrics coming via StatsD protocol with explicitly provided timestamps
 #   will always have timestamps included. This is to provide capability of backfilling
 #   late metrics and for those new Prometheus 2 semantics won't work anyway.
@@ -148,8 +146,8 @@ metadata = {
 # - float, time limit in seconds for a single flush
 # - Optional, default: = flush_interval / 2
 # - It can happen that sending the data out takes too long. This parameter sets a total time
-#   limit a single flush operation can take. This is only required for influxdb_client,
-#   carbon_client and elasticsearch_client and should be reasonably shorter than flush_interval.
+#   limit a single flush operation can take. This is only required for influxdb_client
+#   and elasticsearch_client and should be reasonably shorter than flush_interval.
 # - Example: push_time_limit = 0.3
 
 
@@ -157,7 +155,7 @@ metadata = {
 # - int, max number or records pushed in a single flush
 # - Optional, default: = buffer_limit
 # - Similarly to push_time_limit, this parameter sets a boundary on how much data we flush
-#   in one go. Also only applicable to influxdb_client, carbon_client and elasticsearch_client.
+#   in one go. Also only applicable to influxdb_client and elasticsearch_client.
 #   push_count_limit, buffer_limit and chunk_size define the buffering policy for those three
 #   modules and provide control over traffic generated and data retention.
 
@@ -589,35 +587,4 @@ prometheus = {
     # - Note that unlike Elasticsearch, Prometheus can only accept 'gzip' encoding.
     #   Also, the module will only use gzip when client offers it with 'Accept-Encoding'.
     'compression': 'gzip',
-}
-
-
-# Consider the Graphite module deprecated. It is not actively maintained,
-# it is provided only for backward compatibility.
-carbon = {
-    'module_type': "carbon_client",
-    'module_inactive': True,
-    'remote_hosts': (
-        "127.0.0.1:2003",
-    ),
-    'flush_interval': 1,
-
-    # name_mapping
-    # - tuple of str
-    # - Required
-    # - Bucky3 speaks metrics with metadata natively. Graphite doesn't. name_mapping
-    #   defines translation order from the key=value metadata to the dot separated
-    #   sequence of strings of Graphite. The metrics metadata keys are pulled out in the
-    #   order of name_mapping (not found keys are skipped), the keys remaining in metrics
-    #   metadata afterwards are appended alphabetically. Values of thus constructed list
-    #   of keys are concatenated into a dot separated Graphite string.
-    #   For example, for the name_mapping as below, if the linux stats module produces:
-    #   *  system_cpu(value="user", name="0") = 24
-    #   After merging with global metadata it might become:
-    #   *  system_cpu(value="user", name="0", host="foo", location="bar", env="test") = 24
-    #   Since "bucket" is "system_cpu", Graphite receives:
-    #   *  system_cpu.foo.0.user.test.bar 24
-    'name_mapping': (
-        "bucket", "team", "app", "host", "name", "value",
-    ),
 }
