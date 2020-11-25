@@ -94,6 +94,7 @@ process in Bucky3 takes no part in IPC, all IPC stays between source and destina
 modules.
 * IPC in Bucky is "line-based", one datapoint - one message. Bucky3 uses batches
 everywhere, more efficient and conceptually closer to its data model.
+* UTF-8 is supported across the board.
 * Bucky imports modules at source level, Bucky3 does it dynamically. This is to avoid
 dependencies in the main process. Moreover, to improve isolation, Bucky3 delays modules
 initialization (i.e. socket / file operations) until after fork.
