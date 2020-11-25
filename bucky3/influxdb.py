@@ -8,7 +8,7 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
         super().__init__(*args, default_port=8086)
 
     def push_chunk(self, chunk):
-        payload = '\n'.join(chunk).encode("ascii")
+        payload = '\n'.join(chunk).encode("utf-8")
         for ip, port in self.resolve_remote_hosts():
             self.sock.sendto(payload, (ip, port))
 
