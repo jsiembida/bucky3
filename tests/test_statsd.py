@@ -864,6 +864,28 @@ class TestStatsDServer(unittest.TestCase):
         self.percentiles_performance(statsd_module, "10 percentiles, 10 vectors of 10000 samples", 10000, 10, 10, prof)
         self.close_performance_test(prof)
 
+    @statsd_setup(timestamps=range(1, 100))
+    def test_datadog_metadata(self, statsd_module):
+        mock_pipe = statsd_module.dst_pipes[0]
+        statsd_module.handle_line(0, "gorm:1.5|c")
+        statsd_module.handle_line(0, "gorm:2.0|c|#a:b")
+        statsd_module.handle_line(0, "gorm:2.5|c|#a:b,c:5")
+        statsd_module.handle_line(0, "gorm:3.0|c|#a:z,c:5")
+        statsd_module.handle_line(0, "gorm:3.5|c|#c:5,a:b")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_counters', dict(rate=1.5, count=1.5), 1, dict(name='gorm')),
+            ('stats_counters', dict(rate=2.0, count=2.0), 1, dict(name='gorm', a='b')),
+            ('stats_counters', dict(rate=6.0, count=6.0), 1, dict(name='gorm', a='b', c='5')),
+            ('stats_counters', dict(rate=3.0, count=3.0), 1, dict(name='gorm', a='z', c='5')),
+        ])
+        statsd_module.handle_line(1, "gorm:4.0|c|#c:5,a:z")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_counters', dict(rate=4.0, count=4.0), 2, dict(name='gorm', a='z', c='5')),
+        ])
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [])
 
 if __name__ == '__main__':
     unittest.main()
