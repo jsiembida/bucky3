@@ -8,7 +8,7 @@ extended" protocol. The canonical sources for both the "vanilla" and
 "extended" formats are:
 
 - statsd: https://github.com/b/statsd_spec
-- dogstatsd: https://docs.datadoghq.com/guides/dogstatsd/#datagram-format
+- dogstatsd: https://docs.datadoghq.com/developers/dogstatsd/datagram_shell
 
 However, since bucky3 does not support the full DogStatsD protocol, we
 should consider the format in bucky3 a distinct variant. To keep the
@@ -19,15 +19,15 @@ to ignore the "service check" and "event" message types.
 
 ### Message Format
 
-The StatsD messages are sent as UDP datagrams with ASCII encoded
-payloads. All other encodings are considered malformed data.
+The StatsD messages are sent as UDP datagrams with UTF-8 encoded payloads.
+All other encodings are considered malformed data.
 
 The protocol is line-based, and each measurement (data point)
 must adhere to the following format:
 
     <measurement name>:<value>|<type>[|@<rate>][|#<tag name>=<tag value>[,<tag name>=<tag value>]*]<newline>
 
-* `measurement name` is an arbitrary string
+* `measurement name` alphanums and underscores are allowed
 * `value` is the recorded measurement, if type is other than `c`
 * `type` is one of the following:
   * `g` - gauge; an already measured value
@@ -36,8 +36,8 @@ must adhere to the following format:
   * `s` - set; collection of distinct keys
   * `c` - counter; an automatically increasing count of occurrences
 * `rate` is a float number between `0 < rate <= 1` that defaults to `1`
-* `tag name` is an arbitrary label or tag for the value
-* `tag value` is an arbitrary categorisation
+* `tag name` alphanums and underscores are allowed
+* `tag value` is an arbitrary categorisation, only comma is not allowed
 * `newline` is a literal newline
 
 For `value`, bucky3 accepts floats. Some StatsD implementations limit
@@ -49,15 +49,15 @@ at least one to assign the measurement context. The tags are commonly used
 for grouping when viewing the generated time-series graphs, as well as
 for specifying alert rules.
 
-Note: unlike in DogStatsD, timer (`ms`) and histogram (`h`) are not aliases
-for one another. Bucky3 implements proper histograms with customizable bins
+Notes:
+* Bucky3 implements proper histograms with customizable bins
 instead of redirecting histogram messages to the timer code path.
-
-Note: `=` is used as in `key=value` and it has the usual meaning.
-DataDog documentation uses `foo:bar` but tags in DataDog implementation
-are a list of strings without the meaning they have in bucky3.
-
-Note: trailing comma after the last tag is allowed.
+* Bucky3 imposes restrictions on measurement and tag names,
+i.e. dots or hyphens are not allowed.
+* In tags, `=` is preferred, as in `key=value` and it has the usual meaning.
+DataDog protocol uses `foo:bar`, Bucky3 accepts and interprets this form
+as `foo=bar`.
+* Trailing comma after the last tag is allowed.
 
 
 

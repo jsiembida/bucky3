@@ -132,7 +132,6 @@ class TestStatsDServer(unittest.TestCase):
 
         test(":1|" + entry_type)
         test("g.o.r.m:1|" + entry_type)
-        test("gérm:1|" + entry_type)
         test("gorm:|" + entry_type)
         if check_numeric:
             test("gorm:abc|" + entry_type)

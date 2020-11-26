@@ -6,14 +6,16 @@
 is a rework of [Bucky](https://github.com/trbs/bucky). Major differences include:
 
 * Metrics with metadata are designed into Bucky3 from the ground up. This is a shift towards systems like
-[InfluxDB](https://www.influxdata.com), [Prometheus](https://prometheus.io) or [Elasticsearch](https://www.elastic.co)
-and biggest conceptual difference between Bucky3 and original Bucky.
+[InfluxDB](https://www.influxdata.com/products/influxdb/), [Prometheus](https://prometheus.io)
+or [Elasticsearch](https://www.elastic.co/elasticsearch/) and biggest conceptual difference between Bucky3
+and original Bucky.
 * Python 3.4+ only.
 * [MetricsD](https://github.com/mojodna/metricsd) protocol has been dropped in favor
-of [extended StatsD protocol.](https://docs.datadoghq.com/guides/dogstatsd/#datagram-format)
+of [extended StatsD protocol.](https://docs.datadoghq.com/developers/dogstatsd/datagram_shell)
 See `PROTOCOL.md` for a comprehensive description of StatsD protocol implementation in Bucky3.
 * [CollectD](https://collectd.org) protocol has been dropped in favor of dedicated modules and integration
 via StatsD protocol.
+* Monitoring of [Docker Containers](https://www.docker.com/) is supported.
 * Linux [Systemd Journal](https://www.freedesktop.org/software/systemd/man/systemd-journald.service.html)
 integration is included. Bucky3 recognizes Python, Java and Node.js stacktraces in the stream of lines coming
 from system journal and stitches them back together, it also recognizes extra fields added by docker logging.

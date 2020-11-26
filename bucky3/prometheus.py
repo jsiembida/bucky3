@@ -35,7 +35,7 @@ class PrometheusExporter(module.MetricsDstProcess, module.HostResolver):
                 else:
                     req.end_headers()
                 for chunk in self.get_chunks():
-                    write(chunk.encode("ascii"))
+                    write(chunk.encode("utf-8"))
                     flush()
                 if close:
                     close()

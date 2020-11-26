@@ -52,9 +52,9 @@ class DockerConnection(http.client.HTTPConnection):
 class DockerStatsCollector(module.MetricsSrcProcess, linux.ProcfsReader):
     def __init__(self, *args):
         super().__init__(*args)
-        self.meta_name_regex = re.compile(r'([a-zA-Z][a-zA-Z0-9_]*)', re.ASCII)
-        self.meta_value_regex = re.compile(r'([a-zA-Z0-9_:=\-\+\@\?\#\.\/\%\<\>\*\;\&\[\]]+)', re.ASCII)
-        self.env_regex = re.compile(self.meta_name_regex.pattern + '=' + self.meta_value_regex.pattern, re.ASCII)
+        self.meta_name_regex = re.compile(r'([a-zA-Z][a-zA-Z0-9_]*)')
+        self.meta_value_regex = re.compile(r'([a-zA-Z0-9_:=\-\+\@\?\#\.\/\%\<\>\*\;\&\[\]]+)')
+        self.env_regex = re.compile(self.meta_name_regex.pattern + '=' + self.meta_value_regex.pattern)
 
     def init_cfg(self):
         super().init_cfg()

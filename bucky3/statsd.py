@@ -155,9 +155,9 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             self.counters = {}
 
     def handle_packet(self, data, addr=None):
-        # Adding a bit of extra sauce so clients can send multiple samples in a single UDP packet.
         try:
-            recv_timestamp, data = round(time.time(), 3), data.decode("ascii")
+            recv_timestamp = round(time.time(), 3)
+            data = data.decode("utf-8")
         except UnicodeDecodeError:
             return
         for line in data.splitlines():
@@ -175,53 +175,52 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             return
         if not line:
             return
-        bits = line.split(":")
-        if len(bits) < 2:
+
+        bits = line.split("|")
+        if len(bits) < 2 or len(bits) > 3:
             return
-        name = bits.pop(0)
-        if not name.isidentifier():
+
+        name, _, valstr = bits[0].partition(":")
+        if not name.isidentifier() or not valstr:
             return
+
+        typestr = bits[1]
+        ratestr = bits[2] if len(bits) > 2 else None
+
         key, metadata = self.handle_key(name, metadata)
         if not key:
             return
 
-        # I'm not sure if statsd is doing this on purpose but the code allows for name:v1|t1:v2|t2 etc.
-        # In the interest of compatibility, I'll maintain the behavior.
-        for sample in bits:
-            if "|" not in sample:
-                continue
-            fields = sample.split("|")
-            valstr = fields[0]
-            if not valstr:
-                continue
-            typestr = fields[1]
-            ratestr = fields[2] if len(fields) > 2 else None
-            try:
-                if typestr == "ms" or typestr == "h":
-                    self.handle_timer(cust_timestamp, key, metadata, valstr, ratestr)
-                elif typestr == "g":
-                    self.handle_gauge(cust_timestamp, key, metadata, valstr, ratestr)
-                elif typestr == "s":
-                    self.handle_set(cust_timestamp, key, metadata, valstr, ratestr)
-                else:
-                    self.handle_counter(cust_timestamp, key, metadata, valstr, ratestr)
-                self.metrics_received += 1
-            except ValueError:
-                pass
+        try:
+            if typestr == "ms" or typestr == "h":
+                self.handle_timer(cust_timestamp, key, metadata, valstr, ratestr)
+            elif typestr == "g":
+                self.handle_gauge(cust_timestamp, key, metadata, valstr, ratestr)
+            elif typestr == "s":
+                self.handle_set(cust_timestamp, key, metadata, valstr, ratestr)
+            else:
+                self.handle_counter(cust_timestamp, key, metadata, valstr, ratestr)
+            self.metrics_received += 1
+        except ValueError:
+            pass
 
     def handle_metadata(self, recv_timestamp, line):
-        # http://docs.datadoghq.com/guides/dogstatsd/#datagram-format
-        bits = line.split("|#", 1)  # We allow '#' in tag values, too
-        cust_timestamp, metadata = None, {}
-        if len(bits) < 2:
-            return cust_timestamp, line, metadata
-        for i in bits[1].split(","):
+        # https://docs.datadoghq.com/developers/dogstatsd/datagram_shell
+        before, _, after = line.partition("|#")  # We allow '#' in tag values, too
+        cust_timestamp = None
+        metadata = {}
+        if not after:
+            return cust_timestamp, before, metadata
+        for i in after.split(","):
+            # Skip empty bits, also allow for a terminating comma.
             if not i:
                 continue
             # Due to how we parse the metadata, comma is the only illegal character
             # in tag values, everything else will be taken literally.
-            # Prometheus and Influx modules handle escaping the special chars as needed.
             k, _, v = i.partition('=')
+            if not v:
+                # If it was not k=v, try DataDog's k:v format
+                k, _, v = i.partition(':')
             if not k.isidentifier() or not v:
                 raise ValueError()
             if k == 'timestamp':
@@ -238,7 +237,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 metadata[k] = v
             else:
                 metadata[k] = v
-        return cust_timestamp, bits[0], metadata
+        return cust_timestamp, before, metadata
 
     def handle_key(self, name, metadata):
         metadata.update(name=name)
