@@ -181,7 +181,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             return
 
         name, _, valstr = bits[0].partition(":")
-        if not name.isidentifier() or not valstr:
+        if not name.isidentifier() or name[0] == '_' or not valstr:
             return
 
         typestr = bits[1]
@@ -221,7 +221,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             if not v:
                 # If it was not k=v, try DataDog's k:v format
                 k, _, v = i.partition(':')
-            if not k.isidentifier() or not v:
+            if not k.isidentifier() or k[0] == '_' or not v:
                 raise ValueError()
             if k == 'timestamp':
                 cust_timestamp = float(v)

@@ -131,6 +131,7 @@ class TestStatsDServer(unittest.TestCase):
             mock_pipe.reset_mock()
 
         test(":1|" + entry_type)
+        test("_gorm:1|" + entry_type)
         test("g.o.r.m:1|" + entry_type)
         test("gorm:|" + entry_type)
         if check_numeric:
@@ -727,9 +728,11 @@ class TestStatsDServer(unittest.TestCase):
     def metadata_performance(self, statsd_module, prefix, metric_type, N, M, set_size, tags_per_sample, profiler=None):
         mock_pipe = statsd_module.dst_pipes[0]
         test_sample_set = self.metadata_test_set(metric_type, set_size, tags_per_sample)
-        start_time = time.process_time()
+        insertion_time = 0
+        aggregation_time = 0
         t = 0
         for i in range(N):
+            start_timestamp = time.process_time()
             for j in range(M):
                 for sample in test_sample_set:
                     if profiler:
@@ -737,18 +740,25 @@ class TestStatsDServer(unittest.TestCase):
                     statsd_module.handle_line(t, sample)
                     if profiler:
                         profiler.disable()
+            insertion_timestamp = time.process_time()
             if profiler:
                 profiler.enable()
             statsd_module.tick()
             if profiler:
                 profiler.disable()
+            aggregation_timestamp = time.process_time()
             t += 1
             mock_pipe.reset_mock()
-        time_delta = time.process_time() - start_time
+            insertion_time += (insertion_timestamp - start_timestamp)
+            aggregation_time += (aggregation_timestamp - insertion_timestamp)
         total_samples = N * M * len(test_sample_set)
-        us_per_sample = 1000000 * time_delta / total_samples
-        print('\n{prefix}: {total_samples:d} samples in {time_delta:.2f}s -> {us_per_sample:.1f}us/sample'.format(
-            prefix=prefix, total_samples=total_samples, time_delta=time_delta, us_per_sample=us_per_sample
+        us_per_insertion = 1000000 * insertion_time / total_samples
+        us_per_aggregation = 1000000 * aggregation_time / total_samples
+        print(('\n{prefix}: {total_samples:d} samples in {total_time:.2f}s'
+               ' -> insertion {us_per_insertion:.2f}us/sample'
+               ' -> aggregation {us_per_aggregation:.2f}us/sample').format(
+            prefix=prefix, total_samples=total_samples, total_time=(insertion_time + aggregation_time),
+            us_per_insertion=us_per_insertion, us_per_aggregation=us_per_aggregation,
         ), flush=True, file=sys.stderr)
 
     @statsd_setup(timestamps=range(1, 10000000))

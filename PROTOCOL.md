@@ -27,7 +27,8 @@ must adhere to the following format:
 
     <measurement name>:<value>|<type>[|@<rate>][|#<tag name>=<tag value>[,<tag name>=<tag value>]*]<newline>
 
-* `measurement name` alphanums and underscores are allowed
+* `measurement name` alphanums and underscores are allowed,
+  but the first character must be a letter
 * `value` is the recorded measurement, if type is other than `c`
 * `type` is one of the following:
   * `g` - gauge; an already measured value
@@ -36,7 +37,8 @@ must adhere to the following format:
   * `s` - set; collection of distinct keys
   * `c` - counter; an automatically increasing count of occurrences
 * `rate` is a float number between `0 < rate <= 1` that defaults to `1`
-* `tag name` alphanums and underscores are allowed
+* `tag name` alphanums and underscores are allowed,
+  but the first character must be a letter
 * `tag value` is an arbitrary categorisation, only comma is not allowed
 * `newline` is a literal newline
 
