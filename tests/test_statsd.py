@@ -131,6 +131,7 @@ class TestStatsDServer(unittest.TestCase):
             mock_pipe.reset_mock()
 
         test(":1|" + entry_type)
+        test("_gorm:1|" + entry_type)
         test("g.o.r.m:1|" + entry_type)
         test("gorm:|" + entry_type)
         if check_numeric:
@@ -143,34 +144,37 @@ class TestStatsDServer(unittest.TestCase):
 
     def malformed_metadata(self, statsd_module, entry):
         mock_pipe = statsd_module.dst_pipes[0]
-        legal_name_chars = string.ascii_letters + '_'
-        illegal_name_chars = ''.join(
-            set(string.ascii_letters + string.punctuation) - set(legal_name_chars + '=')
-        )
+        legal_name_chars = string.ascii_letters
+        illegal_name_chars = string.punctuation.replace('_', '').replace(':', '').replace('=', '')
         illegal_value_chars = ','
         legal_value_chars = ''.join(
             set(string.ascii_letters + string.punctuation + string.digits + ' ') - set(',')
         )
 
-        def get_token(legal_chars, illegal_char=None):
-            n = random.randint(1, 5) * random.choice(legal_chars)
+        def get_random_word(chars, min_len=1, max_len=5):
+            return ''.join(random.choice(chars) for i in range(random.randint(min_len, max_len)))
+
+        def get_token(first_chars, legal_chars, illegal_char=None):
+            n = get_random_word(first_chars, 1, 1) + get_random_word(legal_chars)
             if illegal_char:
-                n = n + illegal_char + random.randint(1, 5) * random.choice(legal_chars)
+                n = n + get_random_word(illegal_char, 1, 1) + get_random_word(legal_chars)
             return n
 
         i = 0
 
         for c in illegal_name_chars:
-            name, value = get_token(legal_name_chars, c), get_token(legal_value_chars)
+            name = get_token(legal_name_chars, legal_name_chars, c)
+            value = get_token(legal_value_chars, legal_value_chars)
             statsd_module.handle_line(i, entry + '|#' + name + '=' + value)
             statsd_module.tick()
-            assert not mock_pipe.called
-            assert not mock_pipe.send.called
+            assert not mock_pipe.called, "Failed to k=" + name + "  and v=" + value
+            assert not mock_pipe.send.called, "Failed to k=" + name + "  and v=" + value
             mock_pipe.reset_mock()
             i += 1
 
         for c in illegal_value_chars:
-            name, value = get_token(legal_name_chars), get_token(legal_value_chars, c)
+            name = get_token(legal_name_chars, legal_name_chars)
+            value = get_token(legal_value_chars, legal_value_chars, c)
             statsd_module.handle_line(i, entry + '|#' + name + '=' + value)
             statsd_module.tick()
             assert not mock_pipe.called
@@ -254,12 +258,14 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(0, "gorm:2.5|c|#a=b,c=5")
         statsd_module.handle_line(0, "gorm:3.0|c|#a=z,c=5")
         statsd_module.handle_line(0, "gorm:3.5|c|#c=5,a=b")
+        statsd_module.handle_line(0, "pi:3.14|c|#a=,b=c")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
             ('stats_counters', dict(rate=1.5, count=1.5), 1, dict(name='gorm')),
             ('stats_counters', dict(rate=2.0, count=2.0), 1, dict(name='gorm', a='b')),
             ('stats_counters', dict(rate=6.0, count=6.0), 1, dict(name='gorm', a='b', c='5')),
             ('stats_counters', dict(rate=3.0, count=3.0), 1, dict(name='gorm', a='z', c='5')),
+            ('stats_counters', dict(rate=3.14, count=3.14), 1, dict(name='pi', a='', b='c')),
         ])
         statsd_module.handle_line(1, "gorm:4.0|c|#c=5,a=z")
         statsd_module.tick()
@@ -317,12 +323,14 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.handle_line(0, "gorm:2.5|g|#a=b,c=5")
         statsd_module.handle_line(0, "gorm:3.0|g|#a=z,c=5")
         statsd_module.handle_line(0, "gorm:3.5|g|#c=5,a=b")
+        statsd_module.handle_line(0, "pi:3.14|g|#a=,b=c")
         statsd_module.tick()
         statsd_verify(mock_pipe, [
             ('stats_gauges', dict(value=1.5), 1, dict(name='gorm')),
             ('stats_gauges', dict(value=2.0), 1, dict(name='gorm', a='b')),
             ('stats_gauges', dict(value=3.5), 1, dict(name='gorm', a='b', c='5')),
             ('stats_gauges', dict(value=3.0), 1, dict(name='gorm', a='z', c='5')),
+            ('stats_gauges', dict(value=3.14), 1, dict(name='pi', a='', b='c')),
         ])
         statsd_module.handle_line(1, "gorm:4.0|g|#c=5,a=z")
         statsd_module.tick()
@@ -672,7 +680,6 @@ class TestStatsDServer(unittest.TestCase):
         statsd_module.tick()
         statsd_verify(mock_pipe, [
             ('stats_counters', dict(rate=1, count=1), 1, dict(name='foo', hello='world')),
-            ('stats_counters', dict(rate=1, count=1), 1, dict(name='foo', hello='world', more='metadata')),
         ])
 
     def prepare_performance_test(self):
@@ -727,9 +734,11 @@ class TestStatsDServer(unittest.TestCase):
     def metadata_performance(self, statsd_module, prefix, metric_type, N, M, set_size, tags_per_sample, profiler=None):
         mock_pipe = statsd_module.dst_pipes[0]
         test_sample_set = self.metadata_test_set(metric_type, set_size, tags_per_sample)
-        start_time = time.process_time()
+        insertion_time = 0
+        aggregation_time = 0
         t = 0
         for i in range(N):
+            start_timestamp = time.process_time()
             for j in range(M):
                 for sample in test_sample_set:
                     if profiler:
@@ -737,18 +746,25 @@ class TestStatsDServer(unittest.TestCase):
                     statsd_module.handle_line(t, sample)
                     if profiler:
                         profiler.disable()
+            insertion_timestamp = time.process_time()
             if profiler:
                 profiler.enable()
             statsd_module.tick()
             if profiler:
                 profiler.disable()
+            aggregation_timestamp = time.process_time()
             t += 1
             mock_pipe.reset_mock()
-        time_delta = time.process_time() - start_time
+            insertion_time += (insertion_timestamp - start_timestamp)
+            aggregation_time += (aggregation_timestamp - insertion_timestamp)
         total_samples = N * M * len(test_sample_set)
-        us_per_sample = 1000000 * time_delta / total_samples
-        print('\n{prefix}: {total_samples:d} samples in {time_delta:.2f}s -> {us_per_sample:.1f}us/sample'.format(
-            prefix=prefix, total_samples=total_samples, time_delta=time_delta, us_per_sample=us_per_sample
+        us_per_insertion = 1000000 * insertion_time / total_samples
+        us_per_aggregation = 1000000 * aggregation_time / total_samples
+        print(('\n{prefix}: {total_samples:d} samples in {total_time:.2f}s'
+               ' -> insertion {us_per_insertion:.2f}us/sample'
+               ' -> aggregation {us_per_aggregation:.2f}us/sample').format(
+            prefix=prefix, total_samples=total_samples, total_time=(insertion_time + aggregation_time),
+            us_per_insertion=us_per_insertion, us_per_aggregation=us_per_aggregation,
         ), flush=True, file=sys.stderr)
 
     @statsd_setup(timestamps=range(1, 10000000))
@@ -863,6 +879,66 @@ class TestStatsDServer(unittest.TestCase):
         self.percentiles_performance(statsd_module, "10 percentiles, 100 vectors of 1000 samples", 1000, 100, 10, prof)
         self.percentiles_performance(statsd_module, "10 percentiles, 10 vectors of 10000 samples", 10000, 10, 10, prof)
         self.close_performance_test(prof)
+
+    @statsd_setup(timestamps=range(1, 100))
+    def test_datadog_metadata(self, statsd_module):
+        mock_pipe = statsd_module.dst_pipes[0]
+        statsd_module.handle_line(0, "gorm:1.5|c")
+        statsd_module.handle_line(0, "gorm:2.0|c|#a:b")
+        statsd_module.handle_line(0, "gorm:2.5|c|#a:b,c:5")
+        statsd_module.handle_line(0, "gorm:3.0|c|#a:z,c:5")
+        statsd_module.handle_line(0, "gorm:3.5|c|#c:5,a:b")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_counters', dict(rate=1.5, count=1.5), 1, dict(name='gorm')),
+            ('stats_counters', dict(rate=2.0, count=2.0), 1, dict(name='gorm', a='b')),
+            ('stats_counters', dict(rate=6.0, count=6.0), 1, dict(name='gorm', a='b', c='5')),
+            ('stats_counters', dict(rate=3.0, count=3.0), 1, dict(name='gorm', a='z', c='5')),
+        ])
+        statsd_module.handle_line(1, "gorm:4.0|c|#c:5,a:z")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_counters', dict(rate=4.0, count=4.0), 2, dict(name='gorm', a='z', c='5')),
+        ])
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [])
+
+    @statsd_setup(timestamps=range(1, 100))
+    def test_escaped_metadata(self, statsd_module):
+        mock_pipe = statsd_module.dst_pipes[0]
+        statsd_module.handle_line(0, "gorm:1.5|c")
+        statsd_module.handle_line(0, "gorm:2.0|c|#a=bcd")
+        statsd_module.handle_line(0, r"gorm:2.5|c|#a=b\c\d")
+        statsd_module.handle_line(0, r"gorm:3.5|c|#a=b\,c=d")
+        statsd_module.handle_line(0, r"gorm:5.5|c|#a=b\,,c=d")
+        statsd_module.handle_line(0, r"gorm:7.5|c|#a=b\nc,d=e")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_counters', dict(rate=1.5, count=1.5), 1, dict(name='gorm')),
+            ('stats_counters', dict(rate=4.5, count=4.5), 1, dict(name='gorm', a='bcd')),
+            ('stats_counters', dict(rate=3.5, count=3.5), 1, dict(name='gorm', a='b,c=d')),
+            ('stats_counters', dict(rate=5.5, count=5.5), 1, dict(name='gorm', a='b,', c='d')),
+            ('stats_counters', dict(rate=7.5, count=7.5), 1, dict(name='gorm', a='b\nc', d='e')),
+        ])
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [])
+
+    @statsd_setup(timestamps=range(1, 100))
+    def test_case_sensitivity(self, statsd_module):
+        mock_pipe = statsd_module.dst_pipes[0]
+        statsd_module.handle_line(0, "gorm:2.0|c|#a=bcd")
+        statsd_module.handle_line(0, "goRM:1.0|c|#a=BCD")
+        statsd_module.handle_line(0, "gorm:2.5|c|#A=bcd")
+        statsd_module.handle_line(0, "gorm:3.5|c|#a=Bcd")
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [
+            ('stats_counters', dict(rate=2.0, count=2.0), 1, dict(name='gorm', a='bcd')),
+            ('stats_counters', dict(rate=1.0, count=1.0), 1, dict(name='goRM', a='BCD')),
+            ('stats_counters', dict(rate=2.5, count=2.5), 1, dict(name='gorm', A='bcd')),
+            ('stats_counters', dict(rate=3.5, count=3.5), 1, dict(name='gorm', a='Bcd')),
+        ])
+        statsd_module.tick()
+        statsd_verify(mock_pipe, [])
 
 
 if __name__ == '__main__':

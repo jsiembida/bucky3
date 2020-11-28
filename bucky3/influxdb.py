@@ -17,7 +17,7 @@ class InfluxDBClient(module.MetricsPushProcess, module.UDPConnector):
         return super().flush(system_timestamp)
 
     def process_values(self, recv_timestamp, bucket, values, timestamp, metadata):
-        # https://docs.influxdata.com/influxdb/v1.3/write_protocols/line_protocol_tutorial/
+        # https://docs.influxdata.com/influxdb/v2.0/reference/syntax/line-protocol/
         metadata_buf = [bucket]
         # InfluxDB docs recommend sorting tags
         for k in sorted(metadata.keys()):
