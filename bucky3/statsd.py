@@ -15,6 +15,7 @@
 # Copyright 2011 Cloudant, Inc.
 
 
+import re
 import time
 import socket
 import threading
@@ -37,6 +38,8 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.sets_lock = threading.Lock()
         self.last_timestamp = 0
         self.metrics_received = 0
+        self.metadata_match_re = re.compile(r'(\w+)[=:](((\\.)|[^,])*),?')
+        self.metadata_replace_re = re.compile(r'\\(.)')
 
     def flush(self, system_timestamp):
         self.enqueue_timers(system_timestamp)
@@ -209,20 +212,29 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         before, _, after = line.partition("|#")  # We allow '#' in tag values, too
         cust_timestamp = None
         metadata = {}
-        if not after:
-            return cust_timestamp, before, metadata
-        for i in after.split(","):
-            # Skip empty bits, also allow for a terminating comma.
-            if not i:
-                continue
-            # Due to how we parse the metadata, comma is the only illegal character
-            # in tag values, everything else will be taken literally.
-            k, _, v = i.partition('=')
-            if not v:
-                # If it was not k=v, try DataDog's k:v format
-                k, _, v = i.partition(':')
-            if not k.isidentifier() or k[0] == '_' or not v:
+
+        def unescape_tag_value(m):
+            c = m.group(1)
+            if c == 'n':
+                return '\n'
+            if c == 'r':
+                return '\r'
+            if c == 't':
+                return '\t'
+            return c
+
+        while after:
+            m = self.metadata_match_re.match(after)
+            if m is None:
                 raise ValueError()
+
+            k = m.group(1)
+            if k[0] == '_':
+                raise ValueError()
+
+            v = self.metadata_replace_re.sub(unescape_tag_value, m.group(2))
+            after = after[len(m.group(0)):]
+
             if k == 'timestamp':
                 cust_timestamp = float(v)
                 # Assume millis not secs if the timestamp >= 2^31
@@ -232,11 +244,12 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                     raise ValueError()
                 cust_timestamp = round(cust_timestamp, 3)
             elif k == 'bucket':
-                if not v.isidentifier():
+                if not v.isidentifier() or v[0] == '_':
                     raise ValueError()
                 metadata[k] = v
             else:
                 metadata[k] = v
+
         return cust_timestamp, before, metadata
 
     def handle_key(self, name, metadata):
@@ -302,7 +315,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def handle_counter(self, cust_timestamp, key, metadata, valstr, ratestr):
         if ratestr and ratestr[0] == "@":
             rate = float(ratestr[1:])
-            if rate > 0 and rate <= 1:
+            if 0 < rate <= 1:
                 val = float(valstr) / rate
             else:
                 return

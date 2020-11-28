@@ -39,7 +39,9 @@ must adhere to the following format:
 * `rate` is a float number between `0 < rate <= 1` that defaults to `1`
 * `tag name` alphanums and underscores are allowed,
   but the first character must be a letter
-* `tag value` is an arbitrary categorisation, only comma is not allowed
+* `tag value` is an arbitrary categorisation, comma and backslash must be escaped
+  with a backslash. \n \r and \t are parsed as LF, CR and TAB respectively, any other
+  escaped character is taken literally.
 * `newline` is a literal newline
 
 For `value`, bucky3 accepts floats. Some StatsD implementations limit
@@ -56,10 +58,15 @@ Notes:
 instead of redirecting histogram messages to the timer code path.
 * Bucky3 imposes restrictions on measurement and tag names,
 i.e. dots or hyphens are not allowed.
+* Measurement name, tag names and values are all case sensitive.
+Entire data pipeline in Bucky3 is case sensitive, but your storage
+backend might have different semantics in this respect.
 * In tags, `=` is preferred, as in `key=value` and it has the usual meaning.
 DataDog protocol uses `foo:bar`, Bucky3 accepts and interprets this form
 as `foo=bar`.
 * Trailing comma after the last tag is allowed.
+* Invalid lines are ignored. If a packet contains multiple lines (which is
+recommended for efficiency), only valid lines will be accepted.
 
 
 
@@ -157,7 +164,11 @@ on localhost:
     def send_to_bucky3_statsd(n, v, t='c', **tags):
         msg = str(n) + ':' + str(v) + '|' + str(t)
         if tags:
-            msg += '|#' + ','.join(str(k) + '=' + str(v) for k, v in tags.items())
+            msg += '|#'
+            msg += ','.join(
+                k + '=' + str(v).replace('\\', '\\\\').replace(',', '\\,').replace('\n', '\\n').replace('\r', '\\r')
+                for k, v in tags.items()
+            )
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(2)    # Not strictly necessary but a good idea
         sock.sendto(msg.encode('ascii'), ('127.0.0.1', 8125))
