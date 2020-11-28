@@ -38,6 +38,7 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.sets_lock = threading.Lock()
         self.last_timestamp = 0
         self.metrics_received = 0
+        self.metadata_kv_re = re.compile(r'(\w+)[=:](.*)')
         self.metadata_match_re = re.compile(r'(\w+)[=:](((\\.)|[^,])*),?')
         self.metadata_replace_re = re.compile(r'\\(.)')
 
@@ -191,8 +192,6 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         ratestr = bits[2] if len(bits) > 2 else None
 
         key, metadata = self.handle_key(name, metadata)
-        if not key:
-            return
 
         try:
             if typestr == "ms" or typestr == "h":
@@ -210,6 +209,13 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
     def handle_metadata(self, recv_timestamp, line):
         # https://docs.datadoghq.com/developers/dogstatsd/datagram_shell
         before, _, after = line.partition("|#")  # We allow '#' in tag values, too
+        if after:
+            if '\\' in after:
+                return self.handle_escaped_metadata(recv_timestamp, before, after)
+            return self.handle_unescaped_metadata(recv_timestamp, before, after)
+        return None, before, {}
+
+    def handle_escaped_metadata(self, recv_timestamp, before, after):
         cust_timestamp = None
         metadata = {}
 
@@ -235,22 +241,51 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
             v = self.metadata_replace_re.sub(unescape_tag_value, m.group(2))
             after = after[len(m.group(0)):]
 
-            if k == 'timestamp':
-                cust_timestamp = float(v)
-                # Assume millis not secs if the timestamp >= 2^31
-                if cust_timestamp > 2147483647:
-                    cust_timestamp /= 1000
-                if abs(recv_timestamp - cust_timestamp) > self.timestamp_window:
-                    raise ValueError()
-                cust_timestamp = round(cust_timestamp, 3)
-            elif k == 'bucket':
-                if not v.isidentifier() or v[0] == '_':
-                    raise ValueError()
-                metadata[k] = v
-            else:
-                metadata[k] = v
+            cust_timestamp = self.handle_metadata_kv(recv_timestamp, cust_timestamp, k, v, metadata)
 
         return cust_timestamp, before, metadata
+
+    def handle_unescaped_metadata(self, recv_timestamp, before, after):
+        cust_timestamp = None
+        metadata = {}
+
+        if after.endswith(','):
+            after = after[:-1]
+
+        for i in after.split(','):
+            if not i:
+                raise ValueError()
+
+            m = self.metadata_kv_re.fullmatch(i)
+            if m is None:
+                raise ValueError()
+
+            k = m.group(1)
+            if k[0] == '_':
+                raise ValueError()
+
+            v = m.group(2)
+
+            cust_timestamp = self.handle_metadata_kv(recv_timestamp, cust_timestamp, k, v, metadata)
+
+        return cust_timestamp, before, metadata
+
+    def handle_metadata_kv(self, recv_timestamp, cust_timestamp, k, v, metadata):
+        if k == 'timestamp':
+            cust_timestamp = float(v)
+            # Assume millis not secs if the timestamp >= 2^31
+            if cust_timestamp > 2147483647:
+                cust_timestamp /= 1000
+            if abs(recv_timestamp - cust_timestamp) > self.timestamp_window:
+                raise ValueError()
+            cust_timestamp = round(cust_timestamp, 3)
+        elif k == 'bucket':
+            if not v.isidentifier() or v[0] == '_':
+                raise ValueError()
+            metadata[k] = v
+        else:
+            metadata[k] = v
+        return cust_timestamp
 
     def handle_key(self, name, metadata):
         metadata.update(name=name)
