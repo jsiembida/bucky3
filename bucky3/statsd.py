@@ -235,13 +235,9 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 raise ValueError()
 
             k = m.group(1)
-            if k[0] == '_':
-                raise ValueError()
-
             v = self.metadata_replace_re.sub(unescape_tag_value, m.group(2))
-            after = after[len(m.group(0)):]
-
             cust_timestamp = self.handle_metadata_kv(recv_timestamp, cust_timestamp, k, v, metadata)
+            after = after[len(m.group(0)):]
 
         return cust_timestamp, before, metadata
 
@@ -261,16 +257,14 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
                 raise ValueError()
 
             k = m.group(1)
-            if k[0] == '_':
-                raise ValueError()
-
             v = m.group(2)
-
             cust_timestamp = self.handle_metadata_kv(recv_timestamp, cust_timestamp, k, v, metadata)
 
         return cust_timestamp, before, metadata
 
     def handle_metadata_kv(self, recv_timestamp, cust_timestamp, k, v, metadata):
+        if not k.isidentifier() or k[0] == '_':
+            raise ValueError()
         if k == 'timestamp':
             cust_timestamp = float(v)
             # Assume millis not secs if the timestamp >= 2^31

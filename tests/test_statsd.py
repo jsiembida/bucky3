@@ -131,6 +131,7 @@ class TestStatsDServer(unittest.TestCase):
             mock_pipe.reset_mock()
 
         test(":1|" + entry_type)
+        test("1gorm:1|" + entry_type)
         test("_gorm:1|" + entry_type)
         test("g.o.r.m:1|" + entry_type)
         test("gorm:|" + entry_type)
@@ -162,31 +163,34 @@ class TestStatsDServer(unittest.TestCase):
 
         i = 0
 
+        def test(name, value):
+            nonlocal i
+            statsd_module.handle_line(i, entry + '|#' + name + '=' + value)
+            statsd_module.tick()
+            assert not mock_pipe.called, "Failed for k=" + name + "  and v=" + value
+            assert not mock_pipe.send.called, "Failed for k=" + name + "  and v=" + value
+            mock_pipe.reset_mock()
+            i += 1
+
         for c in illegal_name_chars:
             name = get_token(legal_name_chars, legal_name_chars, c)
             value = get_token(legal_value_chars, legal_value_chars)
-            statsd_module.handle_line(i, entry + '|#' + name + '=' + value)
-            statsd_module.tick()
-            assert not mock_pipe.called, "Failed to k=" + name + "  and v=" + value
-            assert not mock_pipe.send.called, "Failed to k=" + name + "  and v=" + value
-            mock_pipe.reset_mock()
-            i += 1
+            test(name, value)
 
         for c in illegal_value_chars:
             name = get_token(legal_name_chars, legal_name_chars)
             value = get_token(legal_value_chars, legal_value_chars, c)
-            statsd_module.handle_line(i, entry + '|#' + name + '=' + value)
-            statsd_module.tick()
-            assert not mock_pipe.called
-            assert not mock_pipe.send.called
-            mock_pipe.reset_mock()
-            i += 1
+            test(name, value)
+
+        test("", "123")
+        test("_tag", "123")
+        test("1tag", "123")
 
     def timestamped_metadata(self, statsd_module, entry):
         mock_pipe = statsd_module.dst_pipes[0]
 
         def test(condition, s):
-            statsd_module.handle_packet((entry + "|#timestamp=" + s).encode("ascii"))
+            statsd_module.handle_packet((entry + "|#timestamp=" + s).encode("utf-8"))
             statsd_module.tick()
             assert not mock_pipe.called
             assert mock_pipe.send.called == condition
@@ -203,7 +207,7 @@ class TestStatsDServer(unittest.TestCase):
         mock_pipe = statsd_module.dst_pipes[0]
 
         def test(condition, s):
-            statsd_module.handle_packet((entry + "|#hello=world,bucket=" + s).encode("ascii"))
+            statsd_module.handle_packet((entry + "|#hello=world,bucket=" + s).encode("utf-8"))
             statsd_module.tick()
             assert not mock_pipe.called
             assert mock_pipe.send.called == condition
