@@ -9,7 +9,7 @@ is a rework of [Bucky](https://github.com/trbs/bucky). Major differences include
 [InfluxDB](https://www.influxdata.com/products/influxdb/), [Prometheus](https://prometheus.io)
 or [Elasticsearch](https://www.elastic.co/elasticsearch/) and biggest conceptual difference between Bucky3
 and original Bucky.
-* Python 3.4+ only.
+* Python 3.5+ only.
 * [MetricsD](https://github.com/mojodna/metricsd) protocol has been dropped in favor
 of [extended StatsD protocol.](https://docs.datadoghq.com/developers/dogstatsd/datagram_shell)
 See `PROTOCOL.md` for a comprehensive description of StatsD protocol implementation in Bucky3.
@@ -23,13 +23,14 @@ from system journal and stitches them back together, it also recognizes extra fi
 For a more complete list of differences and design choices, see `DESIGN.md`
 
 
+
 ### Quick Start
 
 On Linux with Python3 the default configuration should start out of the box:
 
 ```
 git clone https://github.com/jsiembida/bucky3.git
-PYTHONPATH=bucky3 python3 bucky3/bucky3/main.py
+PYTHONPATH=bucky3 python3 -m bucky3
 ```
 
 After a couple of seconds, you can harvest metrics:
@@ -55,7 +56,6 @@ Tests can be run as follows:
 ```
 python3 -m unittest tests/test_*.py
 ```
-
 
 
 ### Slow Start
@@ -133,3 +133,18 @@ When a module (subprocess) receives `SIGTERM`, `SIGINT` or `SIGHUP` it flushes i
 When a module exits unexpectedly i.e. outside of the above shutdown sequence, the main module will restart it. 
 Note that in this case the module is not being reimported, the originally loaded module is just being restarted.
 Use a full stop / start sequence if you need to reload modules from disk.
+
+
+
+### Performance
+
+Most of the code is I/O bound and CPU usage stays well under 1%. Statsd metrics should be batched if performance
+is a concern. Statsd module also allows on-the-fly zlib / gzip decompression to further optimize network traffic.
+On CPython and around 1000 metrics/s consumed via statsd protocol, the CPU core utilization is around 10%.
+with PyPy or Cython it drops to around 5%.
+
+Tests include statsd performance measurements that are excluded by default and that can be enabled like so:
+
+```
+TEST_PERFORMANCE=yes python3 -m unittest tests/test_*.py
+```

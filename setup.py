@@ -51,6 +51,6 @@ setup(
 
     entry_points="""\
     [console_scripts]
-    bucky3=bucky3.main:main
+    bucky3=bucky3.__main__:main
     """
 )

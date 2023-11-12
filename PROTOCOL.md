@@ -67,6 +67,10 @@ as `foo=bar`.
 * Trailing comma after the last tag is allowed.
 * Invalid lines are ignored. If a packet contains multiple lines (which is
 recommended for efficiency), only valid lines will be accepted.
+* As a performance optimization, Bucky3 accepts multiple lines be batched into
+one UDP packet.
+* Furthermore, Bucky3 has an option that allows the packet be compressed with
+zlib / gzip.
 
 
 

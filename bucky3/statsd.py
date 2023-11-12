@@ -19,6 +19,8 @@ import re
 import time
 import socket
 import threading
+import zlib
+import gzip
 import bucky3.module as module
 
 
@@ -57,13 +59,22 @@ class StatsDServer(module.MetricsSrcProcess, module.UDPConnector):
         self.percentile_thresholds = sorted(set(round(float(t), 2) for t in percentile_thresholds if t > 0 and t <= 100))
         self.histogram_selector = self.cfg.get('histogram_selector')
         self.timestamp_window = self.cfg.get('timestamp_window', 600)
+        self.try_decompress = self.cfg.get('try_decompress', False)
 
     def read_loop(self):
         sock = self.open_socket(bind=True)
         self.last_timestamp = round(time.time(), 3)
         while True:
             try:
-                data, addr = sock.recvfrom(65535)
+                data, addr = sock.recvfrom(65536)
+                if self.try_decompress:
+                    try:
+                        data = zlib.decompress(data)
+                    except zlib.error:
+                        try:
+                            data = gzip.decompress(data)
+                        except OSError:
+                            pass
                 self.handle_packet(data, addr)
             except (InterruptedError, socket.timeout):
                 pass
