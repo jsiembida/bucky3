@@ -17,19 +17,21 @@ class JsonDServer(module.MetricsSrcProcess, module.UDPConnector):
     def init_cfg(self):
         super().init_cfg()
         self.timestamp_window = self.cfg.get('timestamp_window', 600)
+        self.try_decompress = self.cfg.get('try_decompress', True)
 
     def read_loop(self):
         sock = self.open_socket(bind=True)
         while True:
             try:
-                data, addr = sock.recvfrom(65535)
-                try:
-                    data = zlib.decompress(data)
-                except zlib.error:
+                data, addr = sock.recvfrom(65536)
+                if self.try_decompress:
                     try:
-                        data = gzip.decompress(data)
-                    except OSError:
-                        pass
+                        data = zlib.decompress(data)
+                    except zlib.error:
+                        try:
+                            data = gzip.decompress(data)
+                        except OSError:
+                            pass
                 self.handle_packet(data, addr)
             except (InterruptedError, socket.timeout):
                 pass

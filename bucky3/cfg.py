@@ -344,6 +344,14 @@ statsd = {
     #   window configured here: now - timestamp_window ... now + timestamp_window
     #   Metrics with custom timestamp outside of the window are ignored.
     # - Example: 'timestamp_window': 60,
+
+    # try_decompress
+    # - bool
+    # - Optional, default: False
+    # - If True, Bucky3 will try to decompress the incoming packet with zlib and then gzip.
+    #   If decompression fails, the packet will be taken as such. Statsd packets with tags
+    #   being plain text can be highly compressed improving I/O efficiency.
+    # - Example: 'try_decompress': True,
 }
 
 
@@ -373,6 +381,15 @@ jsond = {
     # - Optional, default: 600
     # - See timestamp_window in statsd module.
     # - Example: 'timestamp_window': 60,
+
+    # try_decompress
+    # - bool
+    # - Optional, default: True
+    # - If True, Bucky3 will try to decompress the incoming packet with zlib and then gzip.
+    #   If decompression fails, the packet will be taken as such. You might want to disable
+    #   this if you know  no packets will be compressed and want to save CPU cycles trying.
+    #   Note, that as opposed to try_decompress in statsd module, it is True by default.
+    # - Example: 'try_decompress': False,
 }
 
 

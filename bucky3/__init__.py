@@ -15,7 +15,7 @@
 # Copyright 2011 Cloudant, Inc.
 
 import platform
-assert platform.python_version_tuple() >= ('3', '4')
+assert tuple(map(int, platform.python_version_tuple())) >= (3, 5)
 
 version_info = (3, 0, 0)
 __version__ = ".".join(map(str, version_info))
