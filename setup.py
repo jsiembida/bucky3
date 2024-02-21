@@ -40,17 +40,18 @@ setup(
         'Operating System :: POSIX :: BSD',
         'Operating System :: Unix',
         'Programming Language :: Python',
-        "Programming Language :: Python :: 3",
+        'Programming Language :: Python :: 3',
         'Topic :: Internet :: Log Analysis',
         'Topic :: System :: Networking :: Monitoring',
         'Topic :: Utilities',
     ],
-    zip_safe=False,
+    zip_safe=True,
     packages=['bucky3'],
     include_package_data=True,
 
-    entry_points="""\
-    [console_scripts]
-    bucky3=bucky3.__main__:main
-    """
+    entry_points={
+        'console_scripts': [
+            'bucky3 = bucky3.__main__:main',
+        ]
+    }
 )

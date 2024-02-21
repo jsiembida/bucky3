@@ -8,8 +8,8 @@ passing them the config in the parsed form. That way, syntactic errors in
 the config make Bucky3 fail fast.
 
 - The main module itself uses only "log_level" and "log_format" parameters. Other
-parameters are module specific. All modules (including the main module) ignore
-unknown params, so it is safe to define module specific params in global context.
+parameters are module-specific. All modules (including the main module) ignore
+unknown params, so it is safe to define module-specific params in global context.
 - By design, there is no way to "live reload" or "test" the config. You have to
 do the full stop/start sequence.
 
@@ -130,15 +130,12 @@ metadata = {
 # add_timestamps
 # - bool, if metrics produced should have timestamps added
 # - Optional, default: False
-# - Each source module can add timestamps to the metrics they produce.
-#   Prometheus2 comes with new metrics timeout semantics - if you want to use it, leave
-#   this option off.
-#   For InfluxDB and Prometheus that option doesn't matter much so long as the flush_window
-#   is relatively short. If unsure, switch it on.
-#   For Elasticsearch, you want this option being on (but the module will work regardless)
-#   In any case, metrics coming via StatsD protocol with explicitly provided timestamps
-#   will always have timestamps included. This is to provide capability of backfilling
-#   late metrics and for those new Prometheus 2 semantics won't work anyway.
+# - Each source module can add timestamps to the metrics they produce. Prometheus, starting
+#   from v2 has staleness semantics that depend on whether datapoints specify timestamps, see:
+#   https://prometheus.io/docs/prometheus/latest/querying/basics/#staleness
+#   For Elasticsearch, you want this option on (but the module will work regardless).
+#   In any case, metrics coming via StatsD protocol with explicitly provided timestamps will
+#   always have timestamps included. This is to provide capability of back filling late metrics.
 # - Example: add_timestamps = True
 
 
@@ -152,33 +149,31 @@ metadata = {
 
 
 # push_count_limit
-# - int, max number or records pushed in a single flush
+# - int, max number of records pushed in a single flush
 # - Optional, default: = buffer_limit
 # - Similarly to push_time_limit, this parameter sets a boundary on how much data we flush
-#   in one go. Also only applicable to influxdb_client and elasticsearch_client.
-#   push_count_limit, buffer_limit and chunk_size define the buffering policy for those three
-#   modules and provide control over traffic generated and data retention.
+#   in one go. Only applicable to influxdb_client and elasticsearch_client.
+#   push_count_limit, buffer_limit and chunk_size define the buffering policy and provide
+#   control over traffic generated and data retention.
 
 
 # metric_postprocessor
 # - callback, custom metric postprocessor
 # - Optional, default: None
 # - Each source module can run metrics through extra postprocessing right before pushing
-#   them out to destination module(s). The postprocessor can return an altered metric or
-#   None, in the latter case the metric is dropped. Postprocessor receives the metric with
-#   custom metadata injected. The example below would drop all metrics with env=test.
+#   them out to destination module(s). The postprocessor can return an altered metric or None.
+#   In the latter case, the metric is dropped. Postprocessor receives the metric with custom
+#   metadata injected. The example below would drop all metrics with env=test.
 # - Example: metric_postprocessor = ignore_test_environment
 
 def ignore_test_environment(bucket, values, timestamp, metadata):
-    if metadata.get('env') == 'test':
-        return None
-    return bucket, values, timestamp, metadata
+    if metadata.get('env') != 'test':
+        return bucket, values, timestamp, metadata
 
 
 # This dictionary is a module configuration.
-# The name "linuxstats" doesn't matter as such, but should be descriptive
-# as it is included by default in the log formatter.
-# The module inherits all options defined in the global context.
+# The name "linuxstats" doesn't matter as such, but should be descriptive, and it is included
+# by default in the log formatter. The module inherits all options defined in the global context.
 linuxstats = {
     # module_type
     # - str, defines the type of module to be started (see description at the top).
@@ -209,10 +204,10 @@ linuxstats = {
     # - set of str, block devices to include/exclude
     # - Optional, default: None
     # - The matching logic is:
-    #   1. If whitelist is defined and disk matches it, it is included, skip further checks
-    #   2. If blacklist is defined and disk matches it, it is excluded, skip further checks
+    #   1. If whitelist is defined and the disk matches it, it is included, skip further checks
+    #   2. If blacklist is defined and the disk matches it, it is excluded, skip further checks
     #   3. disk is included
-    #   By default, the lists are None so all disks are included. If you want to monitor
+    #   By default, the lists are None, so all disks are included. If you want to monitor
     #   only a specific set of disks, put them in a whitelist and leave the blacklist out.
     #   If you want to exclude a specific set of disks, put them in a blacklist and leave
     #   the whitelist out. The strings are used as fully anchored regular expressions.
