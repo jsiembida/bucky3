@@ -1,4 +1,4 @@
-include .gitignore
-include requirements.txt
+include README.md
+include PROTOCOL.md
 include LICENSE
 include THANKS

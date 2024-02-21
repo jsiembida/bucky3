@@ -27,7 +27,7 @@ must adhere to the following format:
 
     <measurement name>:<value>|<type>[|@<rate>][|#<tag name>=<tag value>[,<tag name>=<tag value>]*]<newline>
 
-* `measurement name` alphanums and underscores are allowed,
+* `measurement name` alphanumerics and underscores are allowed,
   but the first character must be a letter
 * `value` is the recorded measurement, if type is other than `c`
 * `type` is one of the following:
@@ -37,7 +37,7 @@ must adhere to the following format:
   * `s` - set; collection of distinct keys
   * `c` - counter; an automatically increasing count of occurrences
 * `rate` is a float number between `0 < rate <= 1` that defaults to `1`
-* `tag name` alphanums and underscores are allowed,
+* `tag name` alphanumerics and underscores are allowed,
   but the first character must be a letter
 * `tag value` is an arbitrary categorisation, comma and backslash must be escaped
   with a backslash. \n \r and \t are parsed as LF, CR and TAB respectively, any other
@@ -58,8 +58,8 @@ Notes:
 instead of redirecting histogram messages to the timer code path.
 * Bucky3 imposes restrictions on measurement and tag names,
 i.e. dots or hyphens are not allowed.
-* Measurement name, tag names and values are all case sensitive.
-Entire data pipeline in Bucky3 is case sensitive, but your storage
+* Measurement name, tag names and values are all case-sensitive.
+Entire data pipeline in Bucky3 is case-sensitive, but your storage
 backend might have different semantics in this respect.
 * In tags, `=` is preferred, as in `key=value` and it has the usual meaning.
 DataDog protocol uses `foo:bar`, Bucky3 accepts and interprets this form
@@ -76,7 +76,7 @@ zlib / gzip.
 
 ### Examples
 
-Let's say you want to track the roundrip times, as well as received
+Let's say you want to track the roundtrip times, as well as received
 and generated status codes for a login service. You measure the time
 spent to make a call to another service, or maybe to read values from a
 data storage.
@@ -96,7 +96,7 @@ the service could send the following message to bucky3:
 
   - `status:200|h|#service=login,team=myteam,route=/user/login\n`
 
-Of course, if a login was unsuccesful, the message could instead be:
+Of course, if a login was unsuccessful, the message could instead be:
 
   - `status:401|h|#service=login,team=myteam,route=/user/login\n`
 
@@ -121,8 +121,8 @@ or they could combine the values into a single message:
 - `duration:2.9|ms|#service=ourstream,team=otherteam,action=something,status=200\n`
 
 Both approaches are equally valid. Embedding a value in the message tags
-makes sense when the set of possible values is small (such as HTTP codes). If the
-space of possible values is large, then a separate histogram probably
+makes sense when the set of possible values is small (such as HTTP codes).
+If the space of possible values is large, then a separate histogram probably
 makes more sense.
 
 
